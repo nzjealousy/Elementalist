@@ -22,14 +22,14 @@ Inspirations: The Mageseeker (action magic), Witchbrook (a cozy, lived-in hub), 
 |---|---|
 | `WASD` | Move |
 | Mouse | Aim |
-| `LMB` (hold) | Primary action. A bolt of your locked/selected element(s), or a slash, depending on your class (see below) |
-| `Q` | **Lock** the selected element (up to 3, from level 5). Locked elements fuse: one bolt hits with each in turn, so their combos fire in a single shot. No elements = locked |
-| `F` | Area skill (from level 5; lands under the cursor, up to its range) |
+| `LMB` (hold) | The **fused cast**: one bolt that hits with each of your 2-3 locked elements in turn, so their combos fire in a single shot. Disabled until two or more are locked. With no elements: a straight slash (melee classes) or a knife throw (ranged classes) |
+| `RMB` (hold) | The basic attack: a slash (stamina), or, for ranged classes while imbued, a bolt of the selected element (mana). Reach depends on your class |
+| `Q` | **Lock** the selected element (up to 3). Needs two or more elements, no level required |
+| `F` | Area skill (unlocks at level 5; lands under the cursor, up to its range) |
 | `R` | Special skill (learned only as a level reward) |
 | `1`-`5` or mouse wheel | Select element (or the martial set) |
-| `RMB` (hold) | Physical slash (stamina). Reach depends on your class |
-| `E` | Toggle **imbue** (no cooldown). Ranged classes shoot only while imbued; every class's slashes carry the locked/selected elements for a little mana each |
-| `Space` | Dodge roll (stamina, short i-frames). **Dodge + attack = a 360 degree spin** (costs more stamina, can be imbued) |
+| `E` | Toggle **imbue** (no cooldown, no timer). Slashes then carry the locked/selected elements for a little mana each, and ranged classes can shoot with RMB |
+| `Space` | Dodge roll (stamina, short i-frames). **Dodge + RMB = a 360 degree spin**: costs more stamina, can be imbued, and you take no damage until it finishes |
 | `TAB` | Character sheet (tabs: Stats, Skills, Elements, Passives, Combos, Rewards) |
 | `N` | New character: pick how they are born |
 | `Esc` | Close a menu |
@@ -45,9 +45,14 @@ attunement item: gain a random element.
 - **Combos:** hit an enemy with one element, then a different one within 4 seconds, for a bonus
   and a status effect (ten pairs). Also **resonance** (3 hits of the same element in a row) and
   the martial **Rend** (3 physical hits within 3 s). See the Combos tab.
-- **Fighting styles:** the Vanguard is a *melee* class: no ranged bolts, it uses elements by
-  imbuing its blade and through abilities (F, R). Channeler, Ranger and Mystic are *ranged*: they
-  shoot while imbued (mana per cast) and slash when not. The Novice shoots freely.
+- **Fighting styles:** the Vanguard is a *melee* class: RMB always slashes, and it uses elements
+  by imbuing its blade, fusing locked elements and its abilities (F, R). Channeler, Ranger,
+  Mystic and the Novice are *ranged*: RMB shoots the selected element while imbued (mana per
+  cast) and slashes when not.
+- **No elements, no mana:** a sealed character (or one not yet attuned) has no mana pool and no
+  mana bar. They fight with stamina and martial skills.
+- **Elemental Harmony:** a passive that appears once you own two or more elements and grows with
+  each extra one (+4% spell damage, +10 max mana, +6% fused damage per extra element).
 - **Skills** are separate from elements: you can only cast a skill whose element you own and have
   learned. Characters born without elements learn **martial** skills (stamina-powered, no
   element) and can still be attuned later.

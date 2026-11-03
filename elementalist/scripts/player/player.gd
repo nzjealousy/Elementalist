@@ -4,12 +4,13 @@ extends CharacterBody2D
 ## come from Game.character.
 ##
 ## Melee and imbue:
-##   RMB slashes always. LMB also slashes whenever the caster's lmb_mode() is "slash"
-##   (melee-style classes always; ranged-style classes while not imbued).
-##   E toggles imbue. While imbued, ranged classes' LMB shoots (mana per cast, see SkillCaster),
-##   and every class's slashes carry the locked elements (or the selected one), costing a little
-##   mana per element per swing; if you can't pay, the swing is a plain slash.
-##   Dodge + attack = a 360 degree spin: costs more stamina, hits all around, can be imbued.
+##   RMB is the basic attack: a slash, or (ranged-style classes while imbued) a bolt of the
+##   selected element, which the SkillCaster casts. LMB is the fused cast (SkillCaster); for a
+##   melee-style character with no elements it is a straight slash instead.
+##   E toggles imbue. Every slash then carries the locked elements (or the selected one),
+##   costing a little mana per element per swing; if you can't pay, it is a plain slash.
+##   Dodge + attack = a 360 degree spin: costs more stamina, hits all around, can be imbued,
+##   and makes you immune to damage until it finishes.
 
 signal died
 
@@ -19,6 +20,7 @@ const IMBUE_SWING_COST := 4.0    # mana per element per imbued slash
 const SPIN_STAMINA_MULT := 1.8   # a spin costs this many slashes' worth of stamina
 const SPIN_DAMAGE_MULT := 1.15
 const SPIN_COOLDOWN := 0.5
+const SPIN_DURATION := 0.32  # how long the spin lasts, during which you cannot be hurt
 
 @export var speed := 80.0
 @export var dodge_speed := 260.0
@@ -44,6 +46,7 @@ var _dodge_cd := 0.0
 var _dodge_dir := Vector2.ZERO
 var _dodge_buffer := 0.0
 var _spun := false  # one spin per dodge
+var _spin_left := 0.0  # while > 0 the spin is still going: immune to damage
 var _hurt_cd := 0.0
 var _hp_regen_delay := 0.0
 var _melee_cd := 0.0
@@ -137,8 +140,13 @@ func is_dodging() -> bool:
 	return _dodge_left > 0.0
 
 
+func is_spinning() -> bool:
+	return _spin_left > 0.0
+
+
+## Immune during the start of a dodge, briefly after a hit, and for the whole of a spin.
 func is_invulnerable() -> bool:
-	return _dodge_left > dodge_time - dodge_iframes or _hurt_cd > 0.0
+	return _dodge_left > dodge_time - dodge_iframes or _hurt_cd > 0.0 or _spin_left > 0.0
 
 
 ## Returns true if the hit landed (false while invulnerable), so attackers only spend
@@ -211,7 +219,9 @@ func try_melee(dir: Vector2 = Vector2.ZERO, spin: bool = false) -> bool:
 		dir = aim_direction
 	spend_stamina(cost)
 	_melee_cd = SPIN_COOLDOWN if spin else float(m["cooldown"])
-	if not spin:
+	if spin:
+		_spin_left = SPIN_DURATION  # immune until the attack finishes
+	else:
 		_knock += dir * 60.0  # small lunge
 
 	var coat: Array[String] = []
@@ -242,7 +252,7 @@ func try_melee(dir: Vector2 = Vector2.ZERO, spin: bool = false) -> bool:
 		for i in coat.size():
 			var primary: Dictionary = SkillDB.DEFS[SkillDB.LOADOUTS[coat[i]]["primary"]]
 			enemy.take_hit({
-				"damage": base_damage * (SkillCaster.FUSION_DAMAGE if coat.size() > 1 else 1.0),
+				"damage": base_damage * (SkillCaster.FUSION_DAMAGE * float(stats["fusion_damage_mult"]) if coat.size() > 1 else 1.0),
 				"element": coat[i],
 				"apply": caster.status_for(primary),
 				"knockback": m["knockback"],
@@ -255,7 +265,8 @@ func try_melee(dir: Vector2 = Vector2.ZERO, spin: bool = false) -> bool:
 			Game.character.add_element_xp(element, 1)
 
 	var slash := SlashEffect.new()
-	slash.setup(dir.angle(), reach, 360.0 if spin else float(m["arc_deg"]), Elements.color_of(coat[0]) if not coat.is_empty() else Color.WHITE)
+	slash.setup(dir.angle(), reach, 360.0 if spin else float(m["arc_deg"]), Elements.color_of(coat[0]) if not coat.is_empty() else Color.WHITE,
+		SPIN_DURATION if spin else SlashEffect.LIFETIME)
 	add_child(slash)
 	return true
 
@@ -311,14 +322,18 @@ func _physics_process(delta: float) -> void:
 	if _stamina_delay <= 0.0:
 		stamina = minf(max_stamina, stamina + stamina_regen * delta)
 
-	# Melee input: RMB always, LMB when it is a slash. Attacking while dodging spins.
-	var attack_held := Input.is_action_pressed("attack_basic") \
-		or (Input.is_action_pressed("skill_primary") and caster.lmb_mode() == "slash")
-	if attack_held:
-		if is_dodging():
+	_spin_left = maxf(0.0, _spin_left - delta)
+
+	# Melee input. RMB slashes (or shoots, see SkillCaster.rmb_mode: the caster handles that),
+	# and LMB slashes for melee-style characters with no elements. Attacking while dodging with
+	# RMB (or a slash-LMB) is the spin.
+	var rmb_held := Input.is_action_pressed("attack_basic")
+	var lmb_slash := Input.is_action_pressed("skill_primary") and caster.lmb_mode() == "slash"
+	if is_dodging():
+		if rmb_held or lmb_slash:
 			try_spin()
-		else:
-			try_melee()
+	elif lmb_slash or (rmb_held and caster.rmb_mode() == "slash"):
+		try_melee()
 
 	var input := Input.get_vector("move_left", "move_right", "move_up", "move_down")
 	if Input.is_action_just_pressed("dodge"):
@@ -335,7 +350,7 @@ func _physics_process(delta: float) -> void:
 	_knock = _knock.move_toward(Vector2.ZERO, 500.0 * delta)
 	move_and_slide()
 
-	if is_invulnerable() and is_dodging():
+	if (is_dodging() or is_spinning()) and is_invulnerable():
 		sprite.modulate = Color(1, 1, 1, 0.45)
 	elif _hurt_cd > 0.0:
 		sprite.modulate = Color(1.0, 0.45, 0.45)

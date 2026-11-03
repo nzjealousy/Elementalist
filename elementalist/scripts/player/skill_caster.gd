@@ -7,14 +7,16 @@ extends Node
 ##
 ## Controls:
 ##   1-5 / mouse wheel   select a set (an element, or "martial")
-##   LMB (hold)          the "primary" action, which depends on the class style (lmb_mode):
-##                         a bolt of the locked/selected element(s), or a slash
-##   Q                   lock the selected element (up to 3). Locked elements fuse: LMB then
-##                       fires ONE bolt that hits with each of them in turn, so their combos
-##                       trigger in a single shot. Unlocks at level 5, needs an element.
+##   LMB (hold)          the fused cast (lmb_mode "fusion"): ONE bolt that hits with each locked
+##                       element in turn, so their combos trigger in a single shot. Disabled
+##                       until 2-3 elements are locked. Characters with no elements use it as a
+##                       melee attack (melee style) or a knife throw (ranged style).
+##   RMB (hold)          the basic attack: a slash, or (ranged style, imbued) a bolt of the
+##                       selected element for mana. Dodge + RMB is the spin (see Player).
+##   Q                   lock the selected element (up to 3). Needs 2+ elements, no level.
 ##   F                   the selected set's area skill (level 5)
 ##   R                   the selected set's special skill (a level reward)
-##   E (Player)          imbue: ranged classes shoot only while imbued (see lmb_mode)
+##   E (Player)          imbue toggle: arms slashes with elements; lets ranged classes shoot
 ## Every number that scales with the character (damage, radius, knockback, speed, cooldown,
 ## status potency) is resolved here at cast time from CharacterData.
 
@@ -53,8 +55,11 @@ func refresh_elements() -> void:
 
 func apply_stats() -> void:
 	var d: Dictionary = Game.character.derived()
+	var had_mana := max_mana > 0.0
 	max_mana = float(d["max_mana"])
 	mana_regen = float(d["mana_regen"])
+	if not had_mana and max_mana > 0.0:
+		mana = max_mana  # the first element brings a full pool
 	mana = minf(mana, max_mana)
 
 
@@ -84,9 +89,15 @@ func select_relative(step: int) -> void:
 
 # ---------- locking and fusion (Q) ----------
 
-## Q works from level 5 and only for characters who own at least one castable element.
+## Q needs two or more castable elements: there is nothing to fuse with fewer. It is not tied
+## to a level (only F and R are locked, behind a level and a reward).
 func lock_available() -> bool:
-	return Game.character.level >= Classes.AREA_LEVEL and not Game.character.castable_elements().is_empty()
+	return Game.character.castable_elements().size() >= 2
+
+
+## Two or more locked elements are ready to fuse into one cast.
+func fusion_ready() -> bool:
+	return locked.size() >= 2
 
 
 ## Locks the selected element, or unlocks it if already locked. False if it can't (locking not
@@ -107,14 +118,20 @@ func toggle_lock() -> bool:
 	return true
 
 
-## The action LMB casts: a fusion of the locked elements (2-3), the one locked element's
-## primary, or the selected set's primary when nothing is locked.
+## The action LMB casts: the fusion of the locked elements ("fusion:fire+water"), the martial
+## primary for characters on the martial set, or "" when LMB is disabled or is a slash.
 func primary_id() -> String:
-	if locked.size() >= 2:
-		return FUSION_PREFIX + "+".join(locked)
-	if locked.size() == 1:
-		return SkillDB.LOADOUTS[locked[0]]["primary"]
-	return skill_for("primary")
+	match lmb_mode():
+		"fusion":
+			return FUSION_PREFIX + "+".join(locked)
+		"knife":
+			return String(SkillDB.LOADOUTS["martial"]["primary"])
+	return ""
+
+
+## What RMB shoots when it is a bolt: the selected element's primary skill ("" otherwise).
+func bolt_id() -> String:
+	return skill_for("primary") if rmb_mode() == "bolt" else ""
 
 
 static func is_fusion(id: String) -> bool:
@@ -132,22 +149,29 @@ func components(id: String) -> Array[String]:
 	return out
 
 
-## What LMB does right now: "bolt" (cast primary_id) or "slash" (melee). By class style:
-##   melee   always slashes (elements come from imbue and abilities)
-##   ranged  shoots only while imbued, otherwise slashes
-##   hybrid  (the Novice) always shoots
-## The martial set always "shoots" (knives are not an element). No castable set: slash.
+## What LMB does right now:
+##   "fusion"  two or three elements are locked: fire them together (the only elemental LMB)
+##   "locked"  the character has elements but fewer than two are locked: LMB can't be pressed
+##   "slash"   no elements (or the martial set) on a melee-style class: a straight melee attack
+##   "knife"   no elements (or the martial set) on a ranged-style class: the martial throw
 func lmb_mode() -> String:
-	if elements.is_empty():
+	if fusion_ready():
+		return "fusion"
+	var elemental := not Game.character.castable_elements().is_empty()
+	if elemental and selected_element() != "martial":
+		return "locked"
+	if Classes.style_of(Game.character.class_id) == "melee" or not Game.character.has_martial():
 		return "slash"
-	if selected_element() == "martial" and locked.is_empty():
+	return "knife"
+
+
+## What RMB does: "slash" (melee), or "bolt" for ranged-style classes while imbued with an
+## element selected. Melee-style classes always slash (imbued slashes carry the element).
+func rmb_mode() -> String:
+	if Classes.style_of(Game.character.class_id) == "ranged" and body.imbued \
+			and selected_element() in Game.character.castable_elements():
 		return "bolt"
-	match Classes.style_of(Game.character.class_id):
-		"melee":
-			return "slash"
-		"ranged":
-			return "bolt" if body.imbued else "slash"
-	return "bolt"
+	return "slash"
 
 
 # ---------- casting ----------
@@ -171,8 +195,13 @@ func _process(delta: float) -> void:
 	for i in elements.size():
 		if Input.is_action_just_pressed("element_%d" % (i + 1)):
 			select(i)
-	if Input.is_action_pressed("skill_primary") and lmb_mode() == "bolt":
-		try_cast(primary_id())  # in "slash" mode the Player handles LMB as a melee attack
+	# LMB fuses locked elements (or throws knives); a slash-mode LMB is the Player's melee.
+	if Input.is_action_pressed("skill_primary") and primary_id() != "":
+		try_cast(primary_id())
+	# RMB shoots the selected element while a ranged class is imbued (the Player slashes
+	# otherwise, and spins instead whenever you are dodging).
+	if Input.is_action_pressed("attack_basic") and rmb_mode() == "bolt" and not body.is_dodging():
+		try_cast(bolt_id())
 	if Input.is_action_just_pressed("skill_lock"):
 		toggle_lock()
 	if Input.is_action_just_pressed("skill_area"):
@@ -326,7 +355,7 @@ func _spawn_fusion(skill_ids: Array[String]) -> void:
 		var id := skill_ids[i]
 		var def: Dictionary = SkillDB.DEFS[id]
 		hits.append({
-			"damage": character.skill_damage(id) * FUSION_DAMAGE,
+			"damage": character.skill_damage(id) * FUSION_DAMAGE * float(stats["fusion_damage_mult"]),
 			"element": String(def["element"]),
 			"apply": status_for(def),
 			"knockback": float(def.get("knockback", 50.0)) * character.skill_scale(id, "knockback"),

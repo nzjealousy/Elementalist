@@ -26,7 +26,7 @@ static func generate(character: CharacterData, rng: RandomNumberGenerator) -> Ar
 		if not (skill_id in character.learned_specials):
 			skills.append({"type": "skill", "id": skill_id})
 	var passives: Array[Dictionary] = []
-	for trait_id in Classes.TRAITS:
+	for trait_id in Classes.available_traits(character.affinity != CharacterData.SEALED):
 		if not (trait_id in character.traits):
 			passives.append({"type": "passive", "id": trait_id})
 

@@ -178,7 +178,7 @@ func _fill_skills() -> void:
 		sets.append("martial")
 	var columns := [_column(136), _column(136)]
 	columns[0].add_child(_label("Skills (numbers include your stats)", GOLD))
-	columns[1].add_child(_label("LMB primary   F area (Lv %d)   R special (reward)   Q locks elements" % Classes.AREA_LEVEL, DIM))
+	columns[1].add_child(_label("RMB: bolt while imbued (ranged classes)   F area (Lv %d)   R special (reward)   LMB fuses 2-3 elements locked with Q" % Classes.AREA_LEVEL, DIM))
 	if sets.is_empty():
 		columns[0].add_child(_label("No skills: no elements and no martial training.", DIM))
 	for i in sets.size():
@@ -192,7 +192,7 @@ func _fill_skills() -> void:
 ## One compact line for a skill: key, name, cost, cooldown, damage; dim if not yet learned.
 func _skill_line(ch: CharacterData, id: String, slot: String) -> Label:
 	var def: Dictionary = SkillDB.DEFS[id]
-	var key: String = {"primary": "LMB", "area": "F", "special": "R"}[slot]
+	var key: String = {"primary": "RMB" if SkillDB.set_of(id) != "martial" else "LMB", "area": "F", "special": "R"}[slot]
 	if not ch.can_use_skill(id):
 		var how := "reward" if slot == "special" else "Lv %d" % ch.skill_unlock_level(id)
 		return _label("  %s %s  (%s)" % [key, def["name"], how], DIM)
@@ -231,8 +231,10 @@ func _fill_passives() -> void:
 	left.add_child(_label("Active passives", GOLD))
 	for source in ch.passive_sources():
 		var p := Classes.passive_info(source["id"])
-		var rare := " (rare)" if source["type"] in ["element", "skill"] else ""
-		left.add_child(_label("[%s%s] %s: %s" % [String(source["type"]).capitalize(), rare, p["name"], p["desc"]], TYPE_COLORS[source["type"]]))
+		var stacks := int(source.get("stacks", 1))
+		var rare := " (rare)" if source["type"] in ["element", "skill"] and not source.has("stacks") else ""
+		var times := " x%d" % stacks if stacks > 1 else ""
+		left.add_child(_label("[%s%s] %s%s: %s" % [String(source["type"]).capitalize(), rare, p["name"], times, p["desc"]], TYPE_COLORS[source["type"]]))
 	right.add_child(_label("Progress to rare passives", GOLD))
 	for element in ch.elements:
 		if ch.element_level(element) < Classes.RARE_PASSIVE_LEVEL and Classes.ELEMENT_PASSIVES.has(element):

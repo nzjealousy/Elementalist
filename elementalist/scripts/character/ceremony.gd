@@ -66,8 +66,8 @@ static func roll(rng: RandomNumberGenerator) -> Array[String]:
 
 ## Always at least one trait; more with a falling chance. `other_sources` is how many other
 ## passive sources the character has (elements, mostly), which lowers the chance of extras.
-static func roll_traits(rng: RandomNumberGenerator, other_sources: int) -> Array[String]:
-	var pool: Array = Classes.TRAITS.duplicate()
+static func roll_traits(rng: RandomNumberGenerator, other_sources: int, allow_spell: bool = true) -> Array[String]:
+	var pool: Array = Classes.available_traits(allow_spell)
 	var result: Array[String] = []
 	var chance := clampf(TRAIT_BASE_CHANCE - TRAIT_CHANCE_PER_SOURCE * other_sources, TRAIT_MIN_CHANCE, TRAIT_BASE_CHANCE)
 	while true:

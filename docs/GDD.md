@@ -108,12 +108,18 @@ Coming-of-age ceremony · 1 village hub · 1 dungeon with 3–4 room types · 3 
 - **Progression gates:** everyone starts as a Novice. Level 3: choose a class. Level 5: the area
   skill (Q) unlocks. Level 10: choose a subclass. Even levels except 10 give a **reward**: an
   offer of 1-3 options, a special skill (R) or a passive, of which you pick one.
+- **RMB is the basic attack:** a slash, or (ranged classes, while imbued) a bolt of the selected
+  element. **LMB is the fused cast.**
 - **Imbue (E):** a toggle. Coat your blade in your element(s) so slashes carry them (and set up
-  combos). Ranged classes shoot only while imbued and slash when not; the melee class (Vanguard)
-  has no ranged bolts and uses elements through imbue and abilities.
-- **Element locking (Q, level 5):** lock up to 3 elements; the primary attack then fires one
-  fused bolt hitting with each element in turn, so their combos trigger in a single shot. With no
-  elements, Q is locked. Area skills moved to F.
+  combos). Ranged classes shoot with RMB only while imbued; the melee class (Vanguard) always
+  slashes and uses elements through imbue, fused casts and abilities.
+- **Element locking (Q):** lock up to 3 elements (needs two or more); LMB then fires one fused
+  bolt hitting with each element in turn, so their combos trigger in a single shot, and is
+  disabled until then. With no elements, Q is locked and LMB is a straight slash (melee classes)
+  or a knife throw (ranged classes). Area skills are on F (level 5) and specials on R (reward).
+- **No elements, no mana:** sealed characters have no mana pool.
+- **Elemental Harmony:** a multi-element passive; each extra element adds bonuses.
+- **The dodge spin makes you immune** until it finishes.
 - **More combos:** *resonance* (3 hits of one element in a row) and martial *Rend* (3 physical
   hits in a row).
 - **Dodge spin:** attack while dodging for a costly 360 degree slash, which can be imbued.

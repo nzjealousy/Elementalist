@@ -68,7 +68,7 @@ static func create(char_name: String, cls: String, aff: String, rng: RandomNumbe
 			c.affinity = ATTUNABLE
 		for element in born:
 			c.add_element(String(element))
-	c.traits = Ceremony.roll_traits(rng, c.elements.size())
+	c.traits = Ceremony.roll_traits(rng, c.elements.size(), aff != SEALED)
 	return c
 
 
@@ -288,6 +288,8 @@ func passive_sources() -> Array[Dictionary]:
 	for skill_id in skill_uses:
 		if SkillDB.DEFS.has(skill_id) and int(skill_uses[skill_id]) >= Classes.skill_passive_uses(skill_id):
 			out.append({"id": Classes.SKILL_MASTERY_PREFIX + skill_id, "type": "skill"})
+	if elements.size() >= 2:  # one stack for every element beyond the first
+		out.append({"id": Classes.HARMONY_PASSIVE, "type": "element", "stacks": elements.size() - 1})
 	return out
 
 
@@ -301,13 +303,14 @@ func active_passives() -> Array[String]:
 ## Sums *_add mods and multiplies *_mult mods across all active passives.
 func stat_mods() -> Dictionary:
 	var mods: Dictionary = {}
-	for id in active_passives():
-		var passive_mods: Dictionary = Classes.passive_info(id)["mods"]
+	for source in passive_sources():
+		var stacks := int(source.get("stacks", 1))  # stacking passives (Harmony) apply once per stack
+		var passive_mods: Dictionary = Classes.passive_info(source["id"])["mods"]
 		for key in passive_mods:
 			if String(key).ends_with("_mult"):
-				mods[key] = float(mods.get(key, 1.0)) * float(passive_mods[key])
+				mods[key] = float(mods.get(key, 1.0)) * pow(float(passive_mods[key]), stacks)
 			else:
-				mods[key] = float(mods.get(key, 0.0)) + float(passive_mods[key])
+				mods[key] = float(mods.get(key, 0.0)) + float(passive_mods[key]) * stacks
 	return mods
 
 
@@ -327,8 +330,8 @@ func derived() -> Dictionary:
 	return {
 		"max_hp": 60.0 + vit * 8.0 + _mod(m, "max_hp_add"),
 		"hp_regen": 0.3 + vit * 0.06 + _mod(m, "hp_regen_add"),
-		"max_mana": 50.0 + intel * 10.0 + _mod(m, "max_mana_add"),
-		"mana_regen": 5.0 + intel * 0.8 + _mod(m, "mana_regen_add"),
+		"max_mana": (50.0 + intel * 10.0 + _mod(m, "max_mana_add")) if uses_mana() else 0.0,
+		"mana_regen": (5.0 + intel * 0.8 + _mod(m, "mana_regen_add")) if uses_mana() else 0.0,
 		"max_stamina": 70.0 + agi * 6.0 + _mod(m, "max_stamina_add"),
 		"stamina_regen": 20.0 + agi * 2.0 + _mod(m, "stamina_regen_add"),
 		"move_speed": (70.0 + agi * 2.0) * _mod(m, "move_speed_mult"),
@@ -338,7 +341,14 @@ func derived() -> Dictionary:
 		"damage_taken_mult": _mod(m, "damage_taken_mult"),
 		"burn_time_mult": _mod(m, "burn_time_mult"),
 		"projectile_speed_mult": _mod(m, "projectile_speed_mult"),
+		"fusion_damage_mult": _mod(m, "fusion_damage_mult"),
 	}
+
+
+## Mana belongs to elements: a character who owns none (sealed, or not yet attuned) has no mana
+## pool at all, and gains one the moment they gain an element.
+func uses_mana() -> bool:
+	return not elements.is_empty()
 
 
 ## Damage multiplier for a spell of `element`: intellect, element mastery, passives.

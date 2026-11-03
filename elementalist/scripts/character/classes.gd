@@ -6,7 +6,8 @@ extends RefCounted
 ## Progression gates (same for every character):
 ##   level 1   primary skill (LMB) of each owned element, and the martial set
 ##   level 3   choose a class (until then you are a Novice)
-##   level 5   area skill (F) and element locking (Q) unlocked
+##   level 5   area skill (F) unlocked. Q (element locking) needs two or more elements, not a level
+##   (reward)  special skill (R) learned from a level reward
 ##   level 10  choose a subclass
 ##   milestone levels (see Rewards) offer a skill or passive reward
 ##
@@ -64,7 +65,7 @@ const CLASSES := {
 	},
 	"vanguard": {
 		"name": "Vanguard",
-		"desc": "Melee fighter: no ranged bolts. Uses elements by imbuing the blade and through abilities. Longest reach.",
+		"desc": "Melee fighter: RMB always slashes. Elements come from imbuing the blade, fused casts and abilities. Longest reach. With no elements, LMB slashes too.",
 		"style": "melee",
 		"base": {"strength": 8, "agility": 4, "intellect": 3, "vitality": 6},
 		"per_level": {"strength": 1},
@@ -97,8 +98,8 @@ const CLASSES := {
 	},
 	"wanderer": {
 		"name": "Novice",
-		"desc": "No class yet. Choose one at level %d. Shoots freely until then." % CLASS_LEVEL,
-		"style": "hybrid",
+		"desc": "No class yet. Choose one at level %d. Imbue (E) to shoot with RMB." % CLASS_LEVEL,
+		"style": "ranged",
 		"base": {"strength": 5, "agility": 5, "intellect": 5, "vitality": 5},
 		"per_level": {},
 		"melee_range": 1.0,
@@ -163,6 +164,12 @@ const PASSIVES := {
 	"calm_mind": {"name": "Calm Mind", "desc": "+1.5 mana regen", "mods": {"mana_regen_add": 1.5}},
 	"stout": {"name": "Stout", "desc": "+8 max HP, +0.15 HP regen", "mods": {"max_hp_add": 8.0, "hp_regen_add": 0.15}},
 	"arcane_surge": {"name": "Arcane Surge", "desc": "+4% spell damage, -3% spell cooldowns", "mods": {"spell_damage_mult": 1.04, "spell_cooldown_mult": 0.97}},
+	# multi-element (automatic: more elements, more bonus; see CharacterData.passive_sources)
+	"elemental_harmony": {
+		"name": "Elemental Harmony",
+		"desc": "Per extra element: +4% spell damage, +10 max mana, +6% fused damage",
+		"mods": {"spell_damage_mult": 1.04, "max_mana_add": 10.0, "fusion_damage_mult": 1.06},
+	},
 	"jack_of_all_trades": {
 		"name": "Jack of All Trades", "desc": "Small bonuses to everything",
 		"mods": {
@@ -178,6 +185,9 @@ const TRAITS := [
 	"jack_of_all_trades",
 ]
 
+## Traits that only help spellcasting. Sealed characters (no elements, no mana, ever) never get them.
+const SPELL_TRAITS := ["sharp_mind", "calm_mind", "focused", "quick_hands", "arcane_surge"]
+
 const ELEMENT_PASSIVES := {
 	"fire": "ember_kindle", "water": "flow", "earth": "thick_skin", "air": "swift",
 	"mineral": "hardened", "light": "radiance", "dark": "shadow",
@@ -189,11 +199,21 @@ const WEAPON_PASSIVES := {
 
 const SKILL_MASTERY_PREFIX := "mastery_"
 
+## Active automatically once a character owns two or more elements, and stacks: its mods apply
+## once for every element beyond the first.
+const HARMONY_PASSIVE := "elemental_harmony"
 
-## How a class fights with elements: "melee" (no ranged bolts; imbue the blade and use abilities),
-## "ranged" (shoots only while imbued, slashes when not) or "hybrid" (the Novice: shoots freely).
+
+## The traits a character can roll or be offered; `allow_spell` is false for sealed characters.
+static func available_traits(allow_spell: bool = true) -> Array:
+	return TRAITS.filter(func(t): return allow_spell or not (t in SPELL_TRAITS))
+
+
+## How a class fights: "melee" (RMB always slashes; elements come from imbuing the blade and
+## from abilities) or "ranged" (RMB slashes, or shoots the selected element while imbued).
+## Everyone, including the Novice, fuses locked elements with LMB.
 static func style_of(class_id: String) -> String:
-	return String(CLASSES[class_id].get("style", "hybrid"))
+	return String(CLASSES[class_id].get("style", "ranged"))
 
 
 ## True for the Novice (the class everyone starts as); false for the four real classes.

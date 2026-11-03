@@ -56,6 +56,7 @@ func _ready() -> void:
 	await _test_resonance_and_chain()
 	await _test_lock_and_fusion()
 	await _test_styles_and_imbue()
+	await _test_no_mana_and_harmony()
 	await _test_special_skill()
 	await _test_spin_attack()
 	_test_jack_of_all_trades()
@@ -194,12 +195,12 @@ func _test_xp_and_levels() -> void:
 
 
 func _test_derived_stats() -> void:
-	var d: Dictionary = CharacterData.create_sandbox("wanderer", [], 1).derived()
+	var d: Dictionary = CharacterData.create_sandbox("wanderer", ["fire"], 1).derived()
 	_check("neutral stats match the tuned combat values", is_equal_approx(d["max_hp"], 100.0) and is_equal_approx(d["hp_regen"], 0.6)
 		and is_equal_approx(d["max_mana"], 100.0) and is_equal_approx(d["mana_regen"], 9.0)
 		and is_equal_approx(d["max_stamina"], 100.0) and is_equal_approx(d["stamina_regen"], 30.0) and is_equal_approx(d["move_speed"], 80.0))
-	var channeler: Dictionary = CharacterData.create_sandbox("channeler", [], 1).derived()
-	var vanguard: Dictionary = CharacterData.create_sandbox("vanguard", [], 1).derived()
+	var channeler: Dictionary = CharacterData.create_sandbox("channeler", ["fire"], 1).derived()
+	var vanguard: Dictionary = CharacterData.create_sandbox("vanguard", ["fire"], 1).derived()
 	_check("vanguard is tougher than channeler", vanguard["max_hp"] > channeler["max_hp"])
 	_check("channeler has more mana than vanguard", channeler["max_mana"] > vanguard["max_mana"])
 	_check("vanguard hits harder in melee", vanguard["melee_damage_mult"] > 1.2 and channeler["melee_damage_mult"] < 1.0)
@@ -394,7 +395,7 @@ func _test_traits() -> void:
 	_check("traits: 1 to 4, no repeats, all real", valid)
 	_check("characters with fewer other passive sources roll more traits", _mean_traits(0, 3000) > _mean_traits(3, 3000) + 0.3)
 	_check("every trait has a passive definition", Classes.TRAITS.all(func(t): return Classes.PASSIVES.has(t)))
-	var c := CharacterData.create_sandbox("wanderer", [], 1)
+	var c := CharacterData.create_sandbox("wanderer", ["fire"], 1)  # an element, so there is a mana pool
 	var before: float = c.derived()["max_hp"]
 	c.traits = ["sturdy"]
 	_check("a trait applies as a passive of type trait", c.passive_sources() == [{"id": "sturdy", "type": "trait"}] and is_equal_approx(c.derived()["max_hp"], before + 12.0))
@@ -402,6 +403,21 @@ func _test_traits() -> void:
 	_check("traits can add mana and stamina", is_equal_approx(c.derived()["max_mana"], 115.0) and is_equal_approx(c.derived()["max_stamina"], 112.0))
 	var created := CharacterData.create("T", "ranger", CharacterData.SEALED, _rng(3))
 	_check("created characters get at least one trait", created.traits.size() >= 1)
+	var sealed_ok := true
+	var attunable_gets_spell := false
+	for seed_value in 200:
+		var sealed := CharacterData.create("S", "vanguard", CharacterData.SEALED, _rng(seed_value))
+		sealed_ok = sealed_ok and not sealed.traits.any(func(t): return t in Classes.SPELL_TRAITS)
+		var attuned := CharacterData.create("A", "vanguard", CharacterData.ATTUNABLE, _rng(seed_value))
+		attunable_gets_spell = attunable_gets_spell or attuned.traits.any(func(t): return t in Classes.SPELL_TRAITS)
+	_check("sealed characters never roll spell-only traits (they have no mana)", sealed_ok)
+	_check("attunable characters still can, since they may be attuned later", attunable_gets_spell)
+	var rewards_ok := true
+	var sealed_char := CharacterData.create("S", "vanguard", CharacterData.SEALED, _rng(1))
+	for i in 200:
+		for option in Rewards.generate(sealed_char, _rng(i)):
+			rewards_ok = rewards_ok and not (option["type"] == "passive" and option["id"] in Classes.SPELL_TRAITS)
+	_check("sealed characters are not offered spell-only trait rewards", rewards_ok)
 
 
 func _test_passive_types() -> void:
@@ -735,16 +751,16 @@ func _test_resonance_and_chain() -> void:
 
 func _test_lock_and_fusion() -> void:
 	var saved := Game.character
-	var player: Node2D = await _player_with(CharacterData.create_sandbox("channeler", ["fire", "water", "earth", "air"], 5))
+	var player: Node2D = await _player_with(CharacterData.create_sandbox("channeler", ["fire", "water", "earth", "air"], 1))
 	var caster: SkillCaster = player.caster
-	_check("Q locking is available from level 5 with an element", caster.lock_available())
-	_check("nothing locked: LMB uses the selected element", caster.locked.is_empty() and caster.primary_id() == "fireball")
+	_check("Q works with two or more elements, with no level needed", caster.lock_available() and Game.character.level == 1)
+	_check("nothing locked: LMB is disabled and casts nothing", caster.lmb_mode() == "locked" and caster.primary_id() == "" and not caster.try_cast(caster.primary_id()))
 	_check("Q locks the selected element", caster.toggle_lock() and caster.locked == ["fire"])
+	_check("one locked element is still not enough for LMB", caster.lmb_mode() == "locked" and caster.primary_id() == "")
 	caster.select(1)
-	_check("a single lock pins LMB to that element even after selecting another", caster.primary_id() == "fireball")
-	_check("a second element can be locked", caster.toggle_lock() and caster.locked == ["fire", "water"])
+	_check("a second lock makes LMB the fused cast", caster.toggle_lock() and caster.locked == ["fire", "water"])
 	var fusion := caster.primary_id()
-	_check("two locked elements make a fusion", SkillCaster.is_fusion(fusion) and fusion == "fusion:fire+water")
+	_check("LMB is now a fusion of both", caster.lmb_mode() == "fusion" and SkillCaster.is_fusion(fusion) and fusion == "fusion:fire+water")
 	caster.select(2)
 	caster.toggle_lock()
 	caster.select(3)
@@ -770,27 +786,34 @@ func _test_lock_and_fusion() -> void:
 	await get_tree().process_frame
 	var start_hp := target.hp
 	bolts[-1]._on_body_entered(target)
-	var expected_damage := Game.character.skill_damage("fireball") * SkillCaster.FUSION_DAMAGE \
-		+ Game.character.skill_damage("water_jet") * SkillCaster.FUSION_DAMAGE * 1.4
+	var expected_damage: float = Game.character.skill_damage("fireball") * SkillCaster.FUSION_DAMAGE * Game.character.derived()["fusion_damage_mult"] \
+		+ Game.character.skill_damage("water_jet") * SkillCaster.FUSION_DAMAGE * Game.character.derived()["fusion_damage_mult"] * 1.4
 	_check("fire then water in one bolt triggers Steam at once", target.aura == "" and target.effects.has("vuln") and is_equal_approx(start_hp - target.hp, expected_damage))
 	target.queue_free()
+	caster.select(0)
+	caster.toggle_lock()  # unlock Fire, leaving only Water locked
+	_check("dropping below two locked elements disables LMB again", caster.locked == ["water"] and caster.lmb_mode() == "locked")
 	player.queue_free()
 
-	var low: Node2D = await _player_with(CharacterData.create_sandbox("channeler", ["fire"], 4))
-	_check("locking needs level 5", not low.caster.lock_available() and not low.caster.toggle_lock())
-	low.queue_free()
-	var mixed: Node2D = await _player_with(CharacterData.create("M", "channeler", CharacterData.ATTUNABLE, _rng(3)))
-	_check("with no elements Q is locked and LMB is the martial skill", not mixed.caster.lock_available() and not mixed.caster.toggle_lock() and mixed.caster.lmb_mode() == "bolt")
-	mixed.caster.cooldowns.clear()
-	_check("the martial primary still casts", mixed.caster.try_cast(mixed.caster.primary_id()))
-	mixed.queue_free()
-	var martial_pick: Node2D = await _player_with(CharacterData.create_sandbox("channeler", ["fire"], 5))
-	martial_pick.caster.refresh_elements()
-	Game.character.affinity = CharacterData.ATTUNABLE  # now the martial set exists as a second set
-	martial_pick.caster.refresh_elements()
-	martial_pick.caster.select(1)
-	_check("the martial set cannot be locked", martial_pick.caster.selected_element() == "martial" and not martial_pick.caster.toggle_lock())
-	martial_pick.queue_free()
+	var single: Node2D = await _player_with(CharacterData.create_sandbox("channeler", ["fire"], 5))
+	_check("with one element there is nothing to fuse: Q and LMB are locked", not single.caster.lock_available() and not single.caster.toggle_lock() and single.caster.lmb_mode() == "locked")
+	single.queue_free()
+
+	var melee_sealed: Node2D = await _player_with(CharacterData.create("S", "vanguard", CharacterData.SEALED, _rng(3)))
+	_check("a melee class with no elements: Q locked, LMB is a straight slash", not melee_sealed.caster.lock_available() and melee_sealed.caster.lmb_mode() == "slash" and melee_sealed.caster.primary_id() == "")
+	melee_sealed.queue_free()
+	var ranged_sealed: Node2D = await _player_with(CharacterData.create("S", "channeler", CharacterData.SEALED, _rng(3)))
+	_check("a ranged class with no elements throws knives on LMB", ranged_sealed.caster.lmb_mode() == "knife" and not ranged_sealed.caster.lock_available())
+	_check("the knife throw casts on stamina", ranged_sealed.caster.try_cast(ranged_sealed.caster.primary_id()))
+	ranged_sealed.queue_free()
+
+	var attuned: Node2D = await _player_with(CharacterData.create_sandbox("channeler", ["fire"], 5))
+	Game.character.affinity = CharacterData.ATTUNABLE  # a martial set now exists beside Fire
+	attuned.caster.refresh_elements()
+	attuned.caster.select(1)
+	_check("the martial set cannot be locked", attuned.caster.selected_element() == "martial" and not attuned.caster.toggle_lock())
+	_check("on the martial set LMB is the martial attack, not the fusion lock", attuned.caster.lmb_mode() == "knife")
+	attuned.queue_free()
 	Game.character = saved
 	await get_tree().process_frame
 
@@ -800,39 +823,45 @@ func _test_styles_and_imbue() -> void:
 	var styles := {}
 	for cls in Classes.CLASSES:
 		styles[cls] = Classes.style_of(cls)
-	_check("class styles: Vanguard melee, the casters ranged, Novice hybrid",
+	_check("class styles: Vanguard melee, everyone else ranged (the Novice too)",
 		styles["vanguard"] == "melee" and styles["channeler"] == "ranged" and styles["ranger"] == "ranged"
-		and styles["mystic"] == "ranged" and styles[Classes.NEUTRAL_CLASS] == "hybrid")
+		and styles["mystic"] == "ranged" and styles[Classes.NEUTRAL_CLASS] == "ranged")
 
 	var fighter: Node2D = await _player_with(CharacterData.create_sandbox("vanguard", ["fire", "water"], 5))
-	_check("a melee class has no ranged bolts: LMB slashes", fighter.caster.lmb_mode() == "slash")
+	_check("a melee class's RMB always slashes", fighter.caster.rmb_mode() == "slash")
 	fighter.try_imbue()
-	_check("even imbued, a melee class slashes with LMB", fighter.imbued and fighter.caster.lmb_mode() == "slash")
+	_check("even imbued, a melee class slashes (the slash carries the element)", fighter.imbued and fighter.caster.rmb_mode() == "slash" and fighter.caster.bolt_id() == "")
 	fighter.try_imbue()
 	_check("a melee class can still cast its abilities", fighter.caster.try_cast("flame_burst"))
+	fighter.caster.toggle_lock()
+	fighter.caster.select(1)
+	fighter.caster.toggle_lock()
+	_check("a melee class with elements fuses them on LMB like everyone else", fighter.caster.lmb_mode() == "fusion")
 	fighter.queue_free()
 
 	var mage: Node2D = await _player_with(CharacterData.create_sandbox("channeler", ["fire", "water"], 5))
-	_check("a ranged class starts in melee mode (not imbued)", not mage.imbued and mage.caster.lmb_mode() == "slash")
+	_check("a ranged class's RMB slashes while not imbued", not mage.imbued and mage.caster.rmb_mode() == "slash" and mage.caster.bolt_id() == "")
 	_check("E turns on imbue with no upfront cost", mage.caster.mana == mage.caster.max_mana and mage.try_imbue() and mage.imbued)
-	_check("imbued, a ranged class shoots with LMB", mage.caster.lmb_mode() == "bolt")
+	_check("imbued, RMB shoots the selected element", mage.caster.rmb_mode() == "bolt" and mage.caster.bolt_id() == "fireball")
+	mage.caster.select(1)
+	_check("it follows the selected element", mage.caster.bolt_id() == "water_jet")
+	mage.caster.select(0)
 	var mana_before: float = mage.caster.mana
-	mage.caster.try_cast(mage.caster.primary_id())
-	_check("each bolt costs its mana", mage.caster.mana < mana_before)
+	_check("the RMB bolt casts for mana", mage.caster.try_cast(mage.caster.bolt_id()) and mage.caster.mana < mana_before)
 	mage.caster.cooldowns.clear()
 	_check("the imbue has no cooldown and does not expire", mage.try_imbue() and not mage.imbued and mage.try_imbue() and mage.imbued and not ("imbue_left" in mage))
-	_check("toggling back off returns to melee mode", mage.try_imbue() == true and mage.caster.lmb_mode() == "slash")
+	mage.try_imbue()
+	_check("toggling back off returns RMB to melee", mage.caster.rmb_mode() == "slash")
 	mage.queue_free()
 
 	var novice: Node2D = await _player_with(CharacterData.create_sandbox(Classes.NEUTRAL_CLASS, ["fire"], 1))
-	_check("the Novice shoots freely without imbuing", novice.caster.lmb_mode() == "bolt" and not novice.imbued)
+	_check("the Novice has to imbue to shoot, like a ranged class", novice.caster.rmb_mode() == "slash" and novice.try_imbue() and novice.caster.rmb_mode() == "bolt")
 	novice.queue_free()
 	var sealed: Node2D = await _player_with(CharacterData.create("S", "channeler", CharacterData.SEALED, _rng(2)))
-	_check("martial characters shoot knives whatever their class", sealed.caster.lmb_mode() == "bolt")
-	_check("a character with no element cannot imbue", not sealed.try_imbue() and not sealed.imbued)
+	_check("a character with no element cannot imbue", not sealed.try_imbue() and not sealed.imbued and sealed.caster.rmb_mode() == "slash")
 	sealed.queue_free()
 
-	# Imbued slashes (melee class so LMB stays a slash)
+	# Imbued slashes (melee class)
 	var player: Node2D = await _player_with(CharacterData.create_sandbox("vanguard", ["fire", "water"], 5))
 	var caster: SkillCaster = player.caster
 	var target := _dummy(Vector2(12, 0))
@@ -910,6 +939,38 @@ func _test_styles_and_imbue() -> void:
 	await get_tree().process_frame
 
 
+func _test_no_mana_and_harmony() -> void:
+	var saved := Game.character
+	var sealed := CharacterData.create("S", "vanguard", CharacterData.SEALED, _rng(5))
+	var d := sealed.derived()
+	_check("a character with no elements has no mana pool", not sealed.uses_mana() and d["max_mana"] == 0.0 and d["mana_regen"] == 0.0)
+	var attunable := CharacterData.create("A", "channeler", CharacterData.ATTUNABLE, _rng(5))
+	_check("so does an attunable one who has not been attuned yet", attunable.derived()["max_mana"] == 0.0)
+	var player: Node2D = await _player_with(attunable)
+	_check("the caster has no mana to spend", player.caster.max_mana == 0.0 and player.caster.mana == 0.0)
+	Game.character.add_element("fire")
+	_check("the first element brings a full mana pool", player.caster.max_mana > 0.0 and is_equal_approx(player.caster.mana, player.caster.max_mana))
+	player.queue_free()
+	Game.character = saved
+	await get_tree().process_frame
+
+	var one := CharacterData.create_sandbox(Classes.NEUTRAL_CLASS, ["fire"], 1)
+	var two := CharacterData.create_sandbox(Classes.NEUTRAL_CLASS, ["fire", "water"], 1)
+	var four := CharacterData.create_sandbox(Classes.NEUTRAL_CLASS, ["fire", "water", "earth", "air"], 1)
+	_check("one element gets no harmony bonus", not (Classes.HARMONY_PASSIVE in one.active_passives()))
+	var source: Dictionary = two.passive_sources().filter(func(s): return s["id"] == Classes.HARMONY_PASSIVE)[0]
+	_check("every element beyond the first adds a stack", source["stacks"] == 1 and source["type"] == "element"
+		and four.passive_sources().filter(func(s): return s["id"] == Classes.HARMONY_PASSIVE)[0]["stacks"] == 3)
+	_check("each stack adds 4 percent spell damage", is_equal_approx(two.spell_damage_mult("fire") / one.spell_damage_mult("fire"), 1.04)
+		and is_equal_approx(four.spell_damage_mult("fire") / one.spell_damage_mult("fire"), pow(1.04, 3)))
+	_check("each stack adds 10 max mana", is_equal_approx(two.derived()["max_mana"] - one.derived()["max_mana"], 10.0)
+		and is_equal_approx(four.derived()["max_mana"] - one.derived()["max_mana"], 30.0))
+	_check("each stack adds 6 percent fused damage", is_equal_approx(one.derived()["fusion_damage_mult"], 1.0)
+		and is_equal_approx(four.derived()["fusion_damage_mult"], pow(1.06, 3)))
+	var reloaded := CharacterData.from_dict(JSON.parse_string(JSON.stringify(four.to_dict())))
+	_check("harmony survives saving", reloaded.derived() == four.derived())
+
+
 func _test_special_skill() -> void:
 	var saved := Game.character
 	var player: Node2D = await _player_with(CharacterData.create_sandbox("mystic", ["fire", "water"], 1))
@@ -944,6 +1005,15 @@ func _test_spin_attack() -> void:
 	_check("the spin respects the reach", far.hp == far.max_hp)
 	_check("the spin hits harder than a slash", is_equal_approx(front.max_hp - front.hp, SkillDB.MELEE["damage"] * player.SPIN_DAMAGE_MULT))
 	_check("only one spin per dodge", not player.try_spin())
+	_check("a spin makes you immune until it finishes", player.is_spinning() and is_equal_approx(player._spin_left, player.SPIN_DURATION))
+	player._dodge_left = 0.0  # the dodge itself is over, but the spin is still going
+	player._hurt_cd = 0.0
+	var hp_before_hit: float = player.hp
+	_check("immune to damage mid-spin even after the dodge ends", player.is_invulnerable() and not player.take_damage(10.0, Vector2(40, 0)) and player.hp == hp_before_hit)
+	player._spin_left = 0.04
+	for i in 6:
+		await get_tree().physics_frame
+	_check("the spin ends and immunity with it", not player.is_spinning() and not player.is_invulnerable() and player.take_damage(5.0, Vector2(40, 0)))
 	player._dodge_left = 0.0
 	player._dodge_cd = 0.0
 	player.try_dodge(Vector2.RIGHT)

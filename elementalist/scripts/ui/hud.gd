@@ -32,7 +32,8 @@ func _draw_hud() -> void:
 	var font := ThemeDB.fallback_font
 
 	_bar(Vector2(4, 4), Vector2(80, 6), _player.hp / _player.max_hp, Color("d9423b"))
-	_bar(Vector2(4, 12), Vector2(80, 4), caster.mana / caster.max_mana, Color("3f7fff"))
+	if character.uses_mana():  # no elements, no mana pool
+		_bar(Vector2(4, 12), Vector2(80, 4), caster.mana / caster.max_mana, Color("3f7fff"))
 	_bar(Vector2(4, 18), Vector2(80, 4), _player.stamina / _player.max_stamina, Color("e0c040"))
 	_ctrl.draw_string(font, Vector2(88, 10), "Lv %d  HP %.1f" % [character.level, _player.hp], HORIZONTAL_ALIGNMENT_LEFT, -1, 7, Color.WHITE)
 	var xp_frac := float(character.xp) / float(CharacterData.xp_to_next(character.level))
@@ -40,10 +41,10 @@ func _draw_hud() -> void:
 	_draw_status(font, caster, character)
 	if Game.banner_time > 0.0:
 		var alpha := clampf(Game.banner_time, 0.0, 1.0)
-		_ctrl.draw_multiline_string(font, Vector2(0, 46), Game.banner_text, HORIZONTAL_ALIGNMENT_CENTER, 320.0, 8, -1, Color(1, 0.95, 0.7, alpha))
-	_ctrl.draw_string(font, Vector2(0, 8), "TAB sheet  N new  E imbue  Q lock  F area  R special  F5 sandbox", HORIZONTAL_ALIGNMENT_RIGHT, 316.0, 5, Color(1, 1, 1, 0.45))
+		_ctrl.draw_multiline_string(font, Vector2(0, 62), Game.banner_text, HORIZONTAL_ALIGNMENT_CENTER, 320.0, 8, -1, Color(1, 0.95, 0.7, alpha))
+	_ctrl.draw_string(font, Vector2(0, 8), "TAB sheet  N new  E imbue  Q lock  LMB fuse  RMB attack  F area  R special", HORIZONTAL_ALIGNMENT_RIGHT, 316.0, 5, Color(1, 1, 1, 0.45))
 
-	# Layout: [1..5] element tabs, gap, LMB, Q, F, R, RMB (just RMB if no castable set)
+	# Layout: [1..5] element tabs, gap, LMB, RMB, Q, F, R (just RMB if no castable set)
 	var count := caster.elements.size()
 	var slots := (count + 5) if count > 0 else 1
 	var width := slots * (SLOT + GAP) + (GAP * 2.0 if count > 0 else 0.0)
@@ -69,13 +70,13 @@ func _draw_hud() -> void:
 	x += GAP * 2.0
 	_lmb_slot(Vector2(x, y), caster)
 	x += SLOT + GAP
+	_rmb_slot(Vector2(x, y), caster)
+	x += SLOT + GAP
 	_lock_slot(Vector2(x, y), caster)
 	x += SLOT + GAP
 	_skill_slot(Vector2(x, y), caster, caster.skill_for("area"), "F")
 	x += SLOT + GAP
 	_skill_slot(Vector2(x, y), caster, caster.skill_for("special"), "R")
-	x += SLOT + GAP
-	_melee_slot(Vector2(x, y))
 
 
 ## Points to spend, pending choices, and how the character is fighting right now.
@@ -102,23 +103,37 @@ func _draw_status(font: Font, caster: SkillCaster, character: CharacterData) -> 
 	elif not character.castable_elements().is_empty():
 		match Classes.style_of(character.class_id):
 			"ranged":
-				text = "Melee mode - E to imbue and shoot"
+				text = "Melee mode - E to imbue and shoot (RMB)"
 			"melee":
-				text = "Melee class - E imbues the blade"
+				text = "E imbues the blade"
 	if text != "":
 		_ctrl.draw_string(font, Vector2(88, 34), text, HORIZONTAL_ALIGNMENT_LEFT, -1, 6, color)
+	if caster.lmb_mode() == "locked":
+		var hint := "LMB needs 2-3 locked elements (Q)" if caster.lock_available() else "LMB needs 2+ elements to fuse"
+		_ctrl.draw_string(font, Vector2(88, 42), hint, HORIZONTAL_ALIGNMENT_LEFT, -1, 6, Color(1, 1, 1, 0.45))
 
 
-## LMB: the fused/locked/selected bolt, or a plain slash when LMB is a melee action.
+## LMB: the fused cast; a plain slash or knife throw for characters with no elements; or a
+## dimmed, unusable slot while fewer than two elements are locked.
 func _lmb_slot(pos: Vector2, caster: SkillCaster) -> void:
-	if caster.lmb_mode() == "slash":
-		_plain_slot(pos, "LMB", "Slas", Color(0.75, 0.75, 0.78, 0.6))
-		return
-	var id := caster.primary_id()
-	if SkillCaster.is_fusion(id):
-		_fusion_slot(pos, caster, id)
+	match caster.lmb_mode():
+		"fusion":
+			_fusion_slot(pos, caster, caster.primary_id())
+		"knife":
+			_skill_slot(pos, caster, caster.primary_id(), "LMB")
+		"slash":
+			_plain_slot(pos, "LMB", "Slas", Color(0.75, 0.75, 0.78, 0.6))
+		_:
+			_plain_slot(pos, "LMB", "Q 2+", Color(0.2, 0.22, 0.3, 0.9))
+			_ctrl.draw_rect(Rect2(pos, Vector2(SLOT, SLOT)), Color(0, 0, 0, 0.45))
+
+
+## RMB: the slash, or the selected element's bolt for a ranged class while imbued.
+func _rmb_slot(pos: Vector2, caster: SkillCaster) -> void:
+	if caster.rmb_mode() == "bolt":
+		_skill_slot(pos, caster, caster.bolt_id(), "RMB")
 	else:
-		_skill_slot(pos, caster, id, "LMB")
+		_melee_slot(pos)
 
 
 func _fusion_slot(pos: Vector2, caster: SkillCaster, id: String) -> void:
@@ -146,9 +161,9 @@ func _lock_slot(pos: Vector2, caster: SkillCaster) -> void:
 	_ctrl.draw_rect(rect, Color(0.18, 0.2, 0.28, 0.9))
 	_ctrl.draw_rect(rect, Color.BLACK, false, 1.0)
 	_ctrl.draw_string(font, pos + Vector2(2, 7), "Q", HORIZONTAL_ALIGNMENT_LEFT, -1, 6, Color.WHITE if available else Color(1, 1, 1, 0.4))
-	if not available:
-		var why := "Lv%d" % Classes.AREA_LEVEL if Game.character.level < Classes.AREA_LEVEL else "none"
-		_ctrl.draw_string(font, pos + Vector2(2, 17), why, HORIZONTAL_ALIGNMENT_LEFT, -1, 6, Color("ffd84a") if Game.character.level < Classes.AREA_LEVEL else Color(1, 1, 1, 0.4))
+	if not available:  # needs two elements to have anything to fuse
+		var why := "none" if Game.character.castable_elements().is_empty() else "2 el"
+		_ctrl.draw_string(font, pos + Vector2(2, 17), why, HORIZONTAL_ALIGNMENT_LEFT, -1, 6, Color(1, 1, 1, 0.4))
 		_ctrl.draw_rect(rect, Color(0, 0, 0, 0.55))
 		return
 	for i in Classes.MAX_LOCKED:

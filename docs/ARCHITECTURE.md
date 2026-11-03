@@ -81,30 +81,44 @@ skills only as rewards (`learned_specials`). Characters born without elements ge
 yet owned). `claim_reward(offer, option)` applies one and discards that offer. The sheet's
 Rewards tab is the UI.
 
-**Fighting style and LMB** (`Classes.style_of`, `SkillCaster.lmb_mode`): each class has a style.
-`melee` (Vanguard): LMB always slashes; elements come from imbue and abilities (F, R), which are
-castable regardless of style. `ranged` (Channeler, Ranger, Mystic): LMB shoots only while
-imbued (mana per cast), and slashes when not. `hybrid` (the Novice) always shoots. The martial
-set always shoots (knives are not an element). The Player turns LMB into a slash whenever the
-caster says `"slash"`.
+**LMB and RMB** (`SkillCaster.lmb_mode` / `rmb_mode`, `Classes.style_of`):
+- LMB is the fused cast: `"fusion"` when two or three elements are locked, otherwise `"locked"`
+  (disabled, casts nothing). A character with no elements (or on the martial set) gets `"slash"`
+  (melee-style class) or `"knife"` (ranged-style class, the martial primary).
+- RMB is the basic attack: `"slash"`, or `"bolt"` (the selected element's primary, for mana) when
+  the class style is `ranged`, the player is imbued, and an element is selected. The `melee`
+  style (Vanguard) always slashes; its imbued slashes carry the element. The Novice is `ranged`.
+- Abilities (F area, R special) and fusions are castable whatever the style.
 
 **Imbue (E)** (`Player.try_imbue`): a toggle with no timer and no cooldown. It needs at least
-one castable element. While `imbued`, ranged classes' LMB shoots, and every slash carries
+one castable element. While `imbued`, ranged classes' RMB shoots, and every slash carries
 `imbue_elements()` (the locked elements, else the selected one): one hit per element in order
 (so their combos fire), each costing `IMBUE_SWING_COST` mana; if you can't pay, the swing is
 plain. Imbued hits set the aura, apply the element's primary status (`SkillCaster.status_for`)
 and train the element, but give up the physical "Shatter" bonus.
 
-**Locking and fusion** (`SkillCaster`, from level 5): Q toggles the selected element in `locked`
-(max `Classes.MAX_LOCKED` = 3; the martial set can't be locked; no element means locked). With
-nothing locked LMB uses the selected element; with one locked it is pinned to that element;
-with 2-3 it casts a **fusion**: `primary_id()` returns `"fusion:fire+water"`, which costs the sum
-of the parts, waits for the slowest cooldown plus 0.15 s per extra element, and fires one
-`Projectile` whose `extra_hits` apply each element in turn at `FUSION_DAMAGE` (75%) damage.
+**Locking and fusion** (`SkillCaster`): Q toggles the selected element in `locked` (max
+`Classes.MAX_LOCKED` = 3; the martial set can't be locked). It needs two or more castable
+elements and no level. With 2-3 locked, LMB casts a **fusion**: `primary_id()` returns
+`"fusion:fire+water"`, which costs the sum of the parts, waits for the slowest cooldown plus
+0.15 s per extra element, and fires one `Projectile` whose `extra_hits` apply each element in
+turn at `FUSION_DAMAGE` (75%) x the `fusion_damage_mult` stat (from Harmony).
+
+**No elements, no mana:** `CharacterData.uses_mana()` is true only if the character owns an
+element. Otherwise `derived()` gives 0 max mana and 0 regen (sealed characters, or attunable ones
+before their first element), and the HUD hides the mana bar. The caster refills mana when the
+first element arrives. Sealed characters are also never given spell-only traits
+(`Classes.SPELL_TRAITS`) at creation or as rewards.
+
+**Elemental Harmony** (`Classes.HARMONY_PASSIVE`): added automatically by
+`passive_sources()` with `stacks = elements - 1` once a character owns two or more elements.
+`stat_mods()` applies a source's mods once per stack (`*_add` multiplied by stacks, `*_mult`
+raised to the stacks).
 
 **Dodge spin** (`Player.try_spin`): attacking while dodging (RMB, or LMB when it is a slash) is a
 360 degree slash costing `SPIN_STAMINA_MULT` (1.8x) stamina, dealing 1.15x damage, once per dodge.
-It uses the same imbue logic as a slash.
+It uses the same imbue logic as a slash. For `SPIN_DURATION` (0.32 s) the player is invulnerable
+(`is_spinning()` is part of `is_invulnerable()`), i.e. until the attack finishes.
 
 **Reward cards** (`RewardCards`): when a reward is ready the game pauses and the first pending
 offer is shown as centered cards (click, or press 1-3; Esc postpones). It pops up shortly after
