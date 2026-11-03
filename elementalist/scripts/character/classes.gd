@@ -6,7 +6,7 @@ extends RefCounted
 ## Progression gates (same for every character):
 ##   level 1   primary skill (LMB) of each owned element, and the martial set
 ##   level 3   choose a class (until then you are a Novice)
-##   level 5   area skill (Q) unlocked
+##   level 5   area skill (F) and element locking (Q) unlocked
 ##   level 10  choose a subclass
 ##   milestone levels (see Rewards) offer a skill or passive reward
 ##
@@ -24,6 +24,7 @@ extends RefCounted
 ## Per-skill mods are named "<skill_id>_damage_mult" / "<skill_id>_cooldown_mult".
 
 const ATTRIBUTES := ["strength", "agility", "intellect", "vitality"]
+const MAX_LOCKED := 3  # elements that can be locked together (Q) to fuse into one cast
 const CLASS_LEVEL := 3     # level at which a Novice chooses a class
 const AREA_LEVEL := 5      # level at which area skills (Q) unlock, for everyone
 const SUBCLASS_LEVEL := 10
@@ -52,7 +53,8 @@ const SCALE_RATE := {"radius": 0.03, "knockback": 0.05, "speed": 0.03, "cooldown
 const CLASSES := {
 	"channeler": {
 		"name": "Channeler",
-		"desc": "Ranged caster. Huge mana, fragile, and a very short melee reach.",
+		"desc": "Ranged caster: shoots while imbued, slashes (short reach) when not. Huge mana, fragile.",
+		"style": "ranged",
 		"base": {"strength": 3, "agility": 5, "intellect": 9, "vitality": 4},
 		"per_level": {"intellect": 1},
 		"melee_range": 0.75,
@@ -62,7 +64,8 @@ const CLASSES := {
 	},
 	"vanguard": {
 		"name": "Vanguard",
-		"desc": "Frontline fighter. Tough and strong, with the longest melee reach.",
+		"desc": "Melee fighter: no ranged bolts. Uses elements by imbuing the blade and through abilities. Longest reach.",
+		"style": "melee",
 		"base": {"strength": 8, "agility": 4, "intellect": 3, "vitality": 6},
 		"per_level": {"strength": 1},
 		"melee_range": 1.4,
@@ -72,7 +75,8 @@ const CLASSES := {
 	},
 	"ranger": {
 		"name": "Ranger",
-		"desc": "Mobile skirmisher. Fast, quick bolts, modest health, short blade reach.",
+		"desc": "Ranged skirmisher: shoots while imbued, short blade otherwise. Fast, quick bolts, modest health.",
+		"style": "ranged",
 		"base": {"strength": 5, "agility": 8, "intellect": 4, "vitality": 4},
 		"per_level": {"agility": 1},
 		"melee_range": 0.9,
@@ -82,7 +86,8 @@ const CLASSES := {
 	},
 	"mystic": {
 		"name": "Mystic",
-		"desc": "Attuned hybrid. Faster spell cooldowns, sturdy, average reach.",
+		"desc": "Ranged hybrid: shoots while imbued, average reach otherwise. Faster spell cooldowns, sturdy.",
+		"style": "ranged",
 		"base": {"strength": 3, "agility": 4, "intellect": 7, "vitality": 7},
 		"per_level": {"vitality": 1},
 		"melee_range": 1.0,
@@ -92,7 +97,8 @@ const CLASSES := {
 	},
 	"wanderer": {
 		"name": "Novice",
-		"desc": "No class yet. Choose one at level %d." % CLASS_LEVEL,
+		"desc": "No class yet. Choose one at level %d. Shoots freely until then." % CLASS_LEVEL,
+		"style": "hybrid",
 		"base": {"strength": 5, "agility": 5, "intellect": 5, "vitality": 5},
 		"per_level": {},
 		"melee_range": 1.0,
@@ -157,11 +163,19 @@ const PASSIVES := {
 	"calm_mind": {"name": "Calm Mind", "desc": "+1.5 mana regen", "mods": {"mana_regen_add": 1.5}},
 	"stout": {"name": "Stout", "desc": "+8 max HP, +0.15 HP regen", "mods": {"max_hp_add": 8.0, "hp_regen_add": 0.15}},
 	"arcane_surge": {"name": "Arcane Surge", "desc": "+4% spell damage, -3% spell cooldowns", "mods": {"spell_damage_mult": 1.04, "spell_cooldown_mult": 0.97}},
+	"jack_of_all_trades": {
+		"name": "Jack of All Trades", "desc": "Small bonuses to everything",
+		"mods": {
+			"max_hp_add": 5.0, "max_mana_add": 5.0, "max_stamina_add": 5.0, "move_speed_mult": 1.03,
+			"damage_taken_mult": 0.97, "spell_damage_mult": 1.03, "melee_damage_mult": 1.03,
+		},
+	},
 }
 
 const TRAITS := [
 	"sturdy", "tireless", "sharp_mind", "fleet", "thick_hide", "iron_will", "keen_edge",
 	"focused", "hardy_lungs", "quick_hands", "far_reach", "calm_mind", "stout", "arcane_surge",
+	"jack_of_all_trades",
 ]
 
 const ELEMENT_PASSIVES := {
@@ -174,6 +188,12 @@ const WEAPON_PASSIVES := {
 }
 
 const SKILL_MASTERY_PREFIX := "mastery_"
+
+
+## How a class fights with elements: "melee" (no ranged bolts; imbue the blade and use abilities),
+## "ranged" (shoots only while imbued, slashes when not) or "hybrid" (the Novice: shoots freely).
+static func style_of(class_id: String) -> String:
+	return String(CLASSES[class_id].get("style", "hybrid"))
 
 
 ## True for the Novice (the class everyone starts as); false for the four real classes.

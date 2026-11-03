@@ -47,6 +47,16 @@ The `hit` dictionary is the contract between skills and enemies:
 consumes the aura. Physical hits (`element == ""`) never touch the aura, but deal x1.5 to rooted
 or stunned enemies ("Shatter").
 
+Two more combo kinds live in `Enemy.take_hit` and `Elements`:
+- **Resonance:** the 3rd discrete hit of the *same* element in a row (`Enemy.aura_stacks`,
+  `Elements.RESONANCE`) triggers that element's resonance and consumes the aura. Lingering ticks
+  (`juice: false`) don't count.
+- **Martial Rend:** the 3rd physical hit within 3 s (`Enemy.chain_count`,
+  `Elements.MARTIAL_COMBO`). It never touches the aura. Imbued slashes are elemental hits, so
+  they build resonance, not Rend.
+
+`take_hit` ignores an enemy that is already dead, so a multi-hit bolt can't reward twice.
+
 **Status effects** (`Enemy.effects`): `dot`, `slow`, `root`, `stun`, `vuln`.
 
 ## The character model (`scripts/character/`)
@@ -57,7 +67,8 @@ traits and skill-use counts. `Classes` holds the static tables.
 **Progression gates** (all in `Classes`): everyone starts as the **Novice** (`NEUTRAL_CLASS`,
 all attributes 5). Level 3 (`CLASS_LEVEL`): `choose_class()` turns the Novice into a real class,
 keeping the points the player spent and applying the class's growth retroactively. Level 5
-(`AREA_LEVEL`): area skills (Q) unlock, for every class. Level 10 (`SUBCLASS_LEVEL`): subclass.
+(`AREA_LEVEL`): area skills (F) unlock and element locking (Q) becomes available, for every
+class. Level 10 (`SUBCLASS_LEVEL`): subclass.
 
 **Elements vs skills.** Owning an element does not give you its skills.
 `CharacterData.can_use_skill(id)` requires (1) owning the skill's element and (2) having learned
@@ -70,10 +81,34 @@ skills only as rewards (`learned_specials`). Characters born without elements ge
 yet owned). `claim_reward(offer, option)` applies one and discards that offer. The sheet's
 Rewards tab is the UI.
 
-**Imbue (E)** (`Player.try_imbue`): costs 15 mana, lasts 10 s, and makes slashes carry the
-selected element, so they set the aura (combos with bolts), apply that element's primary status
-(`SkillCaster.status_for`), and train the element. An imbued slash gives up the physical
-"Shatter" bonus. The martial set cannot be imbued.
+**Fighting style and LMB** (`Classes.style_of`, `SkillCaster.lmb_mode`): each class has a style.
+`melee` (Vanguard): LMB always slashes; elements come from imbue and abilities (F, R), which are
+castable regardless of style. `ranged` (Channeler, Ranger, Mystic): LMB shoots only while
+imbued (mana per cast), and slashes when not. `hybrid` (the Novice) always shoots. The martial
+set always shoots (knives are not an element). The Player turns LMB into a slash whenever the
+caster says `"slash"`.
+
+**Imbue (E)** (`Player.try_imbue`): a toggle with no timer and no cooldown. It needs at least
+one castable element. While `imbued`, ranged classes' LMB shoots, and every slash carries
+`imbue_elements()` (the locked elements, else the selected one): one hit per element in order
+(so their combos fire), each costing `IMBUE_SWING_COST` mana; if you can't pay, the swing is
+plain. Imbued hits set the aura, apply the element's primary status (`SkillCaster.status_for`)
+and train the element, but give up the physical "Shatter" bonus.
+
+**Locking and fusion** (`SkillCaster`, from level 5): Q toggles the selected element in `locked`
+(max `Classes.MAX_LOCKED` = 3; the martial set can't be locked; no element means locked). With
+nothing locked LMB uses the selected element; with one locked it is pinned to that element;
+with 2-3 it casts a **fusion**: `primary_id()` returns `"fusion:fire+water"`, which costs the sum
+of the parts, waits for the slowest cooldown plus 0.15 s per extra element, and fires one
+`Projectile` whose `extra_hits` apply each element in turn at `FUSION_DAMAGE` (75%) damage.
+
+**Dodge spin** (`Player.try_spin`): attacking while dodging (RMB, or LMB when it is a slash) is a
+360 degree slash costing `SPIN_STAMINA_MULT` (1.8x) stamina, dealing 1.15x damage, once per dodge.
+It uses the same imbue logic as a slash.
+
+**Reward cards** (`RewardCards`): when a reward is ready the game pauses and the first pending
+offer is shown as centered cards (click, or press 1-3; Esc postpones). It pops up shortly after
+the level-up, and for any offers already pending when the scene starts.
 
 **Melee reach:** `derived()["melee_range_mult"]` = the class's `melee_range` x passives, applied
 to the slash radius (`Player.melee_reach`).
@@ -172,6 +207,15 @@ the list in `Elements.describe_combo` and the self-test.
 character model, the ceremony statistics, gating, scaling, balance budgets, saving, and builds
 every UI screen. A test that fails prints `FAIL <name>`. Tests seed their own RNGs; the player is
 tested with a neutral character (`_neutral_character()`) so the tuned numbers stay meaningful.
+
+## UI notes
+
+- Screens share `UiTheme`. Buttons use `focus_mode = FOCUS_NONE` so TAB/WASD stay with the game.
+- `CharacterSheet` keeps every tab inside the 320x180 view: the body sits in a fixed-size
+  `ScrollContainer`, and a tab's columns plus gaps must fit `CONTENT_WIDTH` (a self-test checks
+  this and that the panel stays on screen even when stuffed with content).
+- The sheet toggles on TAB in `_input` (not `_unhandled_input`), because Godot would otherwise
+  use TAB to move GUI focus while a button is focused.
 
 ## Gotchas
 

@@ -53,7 +53,13 @@ func _ready() -> void:
 	_test_rewards()
 	_test_input_bindings()
 	await _test_melee_reach()
-	await _test_special_skill_and_imbue()
+	await _test_resonance_and_chain()
+	await _test_lock_and_fusion()
+	await _test_styles_and_imbue()
+	await _test_special_skill()
+	await _test_spin_attack()
+	_test_jack_of_all_trades()
+	await _test_reward_cards()
 	await _test_ui_screens()
 	print("SELFTEST %d passed, %d failed" % [_pass, _fail])
 
@@ -618,7 +624,9 @@ func _test_input_bindings() -> void:
 		return false
 	_check("TAB opens the character sheet, not C", has_key.call("character_sheet", KEY_TAB) and not has_key.call("character_sheet", KEY_C))
 	_check("E imbues the blade and R casts the special", has_key.call("imbue", KEY_E) and has_key.call("skill_special", KEY_R))
-	_check("interact moved off E so it cannot clash with imbue", not has_key.call("interact", KEY_E))
+	_check("interact moved off E so it cannot clash with imbue", not has_key.call("interact", KEY_E) and has_key.call("interact", KEY_G))
+	_check("Q locks elements and F casts the area skill", has_key.call("skill_lock", KEY_Q) and has_key.call("skill_area", KEY_F)
+		and not has_key.call("skill_area", KEY_Q))
 
 
 func _test_melee_reach() -> void:
@@ -651,82 +659,358 @@ func _test_melee_reach() -> void:
 	await get_tree().process_frame
 
 
-func _test_special_skill_and_imbue() -> void:
-	var saved := Game.character
-	Game.character = CharacterData.create_sandbox("mystic", ["fire", "water"], 1)
+func _player_with(character: CharacterData) -> Node2D:
+	Game.character = character
 	await get_tree().process_frame
 	var player: Node2D = PLAYER.instantiate()
 	add_child(player)
 	await get_tree().process_frame
+	return player
+
+
+func _test_resonance_and_chain() -> void:
+	var resonances_ok := true
+	for element in Elements.MAIN:
+		var r: Dictionary = Elements.RESONANCE.get(element, {})
+		resonances_ok = resonances_ok and not r.is_empty() and float(r["mult"]) > 1.0 and r["effect"] in ["dot", "slow", "root", "stun", "vuln"]
+	_check("every main element has a resonance combo", resonances_ok)
+
+	var e := _dummy()
+	_hit(e, "fireball")
+	_hit(e, "fireball")
+	_check("two hits of one element do not resonate yet", e.aura == "fire" and e.aura_stacks == 2)
+	var before := e.hp
+	_hit(e, "fireball")
+	_check("the third hit of the same element triggers Blaze", e.aura == "" and e.aura_stacks == 0 and is_equal_approx(before - e.hp, _dmg("fireball") * 1.3))
+	_check("resonance applies its effect", e.effects.has("dot"))
+	e.queue_free()
+
+	var pool := _dummy()
+	for i in 6:
+		pool.take_hit({"damage": 1.0, "element": "water", "knockback": 0.0, "juice": false})
+	_check("lingering area ticks do not build resonance", pool.aura == "water" and pool.aura_stacks == 1)
+	pool.queue_free()
+
+	var mixed := _dummy()
+	_hit(mixed, "fireball")
+	_hit(mixed, "fireball")
+	_hit(mixed, "water_jet")
+	_check("a different element ends the chain with its pair combo instead", mixed.aura == "" and mixed.aura_stacks == 0 and mixed.effects.has("vuln"))
+	mixed.queue_free()
+
+	var rend := _dummy()
+	_hit(rend, "thorn_shot")
+	_physical(rend)
+	_physical(rend)
+	_check("two physical hits do not trigger Rend", rend.chain_count == 2)
+	_hit(rend, "thorn_shot")
+	var hp_before := rend.hp
+	_physical(rend)
+	_check("the third physical hit triggers Rend (x1.5, bleed)", is_equal_approx(hp_before - rend.hp, SkillDB.MELEE["damage"] * 1.5) and rend.effects.has("dot"))
+	_check("an elemental hit in between does not break the chain, and Rend leaves the aura", rend.aura == "earth" and rend.chain_count == 0)
+	_physical(rend)
+	rend.chain_time = 0.0  # too long since the last hit
+	_physical(rend)
+	_check("a martial chain times out", rend.chain_count == 1)
+	rend.queue_free()
+
+	var deaths := [0]
+	var prey: Enemy = SLIME.instantiate()
+	prey.max_hp = 5.0
+	add_child(prey)
+	prey.died.connect(func(_x): deaths[0] += 1)
+	var xp_before := Game.character.xp
+	prey.take_hit({"damage": 50.0, "element": "fire", "knockback": 0.0})
+	prey.take_hit({"damage": 50.0, "element": "water", "knockback": 0.0})
+	_check("a dead enemy ignores further hits (one death, one reward)", deaths[0] == 1 and Game.character.xp == xp_before + prey.xp_reward)
+
+	var timeout := _dummy()
+	_hit(timeout, "thorn_shot")
+	timeout.aura_time = 0.01
+	await get_tree().physics_frame
+	await get_tree().physics_frame
+	_check("the aura and its resonance count expire together", timeout.aura == "" and timeout.aura_stacks == 0)
+	timeout.queue_free()
+
+
+func _test_lock_and_fusion() -> void:
+	var saved := Game.character
+	var player: Node2D = await _player_with(CharacterData.create_sandbox("channeler", ["fire", "water", "earth", "air"], 5))
 	var caster: SkillCaster = player.caster
+	_check("Q locking is available from level 5 with an element", caster.lock_available())
+	_check("nothing locked: LMB uses the selected element", caster.locked.is_empty() and caster.primary_id() == "fireball")
+	_check("Q locks the selected element", caster.toggle_lock() and caster.locked == ["fire"])
+	caster.select(1)
+	_check("a single lock pins LMB to that element even after selecting another", caster.primary_id() == "fireball")
+	_check("a second element can be locked", caster.toggle_lock() and caster.locked == ["fire", "water"])
+	var fusion := caster.primary_id()
+	_check("two locked elements make a fusion", SkillCaster.is_fusion(fusion) and fusion == "fusion:fire+water")
+	caster.select(2)
+	caster.toggle_lock()
+	caster.select(3)
+	_check("no more than three elements lock", not caster.toggle_lock() and caster.locked.size() == 3)
+	caster.select(2)
+	_check("Q on a locked element unlocks it", caster.toggle_lock() and caster.locked == ["fire", "water"])
 
-	_check("a special cannot be cast before it is earned", not caster.try_cast("inferno_ring"))
-	Game.character.learned_specials.append("inferno_ring")
-	var mana_before: float = caster.mana
-	_check("an earned special casts with R's skill", caster.skill_for("special") == "inferno_ring" and caster.try_cast("inferno_ring"))
-	_check("the special spends its mana", absf((mana_before - float(SkillDB.DEFS["inferno_ring"]["mana"])) - caster.mana) < 1.0)
+	var cost := caster.costs(fusion)
+	var expected_cost: float = SkillDB.DEFS["fireball"]["mana"] + SkillDB.DEFS["water_jet"]["mana"]
+	_check("a fusion costs the sum of its parts", is_equal_approx(cost.x, expected_cost) and cost.y == 0.0)
+	var slowest := maxf(Game.character.skill_cooldown("fireball"), Game.character.skill_cooldown("water_jet"))
+	_check("a fusion waits for its slowest part plus a step", is_equal_approx(caster.cooldown_total(fusion), slowest + SkillCaster.FUSION_COOLDOWN_STEP))
+	caster.mana = 3.0
+	_check("a fusion needs the full mana", not caster.can_cast(fusion))
+	caster.mana = caster.max_mana
+	var mana_before := caster.mana
+	_check("the fusion casts", caster.try_cast(fusion) and caster.cooldowns.has(fusion))
+	_check("it spends the summed mana", absf((mana_before - cost.x) - caster.mana) < 1.0)
+	_check("it trains every fused element", Game.character.element_mastery["fire"]["xp"] >= 1 and Game.character.element_mastery["water"]["xp"] >= 1)
+	var bolts := get_children().filter(func(n): return n is Projectile)
+	_check("one bolt carries a hit for each element", bolts.size() >= 1 and bolts[-1].extra_hits.size() == 1)
+	var target := _dummy(Vector2(900, 900))
+	await get_tree().process_frame
+	var start_hp := target.hp
+	bolts[-1]._on_body_entered(target)
+	var expected_damage := Game.character.skill_damage("fireball") * SkillCaster.FUSION_DAMAGE \
+		+ Game.character.skill_damage("water_jet") * SkillCaster.FUSION_DAMAGE * 1.4
+	_check("fire then water in one bolt triggers Steam at once", target.aura == "" and target.effects.has("vuln") and is_equal_approx(start_hp - target.hp, expected_damage))
+	target.queue_free()
+	player.queue_free()
 
+	var low: Node2D = await _player_with(CharacterData.create_sandbox("channeler", ["fire"], 4))
+	_check("locking needs level 5", not low.caster.lock_available() and not low.caster.toggle_lock())
+	low.queue_free()
+	var mixed: Node2D = await _player_with(CharacterData.create("M", "channeler", CharacterData.ATTUNABLE, _rng(3)))
+	_check("with no elements Q is locked and LMB is the martial skill", not mixed.caster.lock_available() and not mixed.caster.toggle_lock() and mixed.caster.lmb_mode() == "bolt")
+	mixed.caster.cooldowns.clear()
+	_check("the martial primary still casts", mixed.caster.try_cast(mixed.caster.primary_id()))
+	mixed.queue_free()
+	var martial_pick: Node2D = await _player_with(CharacterData.create_sandbox("channeler", ["fire"], 5))
+	martial_pick.caster.refresh_elements()
+	Game.character.affinity = CharacterData.ATTUNABLE  # now the martial set exists as a second set
+	martial_pick.caster.refresh_elements()
+	martial_pick.caster.select(1)
+	_check("the martial set cannot be locked", martial_pick.caster.selected_element() == "martial" and not martial_pick.caster.toggle_lock())
+	martial_pick.queue_free()
+	Game.character = saved
+	await get_tree().process_frame
+
+
+func _test_styles_and_imbue() -> void:
+	var saved := Game.character
+	var styles := {}
+	for cls in Classes.CLASSES:
+		styles[cls] = Classes.style_of(cls)
+	_check("class styles: Vanguard melee, the casters ranged, Novice hybrid",
+		styles["vanguard"] == "melee" and styles["channeler"] == "ranged" and styles["ranger"] == "ranged"
+		and styles["mystic"] == "ranged" and styles[Classes.NEUTRAL_CLASS] == "hybrid")
+
+	var fighter: Node2D = await _player_with(CharacterData.create_sandbox("vanguard", ["fire", "water"], 5))
+	_check("a melee class has no ranged bolts: LMB slashes", fighter.caster.lmb_mode() == "slash")
+	fighter.try_imbue()
+	_check("even imbued, a melee class slashes with LMB", fighter.imbued and fighter.caster.lmb_mode() == "slash")
+	fighter.try_imbue()
+	_check("a melee class can still cast its abilities", fighter.caster.try_cast("flame_burst"))
+	fighter.queue_free()
+
+	var mage: Node2D = await _player_with(CharacterData.create_sandbox("channeler", ["fire", "water"], 5))
+	_check("a ranged class starts in melee mode (not imbued)", not mage.imbued and mage.caster.lmb_mode() == "slash")
+	_check("E turns on imbue with no upfront cost", mage.caster.mana == mage.caster.max_mana and mage.try_imbue() and mage.imbued)
+	_check("imbued, a ranged class shoots with LMB", mage.caster.lmb_mode() == "bolt")
+	var mana_before: float = mage.caster.mana
+	mage.caster.try_cast(mage.caster.primary_id())
+	_check("each bolt costs its mana", mage.caster.mana < mana_before)
+	mage.caster.cooldowns.clear()
+	_check("the imbue has no cooldown and does not expire", mage.try_imbue() and not mage.imbued and mage.try_imbue() and mage.imbued and not ("imbue_left" in mage))
+	_check("toggling back off returns to melee mode", mage.try_imbue() == true and mage.caster.lmb_mode() == "slash")
+	mage.queue_free()
+
+	var novice: Node2D = await _player_with(CharacterData.create_sandbox(Classes.NEUTRAL_CLASS, ["fire"], 1))
+	_check("the Novice shoots freely without imbuing", novice.caster.lmb_mode() == "bolt" and not novice.imbued)
+	novice.queue_free()
+	var sealed: Node2D = await _player_with(CharacterData.create("S", "channeler", CharacterData.SEALED, _rng(2)))
+	_check("martial characters shoot knives whatever their class", sealed.caster.lmb_mode() == "bolt")
+	_check("a character with no element cannot imbue", not sealed.try_imbue() and not sealed.imbued)
+	sealed.queue_free()
+
+	# Imbued slashes (melee class so LMB stays a slash)
+	var player: Node2D = await _player_with(CharacterData.create_sandbox("vanguard", ["fire", "water"], 5))
+	var caster: SkillCaster = player.caster
 	var target := _dummy(Vector2(12, 0))
 	await get_tree().process_frame
 	target.global_position = Vector2(12, 0)
 	player.global_position = Vector2.ZERO
-	caster.mana = caster.max_mana
-	var mana_full: float = caster.mana
-	_check("E imbues the selected element for mana", player.try_imbue() and player.imbue_element == "fire" and absf((mana_full - caster.mana) - player.IMBUE_COST) < 0.5)
+	player.try_imbue()
+	var mana_start: float = caster.mana
 	player.try_melee(Vector2.RIGHT)
-	_check("an imbued slash marks the enemy with the element", target.aura == "fire")
-	_check("an imbued slash applies the element's status", target.effects.has("dot"))
-	_check("imbued hits train the element", Game.character.element_mastery["fire"]["xp"] >= 1)
+	_check("an imbued slash marks the enemy with the selected element", target.aura == "fire" and target.effects.has("dot"))
+	_check("an imbued slash costs a little mana", absf((mana_start - player.IMBUE_SWING_COST) - caster.mana) < 1.0)
+	_check("imbued slashes train the element", Game.character.element_mastery["fire"]["xp"] >= 1)
 	caster.select(1)
-	var before := target.hp
-	target.take_hit({"damage": 10.0, "element": "water", "knockback": 0.0})
-	_check("a bolt after an imbued slash triggers a combo", target.aura == "" and target.effects.has("vuln") and before - target.hp > 10.0)
+	player._melee_cd = 0.0
+	var hp := target.hp
+	player.try_melee(Vector2.RIGHT)
+	_check("an imbued slash of a second element makes a combo with the first", target.aura == "" and target.effects.has("vuln") and hp - target.hp > 10.0)
+	player.try_imbue()
+	var plain := _dummy(Vector2(12, 0))
+	await get_tree().process_frame
+	plain.global_position = Vector2(12, 0)
+	player._melee_cd = 0.0
+	player.try_melee(Vector2.RIGHT)
+	_check("not imbued, the slash is plain physical", plain.aura == "")
+	player.try_imbue()
+	caster.mana = 2.0
+	var broke := _dummy(Vector2(12, 0))
+	await get_tree().process_frame
+	broke.global_position = Vector2(12, 0)
+	player._melee_cd = 0.0
+	player.try_melee(Vector2.RIGHT)
+	_check("without the mana, an imbued slash falls back to plain", broke.aura == "" and caster.mana < player.IMBUE_SWING_COST)
 
-	player.imbue_left = 0.0
-	player.imbue_element = ""
-	caster.select(0)
-	caster.mana = 5.0
-	_check("imbue needs enough mana", not player.try_imbue() and player.imbue_element == "")
 	caster.mana = caster.max_mana
-	player.try_imbue()
-	_check("pressing E again with the same element turns it off", player.try_imbue() and player.imbue_element == "" and player.imbue_left == 0.0)
-	player.try_imbue()
-	player.imbue_left = 0.02
-	for i in 4:
-		await get_tree().physics_frame
-	_check("the imbue expires", player.imbue_element == "" and player.imbue_left <= 0.0)
+	caster.select(0)
+	caster.toggle_lock()
+	caster.select(1)
+	caster.toggle_lock()
+	_check("imbue carries every locked element", player.imbue_elements() == ["fire", "water"])
+	var fused := _dummy(Vector2(12, 0))
+	await get_tree().process_frame
+	fused.global_position = Vector2(12, 0)
+	player._melee_cd = 0.0
+	var mana_fused: float = caster.mana
+	player.try_melee(Vector2.RIGHT)
+	_check("one fused slash lands both elements, so their combo fires", fused.aura == "" and fused.effects.has("vuln"))
+	_check("each element costs mana per swing", absf((mana_fused - player.IMBUE_SWING_COST * 2.0) - caster.mana) < 1.0)
 
 	var rooted := _dummy(Vector2(12, 0))
+	var rooted_imbued := _dummy(Vector2(12, 0))
 	await get_tree().process_frame
-	rooted.global_position = Vector2(12, 0)
-	rooted._add_effect("root", 10.0, 1.0)
-	player.global_position = Vector2.ZERO
+	for r in [rooted, rooted_imbued]:
+		r.global_position = Vector2(12, 0)
+		r._add_effect("root", 10.0, 1.0)
+	caster.locked.clear()
+	caster.select(0)
+	player.imbued = false
+	player.stamina = player.max_stamina  # the earlier slashes spent it all
 	player._melee_cd = 0.0
+	rooted_imbued.global_position = Vector2(500, 500)
 	player.try_melee(Vector2.RIGHT)
 	var plain_damage: float = rooted.max_hp - rooted.hp
-	_check("a plain slash on a rooted enemy still shatters", is_equal_approx(plain_damage, SkillDB.MELEE["damage"] * Game.character.derived()["melee_damage_mult"] * Enemy.SHATTER_MULT))
-	var imbued_rooted := _dummy(Vector2(12, 0))
-	await get_tree().process_frame
-	imbued_rooted.global_position = Vector2(12, 0)
-	imbued_rooted._add_effect("root", 10.0, 1.0)
+	_check("a plain slash on a rooted enemy shatters", is_equal_approx(plain_damage, SkillDB.MELEE["damage"] * Game.character.derived()["melee_damage_mult"] * Enemy.SHATTER_MULT))
+	rooted_imbued.global_position = Vector2(12, 0)
+	rooted.global_position = Vector2(500, 500)
 	caster.mana = caster.max_mana
+	player.stamina = player.max_stamina
 	player.try_imbue()
 	player._melee_cd = 0.0
 	player.try_melee(Vector2.RIGHT)
-	var imbued_damage: float = imbued_rooted.max_hp - imbued_rooted.hp
-	_check("an imbued slash gives up the shatter bonus", imbued_damage < plain_damage)
-	player.queue_free()
-	rooted.queue_free()
-	imbued_rooted.queue_free()
-	target.queue_free()
+	_check("an imbued slash gives up the shatter bonus", rooted_imbued.max_hp - rooted_imbued.hp < plain_damage)
+	for node in [target, plain, broke, fused, rooted, rooted_imbued, player]:
+		node.queue_free()
+	Game.character = saved
+	await get_tree().process_frame
 
-	Game.character = CharacterData.create("M", "vanguard", CharacterData.ATTUNABLE, _rng(2))
+
+func _test_special_skill() -> void:
+	var saved := Game.character
+	var player: Node2D = await _player_with(CharacterData.create_sandbox("mystic", ["fire", "water"], 1))
+	var caster: SkillCaster = player.caster
+	_check("a special cannot be cast before it is earned", not caster.try_cast("inferno_ring"))
+	Game.character.learned_specials.append("inferno_ring")
+	var mana_before: float = caster.mana
+	_check("an earned special casts on R", caster.skill_for("special") == "inferno_ring" and caster.try_cast("inferno_ring"))
+	_check("the special spends its mana", absf((mana_before - float(SkillDB.DEFS["inferno_ring"]["mana"])) - caster.mana) < 1.0)
+	player.queue_free()
+	Game.character = saved
 	await get_tree().process_frame
-	var martial_player: Node2D = PLAYER.instantiate()
-	add_child(martial_player)
+
+
+func _test_spin_attack() -> void:
+	var saved := Game.character
+	var player: Node2D = await _player_with(CharacterData.create_sandbox(Classes.NEUTRAL_CLASS, ["fire"], 1))
+	var front := _dummy(Vector2(15, 0))
+	var behind := _dummy(Vector2(-15, 0))
+	var far := _dummy(Vector2(80, 0))
 	await get_tree().process_frame
-	_check("the martial set cannot be imbued", not martial_player.try_imbue() and martial_player.imbue_element == "")
-	martial_player.queue_free()
+	front.global_position = Vector2(15, 0)
+	behind.global_position = Vector2(-15, 0)
+	far.global_position = Vector2(80, 0)
+	player.global_position = Vector2.ZERO
+	_check("you cannot spin without dodging", not player.try_spin())
+	_check("a dodge starts", player.try_dodge(Vector2.RIGHT))
+	var stamina_before: float = player.stamina
+	_check("attacking mid-dodge spins", player.try_spin())
+	_check("a spin costs more stamina than a slash", is_equal_approx(stamina_before - player.stamina, SkillDB.MELEE["stamina"] * player.SPIN_STAMINA_MULT) and player.SPIN_STAMINA_MULT > 1.0)
+	_check("the spin hits every direction", front.hp < front.max_hp and behind.hp < behind.max_hp)
+	_check("the spin respects the reach", far.hp == far.max_hp)
+	_check("the spin hits harder than a slash", is_equal_approx(front.max_hp - front.hp, SkillDB.MELEE["damage"] * player.SPIN_DAMAGE_MULT))
+	_check("only one spin per dodge", not player.try_spin())
+	player._dodge_left = 0.0
+	player._dodge_cd = 0.0
+	player.try_dodge(Vector2.RIGHT)
+	player.stamina = 10.0
+	_check("a spin needs the stamina for it", not player.try_spin())
+	player.stamina = player.max_stamina
+	player._dodge_left = 0.0
+	player._dodge_cd = 0.0
+	player.try_dodge(Vector2.RIGHT)
+	player.try_imbue()
+	var mana_before: float = player.caster.mana
+	var imbued_hit := _dummy(Vector2(-12, 0))
+	await get_tree().process_frame
+	imbued_hit.global_position = Vector2(-12, 0)
+	player.global_position = Vector2.ZERO
+	player.try_spin()
+	_check("an imbued spin carries the element all around", imbued_hit.aura == "fire" and player.caster.mana < mana_before)
+	for node in [front, behind, far, imbued_hit, player]:
+		node.queue_free()
+	Game.character = saved
+	await get_tree().process_frame
+
+
+func _test_jack_of_all_trades() -> void:
+	var c := CharacterData.create_sandbox(Classes.NEUTRAL_CLASS, ["fire"], 1)
+	var before := c.derived()
+	var spell := c.spell_damage_mult("fire")
+	c.traits = ["jack_of_all_trades"]
+	var after := c.derived()
+	_check("the trait exists and is rollable", "jack_of_all_trades" in Classes.TRAITS and Classes.passive_info("jack_of_all_trades")["name"] == "Jack of All Trades")
+	_check("it is a character trait", c.passive_sources() == [{"id": "jack_of_all_trades", "type": "trait"}])
+	_check("it raises every pool a little", after["max_hp"] > before["max_hp"] and after["max_mana"] > before["max_mana"]
+		and after["max_stamina"] > before["max_stamina"] and after["move_speed"] > before["move_speed"])
+	_check("it improves damage and defence a little", after["melee_damage_mult"] > before["melee_damage_mult"] and c.spell_damage_mult("fire") > spell
+		and after["damage_taken_mult"] < before["damage_taken_mult"])
+	var seen := false
+	var rng := _rng(8)
+	var plain := CharacterData.create_sandbox("channeler", ["fire"], 1)
+	for i in 400:
+		if Rewards.generate(plain, rng).any(func(o): return o["id"] == "jack_of_all_trades"):
+			seen = true
+	_check("it can be offered as a level reward", seen)
+
+
+func _test_reward_cards() -> void:
+	var saved := Game.character
+	Game.character = CharacterData.create_sandbox("channeler", ["fire"], 1)  # no offers yet, so the popup stays closed
+	var cards := RewardCards.new()
+	add_child(cards)
+	await get_tree().process_frame
+	var ch := Game.character
+	ch.pending_rewards.append([{"type": "skill", "id": "inferno_ring"}, {"type": "passive", "id": "sturdy"}, {"type": "passive", "id": "far_reach"}])
+	ch.pending_rewards.append([{"type": "passive", "id": "focused"}])
+	cards._build()
+	await get_tree().process_frame
+	var choose := cards.find_children("*", "Button", true, false)
+	_check("one card per option of the first offer", choose.size() == 3)
+	var text := " ".join(cards.find_children("*", "Label", true, false).map(func(l): return l.text))
+	_check("cards name the reward and its kind", text.contains("Inferno Ring") and text.contains("Sturdy") and text.contains("SKILL") and text.contains("PASSIVE"))
+	_check("the footer says more offers wait", text.contains("1 more waiting"))
+	cards._choose(1)
+	_check("choosing a card claims that option", "sturdy" in ch.traits and ch.pending_rewards.size() == 1)
+	await get_tree().process_frame
+	_check("the next waiting offer is shown", cards.find_children("*", "Button", true, false).size() == 1)
+	cards._choose(0)
+	_check("claiming the last offer closes the popup", ch.pending_rewards.is_empty() and not cards._open)
+	cards.free()
 	Game.character = saved
 	await get_tree().process_frame
 
@@ -743,6 +1027,29 @@ func _test_ui_screens() -> void:
 		if sheet._content.get_child_count() == 0:
 			all_tabs = false
 	_check("every character sheet tab builds", all_tabs and CharacterSheet.TABS.has("rewards"))
+
+	# Nothing may spill off the game screen, whatever a tab holds: stress it with many offers.
+	var view := Vector2(ProjectSettings.get_setting("display/window/size/viewport_width"), ProjectSettings.get_setting("display/window/size/viewport_height"))
+	var ui_character := Game.character
+	var stress := CharacterData.create_sandbox("channeler", Elements.MAIN, 10)
+	for i in 8:
+		stress.pending_rewards.append([{"type": "passive", "id": "sturdy"}, {"type": "passive", "id": "focused"}, {"type": "skill", "id": "inferno_ring"}])
+	Game.character = stress
+	var fits := true
+	var widths_ok := true
+	for tab in CharacterSheet.TABS:
+		sheet.show_tab(tab)
+		await get_tree().process_frame
+		var panel: Control = sheet.get_child(sheet.get_child_count() - 1)
+		var rect := panel.get_global_rect()
+		fits = fits and rect.position.x >= 0.0 and rect.position.y >= 0.0 and rect.end.x <= view.x and rect.end.y <= view.y
+		var widths := []
+		for column in sheet._content.get_children():
+			widths.append(column.custom_minimum_size.x)
+		widths_ok = widths_ok and CharacterSheet.tab_width(widths) <= CharacterSheet.CONTENT_WIDTH
+	_check("every tab stays inside the game screen, even stuffed with content", fits)
+	_check("every tab's columns fit the scroll area", widths_ok)
+	Game.character = ui_character
 	var reward_char := CharacterData.create_sandbox("channeler", ["fire"], 4)
 	Game.character = reward_char
 	var options := 0
@@ -766,7 +1073,10 @@ func _test_ui_screens() -> void:
 	_check("choosing a class from the sheet applies it", novice.class_id == "ranger")
 	Game.character = CharacterData.create_sandbox("channeler", ["fire", "water"], 5)
 	sheet.show_tab("combos")
-	_check("combos tab lists a header and all ten combos", sheet._content.get_child(0).get_child_count() == 11)
+	var combo_rows := sheet._content.get_child(0).get_children().filter(func(l): return l is Label and l.text.contains(" + ") and l.text.contains(" = "))
+	_check("combos tab lists all ten element combos", combo_rows.size() == 10)
+	var all_text := " ".join(sheet._content.get_child(0).get_children().filter(func(l): return l is Label).map(func(l): return l.text))
+	_check("combos tab also lists resonance and the martial combo", all_text.contains("Resonance") and all_text.contains("Blaze") and all_text.contains("Rend"))
 	var lit := sheet._content.get_child(0).get_children().filter(func(l): return l is Label and l.text.contains("Steam") and not l.text.contains("needs"))
 	_check("a combo the character can trigger is not marked as missing an element", lit.size() == 1)
 	var locked := sheet._content.get_child(0).get_children().filter(func(l): return l is Label and l.text.contains("Magma") and l.text.contains("needs Mineral"))

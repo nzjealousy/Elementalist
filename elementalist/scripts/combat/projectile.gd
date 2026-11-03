@@ -4,13 +4,15 @@ extends Area2D
 
 var velocity := Vector2.ZERO
 var hit: Dictionary = {}
+var extra_hits: Array = []  # a fused bolt: further hits applied in order after `hit`
 var life := 1.0
 var texture_id := ""
 
 
-func setup(vel: Vector2, hit_data: Dictionary, lifetime: float) -> void:
+func setup(vel: Vector2, hit_data: Dictionary, lifetime: float, more_hits: Array = []) -> void:
 	velocity = vel
 	hit = hit_data
+	extra_hits = more_hits
 	life = lifetime
 	var element := String(hit_data.get("element", ""))
 	texture_id = "proj_" + (element if element != "" else "martial")
@@ -65,6 +67,9 @@ func _on_body_entered(body: Node) -> void:
 	if body is Enemy:
 		hit["from"] = global_position - velocity.normalized() * 4.0
 		body.take_hit(hit)
+		for extra in extra_hits:  # fusion: each element lands in turn, so their combos fire
+			extra["from"] = hit["from"]
+			body.take_hit(extra)
 	else:
 		HitFx.burst(get_parent(), global_position, Elements.color_of(String(hit.get("element", ""))), 5, 35.0)
 	queue_free()

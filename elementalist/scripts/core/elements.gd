@@ -31,6 +31,24 @@ const COMBOS := {
 }
 
 
+## Resonance: this many discrete hits of the SAME element in a row (without another element
+## breaking the chain) trigger that element's resonance combo, and reset the count.
+const RESONANCE_HITS := 3
+const RESONANCE := {
+	"fire": {"name": "Blaze", "mult": 1.3, "effect": "dot", "time": 3.0, "power": 6.0, "color": Color("ff8a3a")},
+	"water": {"name": "Drench", "mult": 1.2, "effect": "slow", "time": 3.0, "power": 0.7, "color": Color("6bc4ff")},
+	"earth": {"name": "Overgrowth", "mult": 1.2, "effect": "root", "time": 2.0, "power": 1.0, "color": Color("7fe05a")},
+	"air": {"name": "Gale", "mult": 1.25, "effect": "stun", "time": 0.7, "power": 1.0, "color": Color("e8f8ff")},
+	"mineral": {"name": "Fracture", "mult": 1.4, "effect": "vuln", "time": 3.5, "power": 1.0, "color": Color("d9c7a0")},
+}
+
+## Martial combo: this many physical hits (slashes, martial skills) on one enemy within
+## MARTIAL_CHAIN_TIME seconds of each other trigger "Rend". It never touches the element aura.
+const MARTIAL_CHAIN_HITS := 3
+const MARTIAL_CHAIN_TIME := 3.0
+const MARTIAL_COMBO := {"name": "Rend", "mult": 1.5, "effect": "dot", "time": 3.0, "power": 5.0, "color": Color("e8e8f0")}
+
+
 func pair_key(a: String, b: String) -> String:
 	var pair := [a, b]
 	pair.sort()

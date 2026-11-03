@@ -1,14 +1,24 @@
 extends CharacterBody2D
-## Player: WASD movement, mouse aim, stamina-costed dodge, stamina-based physical attack
-## (RMB), health, and an elemental SkillCaster (LMB / Q / 1-5 / mouse wheel).
-## Max HP, stamina, speed, regen and damage scaling all come from Game.character.
+## Player: WASD movement, mouse aim, stamina-costed dodge, melee (slash and the dodge spin),
+## health, and an elemental SkillCaster. Max HP, stamina, speed, regen and damage scaling all
+## come from Game.character.
+##
+## Melee and imbue:
+##   RMB slashes always. LMB also slashes whenever the caster's lmb_mode() is "slash"
+##   (melee-style classes always; ranged-style classes while not imbued).
+##   E toggles imbue. While imbued, ranged classes' LMB shoots (mana per cast, see SkillCaster),
+##   and every class's slashes carry the locked elements (or the selected one), costing a little
+##   mana per element per swing; if you can't pay, the swing is a plain slash.
+##   Dodge + attack = a 360 degree spin: costs more stamina, hits all around, can be imbued.
 
 signal died
 
 const STAMINA_REGEN_DELAY := 0.5
 const DODGE_BUFFER := 0.15  # a dodge pressed this early still fires once it becomes possible
-const IMBUE_COST := 15.0  # mana
-const IMBUE_TIME := 10.0  # seconds
+const IMBUE_SWING_COST := 4.0    # mana per element per imbued slash
+const SPIN_STAMINA_MULT := 1.8   # a spin costs this many slashes' worth of stamina
+const SPIN_DAMAGE_MULT := 1.15
+const SPIN_COOLDOWN := 0.5
 
 @export var speed := 80.0
 @export var dodge_speed := 260.0
@@ -27,13 +37,13 @@ var hp := 0.0
 var stamina := 0.0
 var aim_direction := Vector2.RIGHT
 var caster: SkillCaster
-var imbue_element := ""  # element the blade is coated in ("" = none)
-var imbue_left := 0.0    # seconds of imbue remaining
+var imbued := false  # the blade is coated (see class comment); toggled with E, no timer
 
 var _dodge_left := 0.0
 var _dodge_cd := 0.0
 var _dodge_dir := Vector2.ZERO
 var _dodge_buffer := 0.0
+var _spun := false  # one spin per dodge
 var _hurt_cd := 0.0
 var _hp_regen_delay := 0.0
 var _melee_cd := 0.0
@@ -96,7 +106,7 @@ func _on_mastery_leveled(label: String, new_level: int) -> void:
 
 
 func _on_reward_ready(_level: int) -> void:
-	FloatText.spawn(get_parent(), global_position + Vector2(0, -24), "Reward ready (TAB)", Color("ffd84a"))
+	FloatText.spawn(get_parent(), global_position + Vector2(0, -24), "Reward ready!", Color("ffd84a"))
 
 
 func _on_class_chosen(class_id: String) -> void:
@@ -156,75 +166,108 @@ func regen_hp(delta: float) -> void:
 		hp = minf(max_hp, hp + hp_regen * delta)
 
 
-## Physical sweep in `dir` (defaults to the mouse aim). Costs stamina, ignores mana.
-## Damage scales with Strength, weapon mastery and passives; a landed hit trains the weapon.
-func try_melee(dir: Vector2 = Vector2.ZERO) -> bool:
-	var m: Dictionary = SkillDB.MELEE
-	var stats: Dictionary = Game.character.derived()
-	var cost := float(m["stamina"]) * float(stats["melee_stamina_cost_mult"])
-	if _melee_cd > 0.0 or stamina < cost:
+# ---------- imbue ----------
+
+## The elements an imbued blade carries: the locked elements if any, else the selected one
+## (none for the martial set, which has no element).
+func imbue_elements() -> Array[String]:
+	var out: Array[String] = []
+	out.assign(caster.locked)
+	if out.is_empty() and caster.selected_element() in Game.character.castable_elements():
+		out.append(caster.selected_element())
+	return out
+
+
+## E: toggles imbue. Only characters who have an element can imbue. Returns true if it changed.
+func try_imbue() -> bool:
+	if imbued:
+		imbued = false
+		return true
+	if Game.character.castable_elements().is_empty():
 		return false
-	if dir == Vector2.ZERO:
-		dir = aim_direction
-	spend_stamina(cost)
-	_melee_cd = float(m["cooldown"])
-	_knock += dir * 60.0  # small lunge
-
-	var reach := melee_reach()
-	var half_arc := deg_to_rad(float(m["arc_deg"])) * 0.5
-	var imbued := imbue_left > 0.0 and imbue_element != ""
-	var landed := false
-	for node in get_tree().get_nodes_in_group("enemies"):
-		var enemy := node as Enemy
-		if enemy == null:
-			continue
-		var to_enemy := enemy.global_position - global_position
-		if to_enemy.length() <= reach and absf(dir.angle_to(to_enemy)) <= half_arc:
-			landed = true
-			var hit := {
-				"damage": float(m["damage"]) * float(stats["melee_damage_mult"]),
-				"element": "",
-				"knockback": m["knockback"],
-				"from": global_position,
-			}
-			if imbued:
-				# An imbued slash carries the element: it marks the enemy (combos!) and applies
-				# that element's primary-skill status, but loses the physical shatter bonus.
-				hit["element"] = imbue_element
-				hit["apply"] = caster.status_for(SkillDB.DEFS[SkillDB.LOADOUTS[imbue_element]["primary"]])
-			enemy.take_hit(hit)
-	if landed:
-		Game.character.add_weapon_xp(1)
-		if imbued:
-			Game.character.add_element_xp(imbue_element, 1)
-
-	var slash := SlashEffect.new()
-	slash.setup(dir.angle(), reach, float(m["arc_deg"]), Elements.color_of(imbue_element) if imbued else Color.WHITE)
-	add_child(slash)
+	imbued = true
+	FloatText.spawn(get_parent(), global_position + Vector2(0, -8), "Imbued", Color("ffd84a"))
 	return true
 
+
+# ---------- melee ----------
 
 ## Slash reach in pixels: the base reach scaled by class and passives (Vanguard long, Channeler short).
 func melee_reach() -> float:
 	return float(SkillDB.MELEE["range"]) * float(Game.character.derived()["melee_range_mult"])
 
 
-## Imbue (E): coats your blade in the selected element for IMBUE_TIME seconds, so slashes carry
-## that element. Costs mana. Pressing it again with the same element ends it early. Does nothing
-## for the martial set or if you can't afford it. Returns true if the imbue changed.
-func try_imbue() -> bool:
-	var element := caster.selected_element()
-	if imbue_left > 0.0 and imbue_element == element:
-		imbue_left = 0.0
-		imbue_element = ""
-		return true
-	if element == "" or element == "martial" or caster.mana < IMBUE_COST:
+## Slash in `dir` (defaults to the mouse aim): a 110 degree arc. Costs stamina. With `spin`,
+## a full circle that costs SPIN_STAMINA_MULT times as much and hits SPIN_DAMAGE_MULT harder.
+## While imbued the hits carry the imbued elements (one hit per element, in order, so their
+## combos fire) for a little mana each; if you can't pay, it is a plain physical slash.
+func try_melee(dir: Vector2 = Vector2.ZERO, spin: bool = false) -> bool:
+	var m: Dictionary = SkillDB.MELEE
+	var stats: Dictionary = Game.character.derived()
+	var cost := float(m["stamina"]) * float(stats["melee_stamina_cost_mult"]) * (SPIN_STAMINA_MULT if spin else 1.0)
+	if (_melee_cd > 0.0 and not spin) or stamina < cost:
 		return false
-	caster.mana -= IMBUE_COST
-	imbue_element = element
-	imbue_left = IMBUE_TIME
-	FloatText.spawn(get_parent(), global_position + Vector2(0, -8), "Imbued: %s" % element.capitalize(), Elements.color_of(element))
+	if dir == Vector2.ZERO:
+		dir = aim_direction
+	spend_stamina(cost)
+	_melee_cd = SPIN_COOLDOWN if spin else float(m["cooldown"])
+	if not spin:
+		_knock += dir * 60.0  # small lunge
+
+	var coat: Array[String] = []
+	if imbued:
+		coat = imbue_elements()
+	var swing_mana := IMBUE_SWING_COST * coat.size()
+	if not coat.is_empty():
+		if caster.mana >= swing_mana:
+			caster.mana -= swing_mana
+		else:
+			coat.clear()  # can't pay: a plain slash
+
+	var reach := melee_reach()
+	var half_arc := deg_to_rad(float(m["arc_deg"])) * 0.5
+	var base_damage := float(m["damage"]) * float(stats["melee_damage_mult"]) * (SPIN_DAMAGE_MULT if spin else 1.0)
+	var landed := false
+	for node in get_tree().get_nodes_in_group("enemies"):
+		var enemy := node as Enemy
+		if enemy == null:
+			continue
+		var to_enemy := enemy.global_position - global_position
+		if to_enemy.length() > reach or (not spin and absf(dir.angle_to(to_enemy)) > half_arc):
+			continue
+		landed = true
+		if coat.is_empty():
+			enemy.take_hit({"damage": base_damage, "element": "", "knockback": m["knockback"], "from": global_position})
+			continue
+		for i in coat.size():
+			var primary: Dictionary = SkillDB.DEFS[SkillDB.LOADOUTS[coat[i]]["primary"]]
+			enemy.take_hit({
+				"damage": base_damage * (SkillCaster.FUSION_DAMAGE if coat.size() > 1 else 1.0),
+				"element": coat[i],
+				"apply": caster.status_for(primary),
+				"knockback": m["knockback"],
+				"from": global_position,
+				"text_offset": Vector2((i - (coat.size() - 1) * 0.5) * 12.0, 0.0),
+			})
+	if landed:
+		Game.character.add_weapon_xp(1)
+		for element in coat:
+			Game.character.add_element_xp(element, 1)
+
+	var slash := SlashEffect.new()
+	slash.setup(dir.angle(), reach, 360.0 if spin else float(m["arc_deg"]), Elements.color_of(coat[0]) if not coat.is_empty() else Color.WHITE)
+	add_child(slash)
 	return true
+
+
+## Dodge + attack: the 360 degree spin. Only while rolling, once per dodge.
+func try_spin() -> bool:
+	if not is_dodging() or _spun:
+		return false
+	if try_melee(Vector2.ZERO, true):
+		_spun = true
+		return true
+	return false
 
 
 ## Starts a dodge roll in `dir` (defaults to the mouse aim). Costs stamina.
@@ -234,6 +277,7 @@ func try_dodge(dir: Vector2 = Vector2.ZERO) -> bool:
 	_dodge_dir = dir.normalized() if dir != Vector2.ZERO else aim_direction
 	_dodge_left = dodge_time
 	_dodge_cd = dodge_cooldown
+	_spun = false
 	spend_stamina(dodge_stamina_cost)
 	return true
 
@@ -261,18 +305,20 @@ func _physics_process(delta: float) -> void:
 	_melee_cd = maxf(0.0, _melee_cd - delta)
 	_dodge_buffer = maxf(0.0, _dodge_buffer - delta)
 	regen_hp(delta)
-	if imbue_left > 0.0:
-		imbue_left -= delta
-		if imbue_left <= 0.0:
-			imbue_element = ""
 	if Input.is_action_just_pressed("imbue"):
 		try_imbue()
 	_stamina_delay -= delta
 	if _stamina_delay <= 0.0:
 		stamina = minf(max_stamina, stamina + stamina_regen * delta)
 
-	if Input.is_action_pressed("attack_basic"):
-		try_melee()
+	# Melee input: RMB always, LMB when it is a slash. Attacking while dodging spins.
+	var attack_held := Input.is_action_pressed("attack_basic") \
+		or (Input.is_action_pressed("skill_primary") and caster.lmb_mode() == "slash")
+	if attack_held:
+		if is_dodging():
+			try_spin()
+		else:
+			try_melee()
 
 	var input := Input.get_vector("move_left", "move_right", "move_up", "move_down")
 	if Input.is_action_just_pressed("dodge"):
@@ -293,7 +339,7 @@ func _physics_process(delta: float) -> void:
 		sprite.modulate = Color(1, 1, 1, 0.45)
 	elif _hurt_cd > 0.0:
 		sprite.modulate = Color(1.0, 0.45, 0.45)
-	elif imbue_left > 0.0:
-		sprite.modulate = Color.WHITE.lerp(Elements.color_of(imbue_element), 0.45)  # blade glow
+	elif imbued and not imbue_elements().is_empty():
+		sprite.modulate = Color.WHITE.lerp(Elements.color_of(imbue_elements()[0]), 0.45)  # blade glow
 	else:
 		sprite.modulate = Color.WHITE

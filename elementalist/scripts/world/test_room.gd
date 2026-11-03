@@ -18,6 +18,7 @@ func _ready() -> void:
 	_build_room()
 	_spawn_wave()
 	get_parent().add_child.call_deferred(NewCharacterMenu.new())
+	get_parent().add_child.call_deferred(RewardCards.new())
 
 
 ## Debug shortcuts for trying characters in the arena (the story/menu comes in a later phase).

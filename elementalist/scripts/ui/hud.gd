@@ -1,6 +1,7 @@
 extends CanvasLayer
-## Combat HUD drawn in code: HP / mana / stamina bars, element tabs (1-3), the selected
-## element's LMB and Q skills with cooldowns, and the RMB physical attack.
+## Combat HUD drawn in code: HP / mana / stamina / XP bars, a status line (points, pending
+## choices, imbue and melee/ranged mode), the ceremony banner, the element tabs (1-5), and the
+## action slots: LMB, Q (element lock), F (area), R (special), RMB (slash).
 
 const SLOT := 20.0
 const GAP := 3.0
@@ -27,36 +28,24 @@ func _draw_hud() -> void:
 	if _player == null:
 		return
 	var caster: SkillCaster = _player.caster
+	var character := Game.character
 	var font := ThemeDB.fallback_font
 
 	_bar(Vector2(4, 4), Vector2(80, 6), _player.hp / _player.max_hp, Color("d9423b"))
 	_bar(Vector2(4, 12), Vector2(80, 4), caster.mana / caster.max_mana, Color("3f7fff"))
 	_bar(Vector2(4, 18), Vector2(80, 4), _player.stamina / _player.max_stamina, Color("e0c040"))
-	var character := Game.character
 	_ctrl.draw_string(font, Vector2(88, 10), "Lv %d  HP %.1f" % [character.level, _player.hp], HORIZONTAL_ALIGNMENT_LEFT, -1, 7, Color.WHITE)
 	var xp_frac := float(character.xp) / float(CharacterData.xp_to_next(character.level))
 	_bar(Vector2(4, 24), Vector2(80, 3), xp_frac, Color("ffd84a"))
-	if character.unspent_points > 0:
-		_ctrl.draw_string(font, Vector2(88, 18), "%d points to spend (TAB)" % character.unspent_points, HORIZONTAL_ALIGNMENT_LEFT, -1, 6, Color("ffd84a"))
-	var todo: Array[String] = []
-	if character.can_choose_class():
-		todo.append("choose a class")
-	if not character.available_subclasses().is_empty():
-		todo.append("choose a subclass")
-	if not character.pending_rewards.is_empty():
-		todo.append("%d reward%s" % [character.pending_rewards.size(), "" if character.pending_rewards.size() == 1 else "s"])
-	if not todo.is_empty():
-		_ctrl.draw_string(font, Vector2(88, 26), "TAB: " + ", ".join(todo), HORIZONTAL_ALIGNMENT_LEFT, -1, 6, Color("ffd84a"))
-	if _player.imbue_left > 0.0:
-		_ctrl.draw_string(font, Vector2(88, 34), "Blade imbued: %s %.0fs" % [_player.imbue_element.capitalize(), _player.imbue_left], HORIZONTAL_ALIGNMENT_LEFT, -1, 6, Elements.color_of(_player.imbue_element).lightened(0.3))
+	_draw_status(font, caster, character)
 	if Game.banner_time > 0.0:
 		var alpha := clampf(Game.banner_time, 0.0, 1.0)
-		_ctrl.draw_multiline_string(font, Vector2(0, 40), Game.banner_text, HORIZONTAL_ALIGNMENT_CENTER, 320.0, 8, -1, Color(1, 0.95, 0.7, alpha))
-	_ctrl.draw_string(font, Vector2(0, 8), "TAB sheet  N new character  E imbue  F5 sandbox  F10 attune", HORIZONTAL_ALIGNMENT_RIGHT, 316.0, 5, Color(1, 1, 1, 0.45))
+		_ctrl.draw_multiline_string(font, Vector2(0, 46), Game.banner_text, HORIZONTAL_ALIGNMENT_CENTER, 320.0, 8, -1, Color(1, 0.95, 0.7, alpha))
+	_ctrl.draw_string(font, Vector2(0, 8), "TAB sheet  N new  E imbue  Q lock  F area  R special  F5 sandbox", HORIZONTAL_ALIGNMENT_RIGHT, 316.0, 5, Color(1, 1, 1, 0.45))
 
-	# Layout: [1..5] element tabs, gap, LMB, Q, R, RMB (just RMB if no castable elements)
+	# Layout: [1..5] element tabs, gap, LMB, Q, F, R, RMB (just RMB if no castable set)
 	var count := caster.elements.size()
-	var slots := (count + 4) if count > 0 else 1
+	var slots := (count + 5) if count > 0 else 1
 	var width := slots * (SLOT + GAP) + (GAP * 2.0 if count > 0 else 0.0)
 	var x := (320.0 - width) * 0.5
 	var y := 154.0
@@ -73,16 +62,101 @@ func _draw_hud() -> void:
 		_ctrl.draw_rect(rect, Color.WHITE if active else Color.BLACK, false, 1.0)
 		_ctrl.draw_string(font, rect.position + Vector2(2, 8), str(i + 1), HORIZONTAL_ALIGNMENT_LEFT, -1, 6, Color.BLACK if active else Color.WHITE)
 		_ctrl.draw_string(font, rect.position + Vector2(2, 14), element.substr(0, 3), HORIZONTAL_ALIGNMENT_LEFT, -1, 5, Color.BLACK if active else Color.WHITE)
+		if element in caster.locked:
+			_ctrl.draw_rect(Rect2(rect.position + Vector2(rect.size.x - 4, 0), Vector2(4, 4)), Color.WHITE)  # locked marker
 		x += SLOT + GAP
 
 	x += GAP * 2.0
-	_skill_slot(Vector2(x, y), caster, caster.skill_for("primary"), "LMB")
+	_lmb_slot(Vector2(x, y), caster)
 	x += SLOT + GAP
-	_skill_slot(Vector2(x, y), caster, caster.skill_for("area"), "Q")
+	_lock_slot(Vector2(x, y), caster)
+	x += SLOT + GAP
+	_skill_slot(Vector2(x, y), caster, caster.skill_for("area"), "F")
 	x += SLOT + GAP
 	_skill_slot(Vector2(x, y), caster, caster.skill_for("special"), "R")
 	x += SLOT + GAP
 	_melee_slot(Vector2(x, y))
+
+
+## Points to spend, pending choices, and how the character is fighting right now.
+func _draw_status(font: Font, caster: SkillCaster, character: CharacterData) -> void:
+	if character.unspent_points > 0:
+		_ctrl.draw_string(font, Vector2(88, 18), "%d points to spend (TAB)" % character.unspent_points, HORIZONTAL_ALIGNMENT_LEFT, -1, 6, Color("ffd84a"))
+	var todo: Array[String] = []
+	if character.can_choose_class():
+		todo.append("choose a class")
+	if not character.available_subclasses().is_empty():
+		todo.append("choose a subclass")
+	if not character.pending_rewards.is_empty():
+		todo.append("%d reward%s" % [character.pending_rewards.size(), "" if character.pending_rewards.size() == 1 else "s"])
+	if not todo.is_empty():
+		_ctrl.draw_string(font, Vector2(88, 26), "TAB: " + ", ".join(todo), HORIZONTAL_ALIGNMENT_LEFT, -1, 6, Color("ffd84a"))
+
+	var elements: Array[String] = _player.imbue_elements()
+	var names := "+".join(elements.map(func(e): return String(e).capitalize()))
+	var text := ""
+	var color := Color(1, 1, 1, 0.7)
+	if _player.imbued and not elements.is_empty():
+		text = "Imbued: %s" % names
+		color = Elements.color_of(elements[0]).lightened(0.3)
+	elif not character.castable_elements().is_empty():
+		match Classes.style_of(character.class_id):
+			"ranged":
+				text = "Melee mode - E to imbue and shoot"
+			"melee":
+				text = "Melee class - E imbues the blade"
+	if text != "":
+		_ctrl.draw_string(font, Vector2(88, 34), text, HORIZONTAL_ALIGNMENT_LEFT, -1, 6, color)
+
+
+## LMB: the fused/locked/selected bolt, or a plain slash when LMB is a melee action.
+func _lmb_slot(pos: Vector2, caster: SkillCaster) -> void:
+	if caster.lmb_mode() == "slash":
+		_plain_slot(pos, "LMB", "Slas", Color(0.75, 0.75, 0.78, 0.6))
+		return
+	var id := caster.primary_id()
+	if SkillCaster.is_fusion(id):
+		_fusion_slot(pos, caster, id)
+	else:
+		_skill_slot(pos, caster, id, "LMB")
+
+
+func _fusion_slot(pos: Vector2, caster: SkillCaster, id: String) -> void:
+	var font := ThemeDB.fallback_font
+	var rect := Rect2(pos, Vector2(SLOT, SLOT))
+	var parts := caster.locked
+	var stripe := SLOT / parts.size()
+	for i in parts.size():  # one coloured band per fused element
+		_ctrl.draw_rect(Rect2(pos + Vector2(i * stripe, 0), Vector2(stripe, SLOT)), Color(Elements.color_of(parts[i]), 0.65))
+	var cd := caster.cooldown_fraction(id)
+	if cd > 0.0:
+		_ctrl.draw_rect(Rect2(pos, Vector2(SLOT, SLOT * cd)), Color(0, 0, 0, 0.65))
+	if not caster.can_afford(id):
+		_ctrl.draw_rect(rect, Color(0, 0, 0.3, 0.45))
+	_ctrl.draw_rect(rect, Color.BLACK, false, 1.0)
+	_ctrl.draw_string(font, pos + Vector2(2, 7), "LMB", HORIZONTAL_ALIGNMENT_LEFT, -1, 6, Color.WHITE)
+	_ctrl.draw_string(font, pos + Vector2(2, 17), "Fuse%d" % parts.size(), HORIZONTAL_ALIGNMENT_LEFT, -1, 6, Color.WHITE)
+
+
+## Q: shows up to three lock pips (filled = locked element).
+func _lock_slot(pos: Vector2, caster: SkillCaster) -> void:
+	var font := ThemeDB.fallback_font
+	var rect := Rect2(pos, Vector2(SLOT, SLOT))
+	var available := caster.lock_available()
+	_ctrl.draw_rect(rect, Color(0.18, 0.2, 0.28, 0.9))
+	_ctrl.draw_rect(rect, Color.BLACK, false, 1.0)
+	_ctrl.draw_string(font, pos + Vector2(2, 7), "Q", HORIZONTAL_ALIGNMENT_LEFT, -1, 6, Color.WHITE if available else Color(1, 1, 1, 0.4))
+	if not available:
+		var why := "Lv%d" % Classes.AREA_LEVEL if Game.character.level < Classes.AREA_LEVEL else "none"
+		_ctrl.draw_string(font, pos + Vector2(2, 17), why, HORIZONTAL_ALIGNMENT_LEFT, -1, 6, Color("ffd84a") if Game.character.level < Classes.AREA_LEVEL else Color(1, 1, 1, 0.4))
+		_ctrl.draw_rect(rect, Color(0, 0, 0, 0.55))
+		return
+	for i in Classes.MAX_LOCKED:
+		var pip := Rect2(pos + Vector2(2 + i * 6, 11), Vector2(5, 6))
+		if i < caster.locked.size():
+			_ctrl.draw_rect(pip, Elements.color_of(caster.locked[i]))
+		else:
+			_ctrl.draw_rect(pip, Color(1, 1, 1, 0.2), false, 1.0)
 
 
 func _skill_slot(pos: Vector2, caster: SkillCaster, skill_id: String, key: String) -> void:
@@ -106,16 +180,21 @@ func _skill_slot(pos: Vector2, caster: SkillCaster, skill_id: String, key: Strin
 		_ctrl.draw_string(font, pos + Vector2(2, 17), ("Lv%d" % Game.character.skill_unlock_level(skill_id)) if Game.character.skill_unlock_level(skill_id) > 0 else "Rwd", HORIZONTAL_ALIGNMENT_LEFT, -1, 6, Color("ffd84a"))
 
 
-func _melee_slot(pos: Vector2) -> void:
-	var m: Dictionary = SkillDB.MELEE
+func _plain_slot(pos: Vector2, key: String, label: String, color: Color) -> void:
 	var font := ThemeDB.fallback_font
 	var rect := Rect2(pos, Vector2(SLOT, SLOT))
-	_ctrl.draw_rect(rect, Color(0.75, 0.75, 0.78, 0.6))
+	_ctrl.draw_rect(rect, color)
+	_ctrl.draw_rect(rect, Color.BLACK, false, 1.0)
+	_ctrl.draw_string(font, pos + Vector2(2, 7), key, HORIZONTAL_ALIGNMENT_LEFT, -1, 6, Color.WHITE)
+	_ctrl.draw_string(font, pos + Vector2(2, 17), label, HORIZONTAL_ALIGNMENT_LEFT, -1, 6, Color.WHITE)
+
+
+func _melee_slot(pos: Vector2) -> void:
+	var m: Dictionary = SkillDB.MELEE
+	var rect := Rect2(pos, Vector2(SLOT, SLOT))
+	_plain_slot(pos, "RMB", String(m["name"]).substr(0, 4), Color(0.75, 0.75, 0.78, 0.6))
 	if _player.stamina < float(m["stamina"]):
 		_ctrl.draw_rect(rect, Color(0, 0, 0, 0.55))
-	_ctrl.draw_rect(rect, Color.BLACK, false, 1.0)
-	_ctrl.draw_string(font, pos + Vector2(2, 7), "RMB", HORIZONTAL_ALIGNMENT_LEFT, -1, 6, Color.WHITE)
-	_ctrl.draw_string(font, pos + Vector2(2, 17), String(m["name"]).substr(0, 4), HORIZONTAL_ALIGNMENT_LEFT, -1, 6, Color.WHITE)
 
 
 func _bar(pos: Vector2, size: Vector2, frac: float, color: Color) -> void:

@@ -11,6 +11,9 @@ extends CanvasLayer
 ## Everything is built from Game.character each time a tab opens; nothing is cached.
 
 const TABS := ["stats", "skills", "elements", "passives", "combos", "rewards"]
+const PANEL_SIZE := Vector2i(304, 172)  # fits inside the 320x180 game view
+## Column widths: a tab's columns plus gaps must fit in this (scroll area minus its scrollbar).
+const CONTENT_WIDTH := 284.0
 const GOLD := Color("ffd84a")
 const DIM := Color(1, 1, 1, 0.4)
 const TYPE_COLORS := {
@@ -60,7 +63,8 @@ func show_tab(tab: String) -> void:
 	var panel := PanelContainer.new()
 	panel.theme = _theme
 	panel.position = Vector2(8, 4)
-	panel.custom_minimum_size = Vector2(304, 172)
+	panel.custom_minimum_size = Vector2(PANEL_SIZE)
+	panel.clip_contents = true
 	add_child(panel)
 	var frame := VBoxContainer.new()
 	frame.add_theme_constant_override("separation", 4)
@@ -81,9 +85,15 @@ func show_tab(tab: String) -> void:
 	close_hint.autowrap_mode = TextServer.AUTOWRAP_OFF  # a wrapping label here would stretch the whole row
 	tab_row.add_child(close_hint)
 
+	# The tab body scrolls inside a fixed area, so a busy tab can never spill off the screen.
+	var scroll := ScrollContainer.new()
+	scroll.custom_minimum_size = Vector2(292, 140)
+	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	frame.add_child(scroll)
 	_content = HBoxContainer.new()
 	_content.add_theme_constant_override("separation", 12)
-	frame.add_child(_content)
+	scroll.add_child(_content)
 	match _tab:
 		"stats": _fill_stats()
 		"skills": _fill_skills()
@@ -97,8 +107,8 @@ func show_tab(tab: String) -> void:
 
 func _fill_stats() -> void:
 	var ch := Game.character
-	var left := _column(130)
-	var right := _column(150)
+	var left := _column(124)
+	var right := _column(148)
 	var cls: Dictionary = Classes.CLASSES[ch.class_id]
 	var title := "%s  Lv %d  %s" % [ch.display_name, ch.level, cls["name"]]
 	if ch.subclass_id != "":
@@ -166,9 +176,9 @@ func _fill_skills() -> void:
 	sets.append_array(ch.elements.filter(func(e): return SkillDB.LOADOUTS.has(e)))
 	if ch.has_martial():
 		sets.append("martial")
-	var columns := [_column(145), _column(145)]
+	var columns := [_column(136), _column(136)]
 	columns[0].add_child(_label("Skills (numbers include your stats)", GOLD))
-	columns[1].add_child(_label("LMB primary   Q area (Lv %d)   R special (reward)" % Classes.AREA_LEVEL, DIM))
+	columns[1].add_child(_label("LMB primary   F area (Lv %d)   R special (reward)   Q locks elements" % Classes.AREA_LEVEL, DIM))
 	if sets.is_empty():
 		columns[0].add_child(_label("No skills: no elements and no martial training.", DIM))
 	for i in sets.size():
@@ -182,7 +192,7 @@ func _fill_skills() -> void:
 ## One compact line for a skill: key, name, cost, cooldown, damage; dim if not yet learned.
 func _skill_line(ch: CharacterData, id: String, slot: String) -> Label:
 	var def: Dictionary = SkillDB.DEFS[id]
-	var key: String = {"primary": "LMB", "area": "Q", "special": "R"}[slot]
+	var key: String = {"primary": "LMB", "area": "F", "special": "R"}[slot]
 	if not ch.can_use_skill(id):
 		var how := "reward" if slot == "special" else "Lv %d" % ch.skill_unlock_level(id)
 		return _label("  %s %s  (%s)" % [key, def["name"], how], DIM)
@@ -195,7 +205,7 @@ func _skill_line(ch: CharacterData, id: String, slot: String) -> Label:
 
 func _fill_elements() -> void:
 	var ch := Game.character
-	var col := _column(290)
+	var col := _column(CONTENT_WIDTH)
 	col.add_child(_label("Elements  (mastery +4%% spell damage per level; rare passive at level %d)" % Classes.RARE_PASSIVE_LEVEL, GOLD))
 	col.add_child(_label(_affinity_text(ch), Color(0.7, 0.9, 1.0)))
 	if ch.elements.is_empty():
@@ -216,8 +226,8 @@ func _fill_elements() -> void:
 
 func _fill_passives() -> void:
 	var ch := Game.character
-	var left := _column(150)
-	var right := _column(130)
+	var left := _column(146)
+	var right := _column(126)
 	left.add_child(_label("Active passives", GOLD))
 	for source in ch.passive_sources():
 		var p := Classes.passive_info(source["id"])
@@ -240,7 +250,7 @@ func _fill_passives() -> void:
 
 func _fill_combos() -> void:
 	var ch := Game.character
-	var col := _column(290)
+	var col := _column(CONTENT_WIDTH)
 	col.add_child(_label("Combos: hit an enemy with a second element while the first still marks it (4s)", GOLD))
 	var keys := Elements.COMBOS.keys()
 	keys.sort()
@@ -254,10 +264,26 @@ func _fill_combos() -> void:
 		else:
 			col.add_child(_label("%s   (needs %s)" % [text, ", ".join(missing.map(func(e): return String(e).capitalize()))], DIM))
 
+	col.add_child(_spacer())
+	col.add_child(_label("Resonance: %d hits of the same element in a row" % Elements.RESONANCE_HITS, GOLD))
+	for element in Elements.RESONANCE:
+		var resonance: Dictionary = Elements.RESONANCE[element]
+		var line := "%s x%d = %s   %s" % [String(element).capitalize(), Elements.RESONANCE_HITS, resonance["name"], Elements.describe_combo(resonance)]
+		if element in ch.elements:
+			col.add_child(_label(line, resonance["color"].lightened(0.35)))
+		else:
+			col.add_child(_label("%s   (needs %s)" % [line, String(element).capitalize()], DIM))
+
+	col.add_child(_spacer())
+	col.add_child(_label("Martial: %d physical hits within %.0fs (slash, spin, knives, whirlwind)" % [Elements.MARTIAL_CHAIN_HITS, Elements.MARTIAL_CHAIN_TIME], GOLD))
+	var rend: Dictionary = Elements.MARTIAL_COMBO
+	col.add_child(_label("Physical x%d = %s   %s" % [Elements.MARTIAL_CHAIN_HITS, rend["name"], Elements.describe_combo(rend)], rend["color"]))
+	col.add_child(_label("Imbued slashes and fused bolts count as elemental hits instead.", DIM))
+
 
 func _fill_rewards() -> void:
 	var ch := Game.character
-	var col := _column(290)
+	var col := _column(CONTENT_WIDTH)
 	col.add_child(_label("Level rewards: pick one option from each offer. Every even level except %d gives one." % Classes.SUBCLASS_LEVEL, GOLD))
 	if ch.pending_rewards.is_empty():
 		col.add_child(_label("Nothing to claim. Next offer at level %d." % _next_reward_level(ch.level), DIM))
@@ -315,6 +341,14 @@ func _column(width: float) -> VBoxContainer:
 	column.custom_minimum_size = Vector2(width, 0)
 	_content.add_child(column)
 	return column
+
+
+## Total width a list of column widths needs (columns plus the 12px gaps between them).
+static func tab_width(column_widths: Array) -> float:
+	var total := 12.0 * maxf(column_widths.size() - 1, 0.0)
+	for width in column_widths:
+		total += float(width)
+	return total
 
 
 ## A button that never takes keyboard focus, so TAB/WASD stay with the game.

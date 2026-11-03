@@ -108,7 +108,17 @@ Coming-of-age ceremony · 1 village hub · 1 dungeon with 3–4 room types · 3 
 - **Progression gates:** everyone starts as a Novice. Level 3: choose a class. Level 5: the area
   skill (Q) unlocks. Level 10: choose a subclass. Even levels except 10 give a **reward**: an
   offer of 1-3 options, a special skill (R) or a passive, of which you pick one.
-- **Imbue (E):** coat your blade in the selected element so slashes carry it (and set up combos).
+- **Imbue (E):** a toggle. Coat your blade in your element(s) so slashes carry them (and set up
+  combos). Ranged classes shoot only while imbued and slash when not; the melee class (Vanguard)
+  has no ranged bolts and uses elements through imbue and abilities.
+- **Element locking (Q, level 5):** lock up to 3 elements; the primary attack then fires one
+  fused bolt hitting with each element in turn, so their combos trigger in a single shot. With no
+  elements, Q is locked. Area skills moved to F.
+- **More combos:** *resonance* (3 hits of one element in a row) and martial *Rend* (3 physical
+  hits in a row).
+- **Dodge spin:** attack while dodging for a costly 360 degree slash, which can be imbued.
+- **Rewards appear as cards** in the middle of the screen, pausing the game.
+- **New trait:** Jack of All Trades (small bonuses to everything).
 - **Passives come in four types:** *class* (fixed), *trait* (rolled at creation, tied to the
   character; fewer other passive sources means more traits), *element* (rare, element mastery 5)
   and *skill* (rare, earned by using one skill many times).

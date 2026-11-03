@@ -23,6 +23,10 @@ const CONTACT_MARGIN := 1.0  # px; bodies this close count as touching
 var hp := 0.0
 var aura := ""
 var aura_time := 0.0
+var aura_stacks := 0   # consecutive discrete hits of the aura's element (resonance)
+var chain_count := 0   # consecutive physical hits (martial combo)
+var chain_time := 0.0
+var _text_offset := Vector2.ZERO
 var effects: Dictionary = {}  # kind -> {"time": float, "power": float}
 
 var _knock := Vector2.ZERO
@@ -43,6 +47,9 @@ func _ready() -> void:
 
 
 func take_hit(hit: Dictionary) -> void:
+	if hp <= 0.0:
+		return  # already dead (e.g. a fused bolt's later hits): never reward or react twice
+	_text_offset = hit.get("text_offset", Vector2.ZERO)
 	var dmg: float = hit.get("damage", 0.0)
 	var element: String = hit.get("element", "")
 	var text_color := Elements.color_of(element)
@@ -56,19 +63,38 @@ func take_hit(hit: Dictionary) -> void:
 		label = "Shatter"
 		text_color = Color("bfe3ff")
 
+	# Which combo (if any) this hit completes:
+	#   different element on an aura -> the pair combo     (consumes the aura)
+	#   same element, Nth discrete hit -> that resonance   (consumes the aura)
+	#   Nth physical hit in a row      -> the martial Rend (aura untouched)
 	var combo: Dictionary = {}
-	if aura != "" and element != "" and aura != element:
+	var consumes_aura := false
+	if element == "":
+		if juicy:
+			combo = _martial_chain()
+	elif aura != "" and aura != element:
 		combo = Elements.resolve(aura, element)
+		consumes_aura = not combo.is_empty()
+		if combo.is_empty():
+			_set_aura(element)
+	elif aura == element:
+		aura_time = AURA_TIME
+		if juicy:
+			aura_stacks += 1
+			if aura_stacks >= Elements.RESONANCE_HITS and Elements.RESONANCE.has(element):
+				combo = Elements.RESONANCE[element]
+				consumes_aura = true
+	else:
+		_set_aura(element)
 	if not combo.is_empty():
 		dmg *= float(combo["mult"])
 		_add_effect(combo["effect"], combo["time"], combo["power"])
 		label = combo["name"]
 		text_color = combo["color"]
-		aura = ""
-		aura_time = 0.0
-	elif element != "":
-		aura = element
-		aura_time = AURA_TIME
+		if consumes_aura:
+			aura = ""
+			aura_time = 0.0
+			aura_stacks = 0
 
 	var apply: Dictionary = hit.get("apply", {})
 	if not apply.is_empty():
@@ -92,7 +118,7 @@ func take_hit(hit: Dictionary) -> void:
 
 	_damage(dmg, text_color)
 	if label != "" and hp > 0.0:
-		FloatText.spawn(get_parent(), global_position + Vector2(0, -8), label + "!", text_color)
+		FloatText.spawn(get_parent(), global_position + Vector2(0, -8) + _text_offset, label + "!", text_color)
 
 
 ## The enemy's body rectangle in world space (its sprite's footprint).
@@ -105,6 +131,23 @@ func hit_rect() -> Rect2:
 ## a hurtbox() -> Rect2. Grown by CONTACT_MARGIN so visually touching sprites count.
 func touches(target: Node2D) -> bool:
 	return target.has_method("hurtbox") and hit_rect().grow(CONTACT_MARGIN).intersects(target.hurtbox())
+
+
+func _set_aura(element: String) -> void:
+	aura = element
+	aura_time = AURA_TIME
+	aura_stacks = 1
+
+
+## Counts a physical hit; returns the martial combo when the chain completes.
+func _martial_chain() -> Dictionary:
+	chain_count = chain_count + 1 if chain_time > 0.0 else 1
+	chain_time = Elements.MARTIAL_CHAIN_TIME
+	if chain_count >= Elements.MARTIAL_CHAIN_HITS:
+		chain_count = 0
+		chain_time = 0.0
+		return Elements.MARTIAL_COMBO
+	return {}
 
 
 func is_stunned() -> bool:
@@ -125,7 +168,7 @@ func _add_effect(kind: String, time: float, power: float) -> void:
 
 func _damage(amount: float, color: Color) -> void:
 	hp -= amount
-	FloatText.spawn(get_parent(), global_position, str(int(round(amount))), color)
+	FloatText.spawn(get_parent(), global_position + _text_offset, str(int(round(amount))), color)
 	if hp <= 0.0:
 		HitFx.burst(get_parent(), global_position, Color("9be88a"), 14, 80.0)
 		Juice.hit_stop(0.05)
@@ -161,9 +204,11 @@ func _physics_process(delta: float) -> void:
 
 
 func _tick_status(delta: float) -> void:
+	chain_time -= delta
 	aura_time -= delta
 	if aura_time <= 0.0:
 		aura = ""
+		aura_stacks = 0
 	for kind in effects.keys():
 		var e: Dictionary = effects[kind]
 		e["time"] -= delta
