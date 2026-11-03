@@ -1,0 +1,51 @@
+extends Node
+## Central sprite lookup. Everything asks for art by string ID.
+## If res://assets/sprites/<id>.png exists it is used; otherwise a placeholder
+## is generated, so real art can be dropped in later with no code changes.
+
+const SPRITE_DIR := "res://assets/sprites/"
+
+# id -> [fill colour, outline colour, size in px]
+const PLACEHOLDERS := {
+	"player": [Color("4aa3ff"), Color("173a66"), Vector2i(12, 16)],
+	"enemy_slime": [Color("6bd66b"), Color("1d5a1d"), Vector2i(12, 10)],
+	"tile_floor": [Color("3b3f4a"), Color("33363f"), Vector2i(16, 16)],
+	"tile_wall": [Color("6b5a4a"), Color("2f261e"), Vector2i(16, 16)],
+	"proj_fire": [Color("ff6a2b"), Color("fff2a0"), Vector2i(6, 6)],
+	"proj_water": [Color("3fa7ff"), Color("d6efff"), Vector2i(6, 6)],
+	"proj_earth": [Color("5fbf4a"), Color("2d5a22"), Vector2i(6, 6)],
+	"proj_air": [Color("d9f2ff"), Color("8fb7cc"), Vector2i(6, 6)],
+	"proj_martial": [Color("c9c9d2"), Color("55555f"), Vector2i(6, 4)],
+	"proj_mineral": [Color("b5a58a"), Color("5c4f3a"), Vector2i(6, 6)],
+}
+
+var _cache: Dictionary = {}
+
+
+func get_texture(id: String) -> Texture2D:
+	if _cache.has(id):
+		return _cache[id]
+	var path := SPRITE_DIR + id + ".png"
+	var tex: Texture2D
+	if ResourceLoader.exists(path):
+		tex = load(path)
+	else:
+		tex = _make_placeholder(id)
+	_cache[id] = tex
+	return tex
+
+
+func _make_placeholder(id: String) -> Texture2D:
+	var spec: Array = PLACEHOLDERS.get(id, [Color.MAGENTA, Color.BLACK, Vector2i(16, 16)])
+	var fill: Color = spec[0]
+	var edge: Color = spec[1]
+	var size: Vector2i = spec[2]
+	var img := Image.create(size.x, size.y, false, Image.FORMAT_RGBA8)
+	img.fill(fill)
+	for x in size.x:
+		img.set_pixel(x, 0, edge)
+		img.set_pixel(x, size.y - 1, edge)
+	for y in size.y:
+		img.set_pixel(0, y, edge)
+		img.set_pixel(size.x - 1, y, edge)
+	return ImageTexture.create_from_image(img)

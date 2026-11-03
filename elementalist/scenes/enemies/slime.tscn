@@ -1,0 +1,16 @@
+[gd_scene format=3 uid="uid://dkefd5qutg472"]
+
+[ext_resource type="Script" uid="uid://d81lk4nglwax" path="res://scripts/combat/enemy.gd" id="1_rldp6"]
+
+[sub_resource type="CircleShape2D" id="CircleShape2D_ahq63"]
+radius = 5.0
+
+[node name="Slime" type="CharacterBody2D" unique_id=1184206174]
+collision_layer = 4
+motion_mode = 1
+script = ExtResource("1_rldp6")
+
+[node name="Sprite2D" type="Sprite2D" parent="." unique_id=1870605486]
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="." unique_id=641460458]
+shape = SubResource("CircleShape2D_ahq63")

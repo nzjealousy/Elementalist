@@ -1,0 +1,6 @@
+[gd_scene format=3 uid="uid://t1fkemney7c"]
+
+[ext_resource type="Script" uid="uid://c48kwnv6aggsh" path="res://tests/combo_selftest.gd" id="1_74f1u"]
+
+[node name="ComboSelftest" type="Node" unique_id=1821398211]
+script = ExtResource("1_74f1u")

@@ -1,0 +1,11 @@
+# OS and editor noise
+Thumbs.db
+Desktop.ini
+.DS_Store
+*.tmp
+*.bak
+
+# Local tooling state (not part of the game)
+.claude/
+
+# Godot's own ignores (.godot/, builds) live in elementalist/.gitignore
