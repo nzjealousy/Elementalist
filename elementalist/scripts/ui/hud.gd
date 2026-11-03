@@ -37,15 +37,26 @@ func _draw_hud() -> void:
 	var xp_frac := float(character.xp) / float(CharacterData.xp_to_next(character.level))
 	_bar(Vector2(4, 24), Vector2(80, 3), xp_frac, Color("ffd84a"))
 	if character.unspent_points > 0:
-		_ctrl.draw_string(font, Vector2(88, 20), "%d points to spend (C)" % character.unspent_points, HORIZONTAL_ALIGNMENT_LEFT, -1, 6, Color("ffd84a"))
+		_ctrl.draw_string(font, Vector2(88, 18), "%d points to spend (TAB)" % character.unspent_points, HORIZONTAL_ALIGNMENT_LEFT, -1, 6, Color("ffd84a"))
+	var todo: Array[String] = []
+	if character.can_choose_class():
+		todo.append("choose a class")
+	if not character.available_subclasses().is_empty():
+		todo.append("choose a subclass")
+	if not character.pending_rewards.is_empty():
+		todo.append("%d reward%s" % [character.pending_rewards.size(), "" if character.pending_rewards.size() == 1 else "s"])
+	if not todo.is_empty():
+		_ctrl.draw_string(font, Vector2(88, 26), "TAB: " + ", ".join(todo), HORIZONTAL_ALIGNMENT_LEFT, -1, 6, Color("ffd84a"))
+	if _player.imbue_left > 0.0:
+		_ctrl.draw_string(font, Vector2(88, 34), "Blade imbued: %s %.0fs" % [_player.imbue_element.capitalize(), _player.imbue_left], HORIZONTAL_ALIGNMENT_LEFT, -1, 6, Elements.color_of(_player.imbue_element).lightened(0.3))
 	if Game.banner_time > 0.0:
 		var alpha := clampf(Game.banner_time, 0.0, 1.0)
 		_ctrl.draw_multiline_string(font, Vector2(0, 40), Game.banner_text, HORIZONTAL_ALIGNMENT_CENTER, 320.0, 8, -1, Color(1, 0.95, 0.7, alpha))
-	_ctrl.draw_string(font, Vector2(0, 8), "C sheet  N new character  F5 sandbox  F10 attune", HORIZONTAL_ALIGNMENT_RIGHT, 316.0, 5, Color(1, 1, 1, 0.45))
+	_ctrl.draw_string(font, Vector2(0, 8), "TAB sheet  N new character  E imbue  F5 sandbox  F10 attune", HORIZONTAL_ALIGNMENT_RIGHT, 316.0, 5, Color(1, 1, 1, 0.45))
 
-	# Layout: [1..5] element tabs, gap, LMB, Q, RMB (just RMB if no castable elements)
+	# Layout: [1..5] element tabs, gap, LMB, Q, R, RMB (just RMB if no castable elements)
 	var count := caster.elements.size()
-	var slots := (count + 3) if count > 0 else 1
+	var slots := (count + 4) if count > 0 else 1
 	var width := slots * (SLOT + GAP) + (GAP * 2.0 if count > 0 else 0.0)
 	var x := (320.0 - width) * 0.5
 	var y := 154.0
@@ -69,6 +80,8 @@ func _draw_hud() -> void:
 	x += SLOT + GAP
 	_skill_slot(Vector2(x, y), caster, caster.skill_for("area"), "Q")
 	x += SLOT + GAP
+	_skill_slot(Vector2(x, y), caster, caster.skill_for("special"), "R")
+	x += SLOT + GAP
 	_melee_slot(Vector2(x, y))
 
 
@@ -90,7 +103,7 @@ func _skill_slot(pos: Vector2, caster: SkillCaster, skill_id: String, key: Strin
 	if learned:
 		_ctrl.draw_string(font, pos + Vector2(2, 17), String(def["name"]).substr(0, 4), HORIZONTAL_ALIGNMENT_LEFT, -1, 6, Color.WHITE)
 	else:
-		_ctrl.draw_string(font, pos + Vector2(2, 17), "Lv%d" % Game.character.skill_unlock_level(skill_id), HORIZONTAL_ALIGNMENT_LEFT, -1, 6, Color("ffd84a"))
+		_ctrl.draw_string(font, pos + Vector2(2, 17), ("Lv%d" % Game.character.skill_unlock_level(skill_id)) if Game.character.skill_unlock_level(skill_id) > 0 else "Rwd", HORIZONTAL_ALIGNMENT_LEFT, -1, 6, Color("ffd84a"))
 
 
 func _melee_slot(pos: Vector2) -> void:

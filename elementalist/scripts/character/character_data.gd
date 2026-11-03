@@ -1,16 +1,20 @@
 class_name CharacterData
 extends RefCounted
 ## Everything that defines a character: class, attributes, level/XP, owned elements and their
-## mastery, weapon mastery, traits, skill usage, and which skills they may use. Pure data +
-## rules, no nodes, so it can be saved, loaded and unit-tested.
+## mastery, weapon mastery, traits, skill usage, rewards, and which skills they may use. Pure
+## data + rules, no nodes, so it can be saved, loaded and unit-tested.
 ##
-## Elements come from the world (the ceremony, items, story); skills are learned through the
-## class. A skill is usable only if the character owns its element AND has learned it.
-## Characters born without elements ("non-elementalists") instead learn the martial set, a pair
-## of stamina-powered physical skills, but may still gain elements later (attunable).
+## Progression (see Classes for the gates): everyone starts as a Novice, chooses a class at
+## level 3, unlocks area skills (Q) at level 5 and a subclass at level 10. Milestone levels
+## queue a reward offer (Rewards) in `pending_rewards`.
+##
+## Elements come from the world (the ceremony, items, story); skills are learned. A skill is
+## usable only if the character owns its element AND has learned it. Characters born without
+## elements ("non-elementalists") instead learn the martial set, a pair of stamina-powered
+## physical skills, but may still gain elements later (attunable).
 ##
 ## Stats that scale with attributes (documented in docs/ARCHITECTURE.md):
-##   derived()             HP, mana, stamina, speed, melee damage, ...
+##   derived()             HP, mana, stamina, speed, melee damage and reach, ...
 ##   spell_damage_mult()   Intellect, element mastery, passives
 ##   potency_mult()        the element's governing attribute scales status duration/strength
 ##   skill_scale()         a skill's own "scales" attribute scales radius/knockback/speed/cooldown
@@ -18,6 +22,9 @@ extends RefCounted
 signal leveled_up(new_level: int)
 signal mastery_leveled(label: String, new_level: int)
 signal passive_unlocked(passive_name: String)
+signal class_chosen(class_id: String)
+signal reward_ready(level: int)
+signal reward_claimed(reward_name: String)
 signal elements_changed
 signal changed
 
@@ -31,7 +38,7 @@ const FREE_POINTS_PER_LEVEL := 2
 const LEVEL_UP_HEAL_FRACTION := 0.4  # a level-up restores this share of max HP, not all of it
 
 var display_name := "Hero"
-var class_id := "channeler"
+var class_id := Classes.NEUTRAL_CLASS
 var subclass_id := ""
 var affinity := ELEMENTALIST
 var level := 1
@@ -42,12 +49,16 @@ var elements: Array[String] = []
 var element_mastery: Dictionary = {}   # element id -> {"level": int, "xp": int}
 var weapon_type := "sword"
 var weapon_masteries: Dictionary = {}  # weapon type -> {"level": int, "xp": int}
-var traits: Array[String] = []         # innate passives, rolled at creation
+var traits: Array[String] = []         # innate passives: rolled at creation or chosen as rewards
 var skill_uses: Dictionary = {}        # skill id -> times used (unlocks skill mastery passives)
+var learned_specials: Array[String] = []  # special (R) skills earned as rewards
+var pending_rewards: Array = []        # unclaimed offers: each is an Array of {"type", "id"}
+var reward_rng := RandomNumberGenerator.new()  # rolls reward offers (tests may seed it)
 
 
-## New character. Elementalists go through the ceremony: they may be born with elements, or
-## with none (then they become attunable). Sealed and attunable characters skip it.
+## New character. Everyone starts as a Novice unless `cls` names a real class (a shortcut for
+## testing). Elementalists go through the ceremony: they may be born with elements, or with
+## none (then they become attunable). Sealed and attunable characters skip it.
 static func create(char_name: String, cls: String, aff: String, rng: RandomNumberGenerator) -> CharacterData:
 	var c := CharacterData.new()
 	c._setup(char_name, cls, aff)
@@ -62,7 +73,7 @@ static func create(char_name: String, cls: String, aff: String, rng: RandomNumbe
 
 
 ## A character with chosen elements and no traits, skipping the ceremony. Used by the sandbox
-## and tests.
+## and tests. Levelling up queues the rewards for the levels skipped.
 static func create_sandbox(cls: String, owned: Array, start_level: int = 1) -> CharacterData:
 	var c := CharacterData.new()
 	c._setup("Sandbox", cls, ELEMENTALIST)
@@ -80,6 +91,32 @@ func _setup(char_name: String, cls: String, aff: String) -> void:
 	attributes = Classes.CLASSES[cls]["base"].duplicate()
 	weapon_type = Classes.CLASSES[cls]["weapon"]
 	weapon_masteries[weapon_type] = {"level": 1, "xp": 0}
+	reward_rng.randomize()
+
+
+# ---------- class (chosen at level 3) ----------
+
+func can_choose_class() -> bool:
+	return level >= Classes.CLASS_LEVEL and Classes.is_starter(class_id)
+
+
+## Turns a Novice into `id`. Points the player already spent are kept; the class's base
+## attributes replace the Novice's and its growth is applied for the levels gained so far.
+func choose_class(id: String) -> bool:
+	if not can_choose_class() or not (id in Classes.playable()):
+		return false
+	var novice_base: Dictionary = Classes.CLASSES[class_id]["base"]
+	var cls: Dictionary = Classes.CLASSES[id]
+	for attr in attributes:
+		var spent: int = int(attributes[attr]) - int(novice_base[attr])
+		attributes[attr] = int(cls["base"][attr]) + spent + int(cls["per_level"].get(attr, 0)) * (level - 1)
+	class_id = id
+	weapon_type = cls["weapon"]
+	if not weapon_masteries.has(weapon_type):
+		weapon_masteries[weapon_type] = {"level": 1, "xp": 0}
+	class_chosen.emit(id)
+	changed.emit()
+	return true
 
 
 # ---------- elements ----------
@@ -128,6 +165,11 @@ func _level_up() -> void:
 	var growth: Dictionary = Classes.CLASSES[class_id]["per_level"]
 	for attr in growth:
 		attributes[attr] += int(growth[attr])
+	if Rewards.is_reward_level(level):
+		var offer := Rewards.generate(self, reward_rng)
+		if not offer.is_empty():
+			pending_rewards.append(offer)
+			reward_ready.emit(level)
 	leveled_up.emit(level)
 
 
@@ -136,6 +178,32 @@ func spend_point(attr: String) -> bool:
 		return false
 	attributes[attr] += 1
 	unspent_points -= 1
+	changed.emit()
+	return true
+
+
+# ---------- rewards ----------
+
+## Applies option `option_index` of the pending offer `offer_index` (a passive becomes a trait,
+## a skill becomes a learned special) and discards that offer. False if it can't be applied.
+func claim_reward(offer_index: int, option_index: int) -> bool:
+	if offer_index < 0 or offer_index >= pending_rewards.size():
+		return false
+	var offer: Array = pending_rewards[offer_index]
+	if option_index < 0 or option_index >= offer.size():
+		return false
+	var option: Dictionary = offer[option_index]
+	var id := String(option["id"])
+	if option["type"] == "skill":
+		if id in learned_specials or not (SkillDB.set_of(id) in castable_sets()):
+			return false
+		learned_specials.append(id)
+	else:
+		if id in traits:
+			return false
+		traits.append(id)
+	pending_rewards.remove_at(offer_index)
+	reward_claimed.emit(Rewards.option_name(option))
 	changed.emit()
 	return true
 
@@ -184,7 +252,7 @@ func record_skill_use(skill_id: String) -> void:
 		changed.emit()
 
 
-# ---------- subclass ----------
+# ---------- subclass (level 10) ----------
 
 func available_subclasses() -> Array:
 	if level < Classes.SUBCLASS_LEVEL or subclass_id != "":
@@ -248,7 +316,7 @@ static func _mod(mods: Dictionary, key: String) -> float:
 
 
 ## Final gameplay stats. At all-5 attributes and no passives these equal the values the
-## combat was tuned against (100 HP, 100 mana, 100 stamina, speed 80).
+## combat was tuned against (100 HP, 100 mana, 100 stamina, speed 80, melee reach x1.0).
 func derived() -> Dictionary:
 	var m := stat_mods()
 	var vit := float(attributes["vitality"])
@@ -265,6 +333,7 @@ func derived() -> Dictionary:
 		"stamina_regen": 20.0 + agi * 2.0 + _mod(m, "stamina_regen_add"),
 		"move_speed": (70.0 + agi * 2.0) * _mod(m, "move_speed_mult"),
 		"melee_damage_mult": (1.0 + (str_ - 5.0) * 0.06) * weapon_bonus * _mod(m, "melee_damage_mult"),
+		"melee_range_mult": float(Classes.CLASSES[class_id]["melee_range"]) * _mod(m, "melee_range_mult"),
 		"melee_stamina_cost_mult": _mod(m, "melee_stamina_cost_mult"),
 		"damage_taken_mult": _mod(m, "damage_taken_mult"),
 		"burn_time_mult": _mod(m, "burn_time_mult"),
@@ -335,11 +404,11 @@ func castable_sets() -> Array[String]:
 	return out
 
 
-## Level at which the class (or, for martial skills, everyone) teaches this skill.
+## Level at which this skill is taught (primary 1, area 5), or 0 for specials, which are
+## earned as rewards instead.
 func skill_unlock_level(skill_id: String) -> int:
-	var set_id := SkillDB.set_of(skill_id)
-	var levels: Dictionary = Classes.MARTIAL_LEVELS if set_id == "martial" else Classes.CLASSES[class_id]["skill_levels"]
-	return int(levels[SkillDB.slot_of(skill_id)])
+	var slot := SkillDB.slot_of(skill_id)
+	return int(Classes.SKILL_LEVELS.get(slot, 0))
 
 
 ## Skills the character has been taught, for the sets they have access to.
@@ -350,6 +419,9 @@ func known_skills() -> Array[String]:
 			var skill_id: String = SkillDB.LOADOUTS[set_id][slot]
 			if level >= skill_unlock_level(skill_id):
 				out.append(skill_id)
+		var special: String = SkillDB.LOADOUTS[set_id]["special"]
+		if special in learned_specials:
+			out.append(special)
 	return out
 
 
@@ -375,6 +447,8 @@ func to_dict() -> Dictionary:
 		"weapon_masteries": weapon_masteries.duplicate(true),
 		"traits": Array(traits),
 		"skill_uses": skill_uses.duplicate(),
+		"learned_specials": Array(learned_specials),
+		"pending_rewards": pending_rewards.duplicate(true),
 	}
 
 
@@ -398,6 +472,13 @@ static func from_dict(d: Dictionary) -> CharacterData:
 		c.traits.append(String(trait_id))
 	for skill_id in d.get("skill_uses", {}):
 		c.skill_uses[skill_id] = int(d["skill_uses"][skill_id])
+	for skill_id in d.get("learned_specials", []):
+		c.learned_specials.append(String(skill_id))
+	for offer in d.get("pending_rewards", []):
+		var options: Array = []
+		for option in offer:
+			options.append({"type": String(option["type"]), "id": String(option["id"])})
+		c.pending_rewards.append(options)
 	return c
 
 

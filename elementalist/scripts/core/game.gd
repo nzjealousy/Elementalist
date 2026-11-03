@@ -8,7 +8,7 @@ var banner_time := 0.0
 
 
 func _ready() -> void:
-	start_new("channeler")
+	start_new(Classes.NEUTRAL_CLASS)
 
 
 ## Fresh character: class chosen, then born through the ceremony (elementalists roll their
@@ -33,7 +33,7 @@ func start_new(class_id: String, affinity: String = CharacterData.ELEMENTALIST) 
 ## Every main element and enough levels that all skills are learned. For combat testing.
 func start_sandbox(class_id: String = "channeler") -> void:
 	character = CharacterData.create_sandbox(class_id, Elements.MAIN, Classes.SUBCLASS_LEVEL)
-	_show_banner("Sandbox: all elements, level %d %s" % [character.level, Classes.CLASSES[class_id]["name"]])
+	_show_banner("Sandbox: all elements, level %d %s (subclass unlocked)" % [character.level, Classes.CLASSES[class_id]["name"]])
 
 
 ## Debug stand-in for an attunement item or story event: grants a random element not yet owned.

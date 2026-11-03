@@ -3,10 +3,18 @@ extends RefCounted
 ## Static tables for classes, subclasses, passives, traits and attribute scaling.
 ## Data only, no scene dependencies, so it is safe to read from anywhere (and from tests).
 ##
+## Progression gates (same for every character):
+##   level 1   primary skill (LMB) of each owned element, and the martial set
+##   level 3   choose a class (until then you are a Novice)
+##   level 5   area skill (Q) unlocked
+##   level 10  choose a subclass
+##   milestone levels (see Rewards) offer a skill or passive reward
+##
 ## PASSIVES come in four types (see CharacterData.passive_sources):
 ##   class    fixed, from the class and chosen subclass
-##   trait    tied to the character; rolled at creation. Characters with fewer other passive
-##            sources (e.g. non-elementalists) tend to roll more of them (Ceremony.roll_traits)
+##   trait    tied to the character; rolled at creation or earned as a level reward. Characters
+##            with fewer other passive sources (e.g. non-elementalists) tend to roll more of
+##            them (Ceremony.roll_traits)
 ##   element  rare: unlocked at element mastery RARE_PASSIVE_LEVEL (also weapon mastery)
 ##   skill    rare: unlocked by using one skill many times (see skill_passive_uses)
 ##
@@ -16,15 +24,17 @@ extends RefCounted
 ## Per-skill mods are named "<skill_id>_damage_mult" / "<skill_id>_cooldown_mult".
 
 const ATTRIBUTES := ["strength", "agility", "intellect", "vitality"]
-const SUBCLASS_LEVEL := 5
+const CLASS_LEVEL := 3     # level at which a Novice chooses a class
+const AREA_LEVEL := 5      # level at which area skills (Q) unlock, for everyone
+const SUBCLASS_LEVEL := 10
 const RARE_PASSIVE_LEVEL := 5  # element / weapon mastery level that unlocks its passive
 
-## Hidden neutral class: all attributes 5, no growth, no passives. Used by tests and as the
-## baseline the combat numbers were tuned against.
+## The class everyone starts as. All attributes 5, no growth, no passives: the baseline the
+## combat numbers were tuned against, also used by tests.
 const NEUTRAL_CLASS := "wanderer"
 
-## Skills every non-elementalist ("martial" set) learns, regardless of class.
-const MARTIAL_LEVELS := {"primary": 1, "area": 2}
+## Level at which each skill slot is learned. "special" (R) skills are learned from rewards.
+const SKILL_LEVELS := {"primary": 1, "area": AREA_LEVEL}
 
 ## The attribute that governs each element's potency (status duration and strength).
 const ELEMENT_ATTRIBUTE := {
@@ -36,71 +46,72 @@ const POTENCY_PER_POINT := 0.03  # per attribute point above/below 5
 ## How much one attribute point above/below 5 changes a skill property (see SkillDB "scales").
 const SCALE_RATE := {"radius": 0.03, "knockback": 0.05, "speed": 0.03, "cooldown": -0.02}
 
-# Balance: every playable class has the same 21 attribute points at level 1 and +1 per level
-# in its favoured attribute, so classes differ in shape and skill timing, not raw power.
+# Balance: every playable class has the same 21 attribute points when chosen and +1 per level in
+# its favoured attribute, so classes differ in shape, reach and passives, not raw power.
+# "melee_range" multiplies the slash's reach: fighters reach far, casters barely at all.
 const CLASSES := {
 	"channeler": {
 		"name": "Channeler",
-		"desc": "Ranged caster. Huge mana, fragile body, learns area spells at level 3.",
+		"desc": "Ranged caster. Huge mana, fragile, and a very short melee reach.",
 		"base": {"strength": 3, "agility": 5, "intellect": 9, "vitality": 4},
 		"per_level": {"intellect": 1},
-		"skill_levels": {"primary": 1, "area": 3},  # level at which each skill slot is learned
+		"melee_range": 0.75,
 		"weapon": "staff",
 		"passives": ["arcane_focus"],
 		"subclasses": ["spellweaver", "warden"],
 	},
 	"vanguard": {
 		"name": "Vanguard",
-		"desc": "Frontline fighter. Tough and strong, slow to master spells (area at level 5).",
+		"desc": "Frontline fighter. Tough and strong, with the longest melee reach.",
 		"base": {"strength": 8, "agility": 4, "intellect": 3, "vitality": 6},
 		"per_level": {"strength": 1},
-		"skill_levels": {"primary": 1, "area": 5},
+		"melee_range": 1.4,
 		"weapon": "sword",
 		"passives": ["toughened"],
 		"subclasses": ["duelist", "bulwark"],
 	},
 	"ranger": {
 		"name": "Ranger",
-		"desc": "Mobile skirmisher. Fast, fast projectiles, modest health (area at level 4).",
+		"desc": "Mobile skirmisher. Fast, quick bolts, modest health, short blade reach.",
 		"base": {"strength": 5, "agility": 8, "intellect": 4, "vitality": 4},
 		"per_level": {"agility": 1},
-		"skill_levels": {"primary": 1, "area": 4},
+		"melee_range": 0.9,
 		"weapon": "bow",
 		"passives": ["fleet_footed"],
 		"subclasses": ["sharpshooter", "pathfinder"],
 	},
 	"mystic": {
 		"name": "Mystic",
-		"desc": "Attuned hybrid. Learns every spell early (area at level 2), sturdy, weak in melee.",
+		"desc": "Attuned hybrid. Faster spell cooldowns, sturdy, average reach.",
 		"base": {"strength": 3, "agility": 4, "intellect": 7, "vitality": 7},
 		"per_level": {"vitality": 1},
-		"skill_levels": {"primary": 1, "area": 2},
+		"melee_range": 1.0,
 		"weapon": "rod",
 		"passives": ["attuned"],
 		"subclasses": ["oracle", "spiritblade"],
 	},
 	"wanderer": {
-		"name": "Wanderer",
-		"desc": "Neutral baseline.",
+		"name": "Novice",
+		"desc": "No class yet. Choose one at level %d." % CLASS_LEVEL,
 		"base": {"strength": 5, "agility": 5, "intellect": 5, "vitality": 5},
 		"per_level": {},
-		"skill_levels": {"primary": 1, "area": 1},
+		"melee_range": 1.0,
 		"weapon": "sword",
 		"passives": [],
 		"subclasses": [],
-		"hidden": true,
+		"starter": true,
 	},
 }
 
 const SUBCLASSES := {
 	"spellweaver": {"name": "Spellweaver", "desc": "Burst caster: +10% spell damage.", "passives": ["spellweaver_focus"]},
 	"warden": {"name": "Warden", "desc": "Protective caster: -8% damage taken.", "passives": ["warden_ward"]},
-	"duelist": {"name": "Duelist", "desc": "Agile fighter: slashes cost 15% less stamina.", "passives": ["duelist_footwork"]},
+	"duelist": {"name": "Duelist", "desc": "Agile fighter: slashes cost 15% less stamina, +10% reach.", "passives": ["duelist_footwork"]},
 	"bulwark": {"name": "Bulwark", "desc": "Immovable fighter: -10% damage taken, +10 HP.", "passives": ["bulwark_guard"]},
 	"sharpshooter": {"name": "Sharpshooter", "desc": "Faster bolts, +5% spell damage.", "passives": ["sharpshooter_aim"]},
 	"pathfinder": {"name": "Pathfinder", "desc": "Tireless: +8 stamina regen, +4% speed.", "passives": ["pathfinder_stride"]},
 	"oracle": {"name": "Oracle", "desc": "+2 mana regen, +20 max mana.", "passives": ["oracle_insight"]},
-	"spiritblade": {"name": "Spiritblade", "desc": "+15% melee damage, slashes cost 10% less.", "passives": ["spiritblade_focus"]},
+	"spiritblade": {"name": "Spiritblade", "desc": "+15% melee damage, +15% reach, slashes cost 10% less.", "passives": ["spiritblade_focus"]},
 }
 
 const PASSIVES := {
@@ -112,12 +123,12 @@ const PASSIVES := {
 	# subclass (class type)
 	"spellweaver_focus": {"name": "Spellweaver Focus", "desc": "+10% spell damage", "mods": {"spell_damage_mult": 1.1}},
 	"warden_ward": {"name": "Warding", "desc": "-8% damage taken", "mods": {"damage_taken_mult": 0.92}},
-	"duelist_footwork": {"name": "Footwork", "desc": "-15% slash stamina cost", "mods": {"melee_stamina_cost_mult": 0.85}},
+	"duelist_footwork": {"name": "Footwork", "desc": "-15% slash stamina cost, +10% reach", "mods": {"melee_stamina_cost_mult": 0.85, "melee_range_mult": 1.1}},
 	"bulwark_guard": {"name": "Guard", "desc": "-10% damage taken, +10 max HP", "mods": {"damage_taken_mult": 0.9, "max_hp_add": 10.0}},
 	"sharpshooter_aim": {"name": "Steady Aim", "desc": "+15% bolt speed, +5% spell damage", "mods": {"projectile_speed_mult": 1.15, "spell_damage_mult": 1.05}},
 	"pathfinder_stride": {"name": "Long Stride", "desc": "+8 stamina regen, +4% move speed", "mods": {"stamina_regen_add": 8.0, "move_speed_mult": 1.04}},
 	"oracle_insight": {"name": "Insight", "desc": "+2 mana regen, +20 max mana", "mods": {"mana_regen_add": 2.0, "max_mana_add": 20.0}},
-	"spiritblade_focus": {"name": "Spirit Edge", "desc": "+15% melee damage, -10% slash stamina cost", "mods": {"melee_damage_mult": 1.15, "melee_stamina_cost_mult": 0.9}},
+	"spiritblade_focus": {"name": "Spirit Edge", "desc": "+15% melee damage, +15% reach, -10% slash stamina cost", "mods": {"melee_damage_mult": 1.15, "melee_range_mult": 1.15, "melee_stamina_cost_mult": 0.9}},
 	# element mastery (rare)
 	"ember_kindle": {"name": "Kindle", "desc": "Burns last 30% longer", "mods": {"burn_time_mult": 1.3}},
 	"flow": {"name": "Flow", "desc": "+8 stamina regen", "mods": {"stamina_regen_add": 8.0}},
@@ -131,7 +142,7 @@ const PASSIVES := {
 	"staff_training": {"name": "Staff Training", "desc": "+1 mana regen", "mods": {"mana_regen_add": 1.0}},
 	"bow_training": {"name": "Bow Training", "desc": "+5% bolt speed", "mods": {"projectile_speed_mult": 1.05}},
 	"rod_training": {"name": "Rod Training", "desc": "+10 max mana", "mods": {"max_mana_add": 10.0}},
-	# traits (tied to the character, rolled at creation)
+	# traits (tied to the character: rolled at creation, or chosen as level rewards)
 	"sturdy": {"name": "Sturdy", "desc": "+12 max HP", "mods": {"max_hp_add": 12.0}},
 	"tireless": {"name": "Tireless", "desc": "+6 stamina regen", "mods": {"stamina_regen_add": 6.0}},
 	"sharp_mind": {"name": "Sharp Mind", "desc": "+15 max mana", "mods": {"max_mana_add": 15.0}},
@@ -142,11 +153,15 @@ const PASSIVES := {
 	"focused": {"name": "Focused", "desc": "+5% spell damage", "mods": {"spell_damage_mult": 1.05}},
 	"hardy_lungs": {"name": "Hardy Lungs", "desc": "+12 max stamina", "mods": {"max_stamina_add": 12.0}},
 	"quick_hands": {"name": "Quick Hands", "desc": "-5% spell cooldowns", "mods": {"spell_cooldown_mult": 0.95}},
+	"far_reach": {"name": "Far Reach", "desc": "+10% melee reach", "mods": {"melee_range_mult": 1.1}},
+	"calm_mind": {"name": "Calm Mind", "desc": "+1.5 mana regen", "mods": {"mana_regen_add": 1.5}},
+	"stout": {"name": "Stout", "desc": "+8 max HP, +0.15 HP regen", "mods": {"max_hp_add": 8.0, "hp_regen_add": 0.15}},
+	"arcane_surge": {"name": "Arcane Surge", "desc": "+4% spell damage, -3% spell cooldowns", "mods": {"spell_damage_mult": 1.04, "spell_cooldown_mult": 0.97}},
 }
 
 const TRAITS := [
-	"sturdy", "tireless", "sharp_mind", "fleet", "thick_hide",
-	"iron_will", "keen_edge", "focused", "hardy_lungs", "quick_hands",
+	"sturdy", "tireless", "sharp_mind", "fleet", "thick_hide", "iron_will", "keen_edge",
+	"focused", "hardy_lungs", "quick_hands", "far_reach", "calm_mind", "stout", "arcane_surge",
 ]
 
 const ELEMENT_PASSIVES := {
@@ -159,6 +174,16 @@ const WEAPON_PASSIVES := {
 }
 
 const SKILL_MASTERY_PREFIX := "mastery_"
+
+
+## True for the Novice (the class everyone starts as); false for the four real classes.
+static func is_starter(class_id: String) -> bool:
+	return CLASSES[class_id].get("starter", false)
+
+
+## Class ids a Novice can choose between.
+static func playable() -> Array:
+	return CLASSES.keys().filter(func(id): return not is_starter(id))
 
 
 ## Passive definition by id. Skill-mastery passives ("mastery_<skill_id>") are generated:
@@ -177,6 +202,7 @@ static func passive_info(id: String) -> Dictionary:
 	return {"name": id, "desc": "", "mods": {}}
 
 
-## Uses needed to unlock a skill's mastery passive: area skills are cast far less often.
+## Uses needed to unlock a skill's mastery passive: area and special skills are cast far less
+## often than primaries.
 static func skill_passive_uses(skill_id: String) -> int:
-	return 30 if SkillDB.slot_of(skill_id) == "area" else 120
+	return 120 if SkillDB.slot_of(skill_id) == "primary" else 30

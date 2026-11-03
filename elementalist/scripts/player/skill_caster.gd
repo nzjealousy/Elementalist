@@ -88,6 +88,8 @@ func _process(delta: float) -> void:
 		try_cast(skill_for("primary"))
 	if Input.is_action_just_pressed("skill_area"):
 		try_cast(skill_for("area"))
+	if Input.is_action_just_pressed("skill_special"):
+		try_cast(skill_for("special"))
 
 
 ## Enough of the right resource (mana, or stamina for martial skills)?
@@ -141,6 +143,23 @@ func area_target(id: String) -> Vector2:
 	return origin + (body.get_global_mouse_position() - origin).limit_length(float(SkillDB.DEFS[id]["range"]))
 
 
+## The status a skill applies on hit, scaled by the character: the element's potency (its
+## governing attribute) and, for burns, burn passives. Also used by the melee imbue.
+func status_for(def: Dictionary) -> Dictionary:
+	var apply: Dictionary = def.get("apply", {}).duplicate()
+	if apply.is_empty():
+		return apply
+	var character := Game.character
+	var potency := character.potency_mult(String(def.get("element", "")))
+	apply["time"] = float(apply["time"]) * potency
+	if apply["kind"] == "dot":
+		apply["time"] = float(apply["time"]) * float(character.derived()["burn_time_mult"])
+		apply["power"] = float(apply["power"]) * potency
+	elif apply["kind"] == "slow":
+		apply["power"] = minf(float(apply["power"]) * potency, 0.8)
+	return apply
+
+
 ## Casting trains the element (or the weapon, for martial skills) and counts toward the
 ## skill's own mastery passive.
 func _train(id: String, def: Dictionary) -> void:
@@ -162,20 +181,10 @@ func _spawn(id: String, def: Dictionary) -> void:
 	var dir := (mouse - origin).normalized()
 	var parent := body.get_parent()
 
-	# Status potency: the element's governing attribute, plus burn passives for fire.
-	var potency := character.potency_mult(element)
-	var apply: Dictionary = def.get("apply", {}).duplicate()
-	if not apply.is_empty():
-		apply["time"] = float(apply["time"]) * potency
-		if apply["kind"] == "dot":
-			apply["time"] = float(apply["time"]) * float(stats["burn_time_mult"])
-			apply["power"] = float(apply["power"]) * potency
-		elif apply["kind"] == "slow":
-			apply["power"] = minf(float(apply["power"]) * potency, 0.8)
 	var hit := {
 		"damage": character.skill_damage(id),
 		"element": element,
-		"apply": apply,
+		"apply": status_for(def),
 		"knockback": float(def.get("knockback", 50.0)) * character.skill_scale(id, "knockback"),
 	}
 	match def["kind"]:

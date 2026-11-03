@@ -1,14 +1,16 @@
 class_name CharacterSheet
 extends CanvasLayer
-## Character screen (C, Esc to close). Pauses the game while open. Tabs:
-##   Stats      level, attributes (spend points), derived stats, class, subclass, affinity, traits
+## Character screen (TAB, Esc to close). Pauses the game while open. Tabs:
+##   Stats      level, attributes (spend points), derived stats, class choice (level 3),
+##              subclass choice (level 10), affinity, traits
 ##   Skills     skills by set with cost, cooldown and damage after the character's stats
 ##   Elements   mastery, and which attribute governs each element's potency
 ##   Passives   class / trait / element / skill passives, and progress toward the rare ones
 ##   Combos     all ten element combinations; the ones this character can trigger are lit
+##   Rewards    milestone level rewards waiting to be claimed (pick one option per offer)
 ## Everything is built from Game.character each time a tab opens; nothing is cached.
 
-const TABS := ["stats", "skills", "elements", "passives", "combos"]
+const TABS := ["stats", "skills", "elements", "passives", "combos", "rewards"]
 const GOLD := Color("ffd84a")
 const DIM := Color(1, 1, 1, 0.4)
 const TYPE_COLORS := {
@@ -32,7 +34,9 @@ func _exit_tree() -> void:
 	get_tree().paused = false
 
 
-func _unhandled_input(event: InputEvent) -> void:
+## _input (not _unhandled_input) so TAB still closes the sheet while a button has focus:
+## Godot would otherwise use TAB to move GUI focus.
+func _input(event: InputEvent) -> void:
 	if event.is_action_pressed("character_sheet") or (_open and event.is_action_pressed("pause")):
 		toggle()
 		get_viewport().set_input_as_handled()
@@ -66,13 +70,14 @@ func show_tab(tab: String) -> void:
 	tab_row.add_theme_constant_override("separation", 2)
 	frame.add_child(tab_row)
 	for id in TABS:
-		var button := Button.new()
-		button.text = String(id).capitalize()
+		var button := _button(String(id).capitalize())
+		if id == "rewards" and not Game.character.pending_rewards.is_empty():
+			button.text = "Rewards (%d)" % Game.character.pending_rewards.size()
 		button.toggle_mode = true
 		button.button_pressed = id == _tab
 		button.pressed.connect(show_tab.bind(id))
 		tab_row.add_child(button)
-	var close_hint := _label("   C / Esc to close", Color(1, 1, 1, 0.45))
+	var close_hint := _label("  TAB / Esc to close", Color(1, 1, 1, 0.45))
 	close_hint.autowrap_mode = TextServer.AUTOWRAP_OFF  # a wrapping label here would stretch the whole row
 	tab_row.add_child(close_hint)
 
@@ -85,6 +90,7 @@ func show_tab(tab: String) -> void:
 		"elements": _fill_elements()
 		"passives": _fill_passives()
 		"combos": _fill_combos()
+		"rewards": _fill_rewards()
 
 
 # ---------- tabs ----------
@@ -109,8 +115,7 @@ func _fill_stats() -> void:
 		var value_label := _label(str(ch.attributes[attr]))
 		value_label.custom_minimum_size = Vector2(18, 0)
 		row.add_child(value_label)
-		var plus := Button.new()
-		plus.text = "+"
+		var plus := _button("+")
 		plus.disabled = ch.unspent_points <= 0
 		plus.pressed.connect(_spend.bind(attr))
 		row.add_child(plus)
@@ -118,11 +123,22 @@ func _fill_stats() -> void:
 	left.add_child(_spacer())
 	var d := ch.derived()
 	left.add_child(_label("HP %d   Mana %d   Stamina %d" % [d["max_hp"], d["max_mana"], d["max_stamina"]]))
-	left.add_child(_label("Move %d   Melee x%.2f" % [d["move_speed"], d["melee_damage_mult"]]))
+	left.add_child(_label("Move %d   Melee x%.2f   Reach x%.2f" % [d["move_speed"], d["melee_damage_mult"], d["melee_range_mult"]]))
 
 	right.add_child(_label(String(cls["desc"]), Color(0.8, 0.85, 1.0)))
 	right.add_child(_label(_affinity_text(ch), Color(0.7, 0.9, 1.0)))
 	right.add_child(_spacer())
+	if ch.can_choose_class():
+		right.add_child(_label("Choose your class:", GOLD))
+		for id in Classes.playable():
+			var button := _button(String(Classes.CLASSES[id]["name"]))
+			button.alignment = HORIZONTAL_ALIGNMENT_LEFT
+			button.pressed.connect(_choose_class.bind(id))
+			right.add_child(button)
+			right.add_child(_label(String(Classes.CLASSES[id]["desc"]), Color(0.75, 0.75, 0.8)))
+		return
+	if Classes.is_starter(ch.class_id):
+		right.add_child(_label("Class at level %d" % Classes.CLASS_LEVEL, DIM))
 	right.add_child(_label("Traits (innate)", GOLD))
 	if ch.traits.is_empty():
 		right.add_child(_label("None", DIM))
@@ -134,44 +150,47 @@ func _fill_stats() -> void:
 		right.add_child(_spacer())
 		right.add_child(_label("Choose a subclass:", GOLD))
 		for id in subclasses:
-			var button := Button.new()
-			button.text = String(Classes.SUBCLASSES[id]["name"])
+			var button := _button(String(Classes.SUBCLASSES[id]["name"]))
 			button.alignment = HORIZONTAL_ALIGNMENT_LEFT
 			button.pressed.connect(_choose_subclass.bind(id))
 			right.add_child(button)
 			right.add_child(_label(String(Classes.SUBCLASSES[id]["desc"]), Color(0.75, 0.75, 0.8)))
-	elif ch.subclass_id == "" and ch.level < Classes.SUBCLASS_LEVEL:
+	elif ch.subclass_id == "" and not Classes.is_starter(ch.class_id) and ch.level < Classes.SUBCLASS_LEVEL:
 		right.add_child(_spacer())
 		right.add_child(_label("Subclass at level %d" % Classes.SUBCLASS_LEVEL, DIM))
 
 
 func _fill_skills() -> void:
 	var ch := Game.character
-	var col := _column(290)
-	col.add_child(_label("Skills  (damage, cooldown and size include your attributes and passives)", GOLD))
 	var sets: Array[String] = []
 	sets.append_array(ch.elements.filter(func(e): return SkillDB.LOADOUTS.has(e)))
 	if ch.has_martial():
 		sets.append("martial")
+	var columns := [_column(145), _column(145)]
+	columns[0].add_child(_label("Skills (numbers include your stats)", GOLD))
+	columns[1].add_child(_label("LMB primary   Q area (Lv %d)   R special (reward)" % Classes.AREA_LEVEL, DIM))
 	if sets.is_empty():
-		col.add_child(_label("No skills: this character has no elements and no martial training.", DIM))
-	for set_id in sets:
+		columns[0].add_child(_label("No skills: no elements and no martial training.", DIM))
+	for i in sets.size():
+		var col: VBoxContainer = columns[i % 2] if sets.size() > 3 else columns[0 if i < 2 else 1]
+		var set_id: String = sets[i]
 		col.add_child(_label(String(set_id).capitalize() if set_id != "martial" else "Martial (stamina)", Elements.color_of(set_id).lightened(0.3)))
-		for slot in ["primary", "area"]:
-			var id: String = SkillDB.LOADOUTS[set_id][slot]
-			var def: Dictionary = SkillDB.DEFS[id]
-			var key := "LMB" if slot == "primary" else "Q"
-			if not ch.can_use_skill(id):
-				col.add_child(_label("  %s %s - learned at level %d" % [key, def["name"], ch.skill_unlock_level(id)], DIM))
-				continue
-			var cost := "%d %s" % [SkillDB.cost_of(def), "stamina" if SkillDB.uses_stamina(def) else "mana"]
-			var text := "  %s %s   %s   %.1fs   dmg %.0f" % [key, def["name"], cost, ch.skill_cooldown(id), ch.skill_damage(id)]
-			for prop in def.get("scales", {}):
-				text += "   %s x%.2f (%s)" % [prop, ch.skill_scale(id, prop), String(def["scales"][prop]).substr(0, 3)]
-			var uses := int(ch.skill_uses.get(id, 0))
-			var need := Classes.skill_passive_uses(id)
-			text += "   mastery %d/%d" % [mini(uses, need), need]
-			col.add_child(_label(text))
+		for slot in ["primary", "area", "special"]:
+			col.add_child(_skill_line(ch, SkillDB.LOADOUTS[set_id][slot], slot))
+
+
+## One compact line for a skill: key, name, cost, cooldown, damage; dim if not yet learned.
+func _skill_line(ch: CharacterData, id: String, slot: String) -> Label:
+	var def: Dictionary = SkillDB.DEFS[id]
+	var key: String = {"primary": "LMB", "area": "Q", "special": "R"}[slot]
+	if not ch.can_use_skill(id):
+		var how := "reward" if slot == "special" else "Lv %d" % ch.skill_unlock_level(id)
+		return _label("  %s %s  (%s)" % [key, def["name"], how], DIM)
+	var cost := "%d%s" % [SkillDB.cost_of(def), "st" if SkillDB.uses_stamina(def) else "mp"]
+	var text := "  %s %s  %s  %.1fs  dmg %.0f" % [key, def["name"], cost, ch.skill_cooldown(id), ch.skill_damage(id)]
+	for prop in def.get("scales", {}):
+		text += "  %s x%.2f" % [String(prop).substr(0, 3), ch.skill_scale(id, prop)]
+	return _label(text)
 
 
 func _fill_elements() -> void:
@@ -236,7 +255,31 @@ func _fill_combos() -> void:
 			col.add_child(_label("%s   (needs %s)" % [text, ", ".join(missing.map(func(e): return String(e).capitalize()))], DIM))
 
 
+func _fill_rewards() -> void:
+	var ch := Game.character
+	var col := _column(290)
+	col.add_child(_label("Level rewards: pick one option from each offer. Every even level except %d gives one." % Classes.SUBCLASS_LEVEL, GOLD))
+	if ch.pending_rewards.is_empty():
+		col.add_child(_label("Nothing to claim. Next offer at level %d." % _next_reward_level(ch.level), DIM))
+		return
+	for offer_index in ch.pending_rewards.size():
+		var offer: Array = ch.pending_rewards[offer_index]
+		col.add_child(_label("Offer %d  (%d option%s)" % [offer_index + 1, offer.size(), "" if offer.size() == 1 else "s"], Color("e8e8f0")))
+		for option_index in offer.size():
+			var button := _button(Rewards.option_text(offer[option_index]))
+			button.alignment = HORIZONTAL_ALIGNMENT_LEFT
+			button.pressed.connect(_claim.bind(offer_index, option_index))
+			col.add_child(button)
+
+
 # ---------- helpers ----------
+
+func _next_reward_level(from_level: int) -> int:
+	var next := from_level + 1
+	while next <= CharacterData.MAX_LEVEL and not Rewards.is_reward_level(next):
+		next += 1
+	return next
+
 
 func _affinity_text(ch: CharacterData) -> String:
 	match ch.affinity:
@@ -252,8 +295,18 @@ func _spend(attr: String) -> void:
 	show_tab.call_deferred(_tab)
 
 
+func _choose_class(id: String) -> void:
+	Game.character.choose_class(id)
+	show_tab.call_deferred(_tab)
+
+
 func _choose_subclass(id: String) -> void:
 	Game.character.choose_subclass(id)
+	show_tab.call_deferred(_tab)
+
+
+func _claim(offer_index: int, option_index: int) -> void:
+	Game.character.claim_reward(offer_index, option_index)
 	show_tab.call_deferred(_tab)
 
 
@@ -262,6 +315,14 @@ func _column(width: float) -> VBoxContainer:
 	column.custom_minimum_size = Vector2(width, 0)
 	_content.add_child(column)
 	return column
+
+
+## A button that never takes keyboard focus, so TAB/WASD stay with the game.
+func _button(text: String) -> Button:
+	var button := Button.new()
+	button.text = text
+	button.focus_mode = Control.FOCUS_NONE
+	return button
 
 
 func _label(text: String, color: Color = Color.WHITE) -> Label:

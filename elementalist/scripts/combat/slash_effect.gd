@@ -7,14 +7,16 @@ const LIFETIME := 0.14
 var angle := 0.0
 var radius := 24.0
 var arc := deg_to_rad(110.0)
+var color := Color.WHITE  # the imbued element's colour, or white for a plain slash
 
 var _age := 0.0
 
 
-func setup(dir_angle: float, r: float, arc_degrees: float) -> void:
+func setup(dir_angle: float, r: float, arc_degrees: float, slash_color: Color = Color.WHITE) -> void:
 	angle = dir_angle
 	radius = r
 	arc = deg_to_rad(arc_degrees)
+	color = slash_color
 
 
 func _ready() -> void:
@@ -31,4 +33,4 @@ func _process(delta: float) -> void:
 func _draw() -> void:
 	var t := clampf(_age / LIFETIME, 0.0, 1.0)
 	var sweep := angle - arc * 0.5 + arc * t
-	draw_arc(Vector2.ZERO, radius * (0.6 + 0.4 * t), sweep - arc * 0.35, sweep + arc * 0.1, 10, Color(1, 1, 1, 1.0 - t), 2.0)
+	draw_arc(Vector2.ZERO, radius * (0.6 + 0.4 * t), sweep - arc * 0.35, sweep + arc * 0.1, 10, Color(color, 1.0 - t), 2.0)

@@ -14,7 +14,7 @@ const BIRTHS := [
 ]
 
 var _open := false
-var _class_id := "channeler"
+var _class_id := Classes.NEUTRAL_CLASS
 var _birth: String = CharacterData.ELEMENTALIST
 var _theme: Theme
 var _description: Label
@@ -60,13 +60,12 @@ func _build() -> void:
 	panel.add_child(root)
 
 	root.add_child(_label("New character   (Esc to cancel)", Color("ffd84a")))
-	root.add_child(_label("Class"))
+	root.add_child(_label("Class  (everyone normally starts as a Novice; pick one to skip ahead for testing)"))
 	var class_row := HBoxContainer.new()
 	root.add_child(class_row)
 	var class_group := ButtonGroup.new()
-	for id in Classes.CLASSES:
-		if Classes.CLASSES[id].get("hidden", false):
-			continue
+	class_row.add_child(_choice("Novice (class at Lv %d)" % Classes.CLASS_LEVEL, class_group, _class_id == Classes.NEUTRAL_CLASS, _pick_class.bind(Classes.NEUTRAL_CLASS)))
+	for id in Classes.playable():
 		class_row.add_child(_choice(String(Classes.CLASSES[id]["name"]), class_group, id == _class_id, _pick_class.bind(id)))
 
 	root.add_child(_label("Birth"))
@@ -82,6 +81,7 @@ func _build() -> void:
 	_refresh_description()
 
 	var begin := Button.new()
+	begin.focus_mode = Control.FOCUS_NONE
 	begin.text = "Begin"
 	begin.pressed.connect(_begin)
 	root.add_child(begin)
@@ -90,6 +90,7 @@ func _build() -> void:
 func _choice(text: String, group: ButtonGroup, selected: bool, callback: Callable) -> Button:
 	var button := Button.new()
 	button.text = text
+	button.focus_mode = Control.FOCUS_NONE
 	button.toggle_mode = true
 	button.button_group = group
 	button.button_pressed = selected

@@ -1,7 +1,9 @@
 extends Node
 ## Skill definitions (data only).
 ##
-## Each "set" (an element, or "martial") has a "primary" (LMB) and "area" (Q) skill, see LOADOUTS.
+## Each "set" (an element, or "martial") has a "primary" (LMB), "area" (Q) and "special" (R) skill,
+## see LOADOUTS. Primary unlocks at level 1 and area at level 5 (Classes.SKILL_LEVELS); a special
+## is only learned by choosing it as a level reward.
 ##   kind "projectile": speed, range
 ##   kind "aoe": radius, range (max cast distance, 0 = centred on the caster), optional
 ##               duration + tick (lingering)
@@ -72,6 +74,44 @@ const DEFS := {
 		"apply": {"kind": "root", "time": 1.5, "power": 1.0}, "knockback": 0.0,
 		"scales": {"radius": "vitality"},
 	},
+	# specials (R): one per set, learned only as a level reward (see Rewards)
+	"inferno_ring": {
+		"name": "Inferno Ring", "element": "fire", "kind": "aoe",
+		"damage": 20.0, "mana": 30.0, "cooldown": 8.0, "radius": 42.0, "range": 0.0,
+		"apply": {"kind": "dot", "time": 3.0, "power": 4.0}, "knockback": 140.0,
+		"scales": {"radius": "intellect"},
+	},
+	"deluge": {
+		"name": "Deluge", "element": "water", "kind": "aoe",
+		"damage": 5.0, "mana": 32.0, "cooldown": 10.0, "radius": 46.0, "range": 130.0,
+		"duration": 4.0, "tick": 0.5, "knockback": 0.0,
+		"apply": {"kind": "slow", "time": 1.2, "power": 0.6},
+		"scales": {"radius": "intellect"},
+	},
+	"bramble_burst": {
+		"name": "Bramble Burst", "element": "earth", "kind": "aoe",
+		"damage": 12.0, "mana": 28.0, "cooldown": 8.0, "radius": 38.0, "range": 0.0,
+		"apply": {"kind": "root", "time": 2.0, "power": 1.0}, "knockback": 0.0,
+		"scales": {"radius": "vitality"},
+	},
+	"tempest": {
+		"name": "Tempest", "element": "air", "kind": "projectile",
+		"damage": 22.0, "mana": 22.0, "cooldown": 6.0, "speed": 260.0, "range": 220.0,
+		"apply": {"kind": "slow", "time": 1.5, "power": 0.4}, "knockback": 220.0,
+		"scales": {"speed": "agility"},
+	},
+	"crystal_lance": {
+		"name": "Crystal Lance", "element": "mineral", "kind": "projectile",
+		"damage": 34.0, "mana": 26.0, "cooldown": 7.0, "speed": 280.0, "range": 230.0,
+		"apply": {"kind": "stun", "time": 0.6, "power": 1.0}, "knockback": 60.0,
+		"scales": {"speed": "agility"},
+	},
+	"rending_throw": {
+		"name": "Rending Throw", "element": "", "kind": "projectile",
+		"damage": 30.0, "stamina": 30.0, "cooldown": 6.0, "speed": 260.0, "range": 200.0,
+		"apply": {}, "knockback": 100.0,
+		"scales": {"speed": "agility"},
+	},
 	# martial (no element): learned by non-elementalists, paid for with stamina
 	"knife_throw": {
 		"name": "Knife Throw", "element": "", "kind": "projectile",
@@ -88,12 +128,12 @@ const DEFS := {
 }
 
 const LOADOUTS := {
-	"fire": {"primary": "fireball", "area": "flame_burst"},
-	"water": {"primary": "water_jet", "area": "rain_pool"},
-	"earth": {"primary": "thorn_shot", "area": "root_snare"},
-	"air": {"primary": "gust", "area": "cyclone"},
-	"mineral": {"primary": "shard_shot", "area": "stone_quake"},
-	"martial": {"primary": "knife_throw", "area": "whirlwind"},
+	"fire": {"primary": "fireball", "area": "flame_burst", "special": "inferno_ring"},
+	"water": {"primary": "water_jet", "area": "rain_pool", "special": "deluge"},
+	"earth": {"primary": "thorn_shot", "area": "root_snare", "special": "bramble_burst"},
+	"air": {"primary": "gust", "area": "cyclone", "special": "tempest"},
+	"mineral": {"primary": "shard_shot", "area": "stone_quake", "special": "crystal_lance"},
+	"martial": {"primary": "knife_throw", "area": "whirlwind", "special": "rending_throw"},
 }
 
 ## Physical attack (RMB). Costs stamina, not mana, and never touches an enemy's aura.

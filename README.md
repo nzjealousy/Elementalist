@@ -23,15 +23,17 @@ Inspirations: The Mageseeker (action magic), Witchbrook (a cozy, lived-in hub), 
 | `WASD` | Move |
 | Mouse | Aim |
 | `LMB` (hold) | Cast the selected set's primary skill |
-| `Q` | Cast the selected set's area skill (lands under the cursor, up to its range) |
+| `Q` | Area skill (unlocks at level 5; lands under the cursor, up to its range) |
+| `R` | Special skill (learned only as a level reward) |
 | `1`-`5` or mouse wheel | Select element (or the martial set) |
-| `RMB` (hold) | Physical slash (stamina) |
+| `RMB` (hold) | Physical slash (stamina). Reach depends on your class |
+| `E` | Imbue your blade with the selected element for 10 s (15 mana): slashes then carry the element |
 | `Space` | Dodge roll (stamina, short i-frames) |
-| `C` | Character sheet (tabs: Stats, Skills, Elements, Passives, Combos) |
-| `N` | New character: pick class and birth |
+| `TAB` | Character sheet (tabs: Stats, Skills, Elements, Passives, Combos, Rewards) |
+| `N` | New character: pick how they are born |
 | `Esc` | Close a menu |
 
-**Debug keys (arena only):** `F5` sandbox (all elements, level 5) - `F10` stand-in for an
+**Debug keys (arena only):** `F5` sandbox (all elements, level 10) - `F10` stand-in for an
 attunement item: gain a random element.
 
 ## How it plays
@@ -41,13 +43,18 @@ attunement item: gain a random element.
   no skills yet.
 - **Combos:** hit an enemy with one element, then a different one within 4 seconds, for a bonus
   and a status effect (ten pairs, see the Combos tab).
-- **Skills** are separate from elements: a class teaches them at set levels, and you can only
-  cast a skill whose element you own. Characters born without elements learn **martial** skills
-  (stamina-powered, no element) and can still be attuned later.
-- **Four classes:** Channeler, Vanguard, Ranger, Mystic, each with two subclasses chosen at
-  level 5. All classes start with the same attribute budget.
-- **Passives** come in four kinds: class, character traits (rolled at creation), rare element
-  passives (mastery level 5) and rare skill passives (many uses of one skill).
+- **Skills** are separate from elements: you can only cast a skill whose element you own and have
+  learned. Characters born without elements learn **martial** skills (stamina-powered, no
+  element) and can still be attuned later.
+- **Progression:** everyone starts as a **Novice**. **Level 3:** choose a class (Channeler,
+  Vanguard, Ranger or Mystic). **Level 5:** area skill (`Q`) unlocks. **Level 10:** choose a
+  subclass. All classes have the same attribute budget; they differ in shape, passives and melee
+  reach (Vanguard long, Channeler short).
+- **Level rewards:** every even level except 10 offers 1-3 options, a skill (the `R` special of
+  a set you have) or a passive, and you pick one on the Rewards tab.
+- **Passives** come in four kinds: class, character traits (rolled at creation or chosen as
+  rewards), rare element passives (mastery level 5) and rare skill passives (many uses of one
+  skill).
 
 ## Tests
 

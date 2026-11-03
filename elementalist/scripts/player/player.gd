@@ -7,6 +7,8 @@ signal died
 
 const STAMINA_REGEN_DELAY := 0.5
 const DODGE_BUFFER := 0.15  # a dodge pressed this early still fires once it becomes possible
+const IMBUE_COST := 15.0  # mana
+const IMBUE_TIME := 10.0  # seconds
 
 @export var speed := 80.0
 @export var dodge_speed := 260.0
@@ -25,6 +27,8 @@ var hp := 0.0
 var stamina := 0.0
 var aim_direction := Vector2.RIGHT
 var caster: SkillCaster
+var imbue_element := ""  # element the blade is coated in ("" = none)
+var imbue_left := 0.0    # seconds of imbue remaining
 
 var _dodge_left := 0.0
 var _dodge_cd := 0.0
@@ -53,6 +57,8 @@ func _ready() -> void:
 	Game.character.leveled_up.connect(_on_level_up)
 	Game.character.mastery_leveled.connect(_on_mastery_leveled)
 	Game.character.passive_unlocked.connect(_on_passive_unlocked)
+	Game.character.reward_ready.connect(_on_reward_ready)
+	Game.character.class_chosen.connect(_on_class_chosen)
 	var marker := AimMarker.new()
 	marker.player = self
 	add_child(marker)
@@ -87,6 +93,15 @@ func _on_level_up(new_level: int) -> void:
 
 func _on_mastery_leveled(label: String, new_level: int) -> void:
 	FloatText.spawn(get_parent(), global_position + Vector2(0, -8), "%s mastery %d" % [label, new_level], Color("9be8ff"))
+
+
+func _on_reward_ready(_level: int) -> void:
+	FloatText.spawn(get_parent(), global_position + Vector2(0, -24), "Reward ready (TAB)", Color("ffd84a"))
+
+
+func _on_class_chosen(class_id: String) -> void:
+	apply_stats(true)
+	FloatText.spawn(get_parent(), global_position + Vector2(0, -16), "Class: %s" % Classes.CLASSES[class_id]["name"], Color("ffd84a"))
 
 
 func _on_passive_unlocked(passive_name: String) -> void:
@@ -155,27 +170,60 @@ func try_melee(dir: Vector2 = Vector2.ZERO) -> bool:
 	_melee_cd = float(m["cooldown"])
 	_knock += dir * 60.0  # small lunge
 
+	var reach := melee_reach()
 	var half_arc := deg_to_rad(float(m["arc_deg"])) * 0.5
+	var imbued := imbue_left > 0.0 and imbue_element != ""
 	var landed := false
 	for node in get_tree().get_nodes_in_group("enemies"):
 		var enemy := node as Enemy
 		if enemy == null:
 			continue
 		var to_enemy := enemy.global_position - global_position
-		if to_enemy.length() <= float(m["range"]) and absf(dir.angle_to(to_enemy)) <= half_arc:
+		if to_enemy.length() <= reach and absf(dir.angle_to(to_enemy)) <= half_arc:
 			landed = true
-			enemy.take_hit({
+			var hit := {
 				"damage": float(m["damage"]) * float(stats["melee_damage_mult"]),
 				"element": "",
 				"knockback": m["knockback"],
 				"from": global_position,
-			})
+			}
+			if imbued:
+				# An imbued slash carries the element: it marks the enemy (combos!) and applies
+				# that element's primary-skill status, but loses the physical shatter bonus.
+				hit["element"] = imbue_element
+				hit["apply"] = caster.status_for(SkillDB.DEFS[SkillDB.LOADOUTS[imbue_element]["primary"]])
+			enemy.take_hit(hit)
 	if landed:
 		Game.character.add_weapon_xp(1)
+		if imbued:
+			Game.character.add_element_xp(imbue_element, 1)
 
 	var slash := SlashEffect.new()
-	slash.setup(dir.angle(), float(m["range"]), float(m["arc_deg"]))
+	slash.setup(dir.angle(), reach, float(m["arc_deg"]), Elements.color_of(imbue_element) if imbued else Color.WHITE)
 	add_child(slash)
+	return true
+
+
+## Slash reach in pixels: the base reach scaled by class and passives (Vanguard long, Channeler short).
+func melee_reach() -> float:
+	return float(SkillDB.MELEE["range"]) * float(Game.character.derived()["melee_range_mult"])
+
+
+## Imbue (E): coats your blade in the selected element for IMBUE_TIME seconds, so slashes carry
+## that element. Costs mana. Pressing it again with the same element ends it early. Does nothing
+## for the martial set or if you can't afford it. Returns true if the imbue changed.
+func try_imbue() -> bool:
+	var element := caster.selected_element()
+	if imbue_left > 0.0 and imbue_element == element:
+		imbue_left = 0.0
+		imbue_element = ""
+		return true
+	if element == "" or element == "martial" or caster.mana < IMBUE_COST:
+		return false
+	caster.mana -= IMBUE_COST
+	imbue_element = element
+	imbue_left = IMBUE_TIME
+	FloatText.spawn(get_parent(), global_position + Vector2(0, -8), "Imbued: %s" % element.capitalize(), Elements.color_of(element))
 	return true
 
 
@@ -213,6 +261,12 @@ func _physics_process(delta: float) -> void:
 	_melee_cd = maxf(0.0, _melee_cd - delta)
 	_dodge_buffer = maxf(0.0, _dodge_buffer - delta)
 	regen_hp(delta)
+	if imbue_left > 0.0:
+		imbue_left -= delta
+		if imbue_left <= 0.0:
+			imbue_element = ""
+	if Input.is_action_just_pressed("imbue"):
+		try_imbue()
 	_stamina_delay -= delta
 	if _stamina_delay <= 0.0:
 		stamina = minf(max_stamina, stamina + stamina_regen * delta)
@@ -239,5 +293,7 @@ func _physics_process(delta: float) -> void:
 		sprite.modulate = Color(1, 1, 1, 0.45)
 	elif _hurt_cd > 0.0:
 		sprite.modulate = Color(1.0, 0.45, 0.45)
+	elif imbue_left > 0.0:
+		sprite.modulate = Color.WHITE.lerp(Elements.color_of(imbue_element), 0.45)  # blade glow
 	else:
 		sprite.modulate = Color.WHITE

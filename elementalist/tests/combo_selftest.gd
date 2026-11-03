@@ -48,6 +48,12 @@ func _ready() -> void:
 	_test_passive_types()
 	_test_attribute_scaling()
 	_test_classes()
+	_test_progression_gates()
+	_test_class_choice()
+	_test_rewards()
+	_test_input_bindings()
+	await _test_melee_reach()
+	await _test_special_skill_and_imbue()
 	await _test_ui_screens()
 	print("SELFTEST %d passed, %d failed" % [_pass, _fail])
 
@@ -138,18 +144,21 @@ func _test_skill_gating() -> void:
 	_check("owned element's primary skill is usable at level 1", c.can_use_skill("fireball"))
 	_check("area skill is locked before the class teaches it", not c.can_use_skill("flame_burst"))
 	_check("skills of unowned elements are unusable", not c.can_use_skill("water_jet"))
-	_level_to(c, 3)
-	_check("channeler learns the area skill at level 3", c.can_use_skill("flame_burst"))
+	_level_to(c, 4)
+	_check("area skill is still locked at level 4", not c.can_use_skill("flame_burst"))
+	_level_to(c, 5)
+	_check("the area skill (Q) unlocks at level 5", c.can_use_skill("flame_burst"))
 	_check("level alone does not unlock other elements", not c.can_use_skill("water_jet"))
 	c.add_element("water")
 	_check("gaining an element unlocks its learned skills", c.can_use_skill("water_jet") and c.can_use_skill("rain_pool"))
+	_check("level never unlocks a special skill", not c.can_use_skill("inferno_ring") and not c.can_use_skill("deluge"))
 	var v := CharacterData.create_sandbox("vanguard", ["fire"], 4)
-	_check("vanguard learns area skills later (level 5)", v.can_use_skill("fireball") and not v.can_use_skill("flame_burst"))
+	_check("every class unlocks Q at the same level", v.can_use_skill("fireball") and not v.can_use_skill("flame_burst"))
 	_level_to(v, 5)
-	_check("vanguard has the area skill at level 5", v.can_use_skill("flame_burst"))
+	_check("vanguard has the area skill at level 5 too", v.can_use_skill("flame_burst"))
 	var all_skills_ok := true
 	for element in Elements.MAIN:
-		for slot in ["primary", "area"]:
+		for slot in ["primary", "area", "special"]:
 			if not SkillDB.DEFS.has(SkillDB.LOADOUTS[element][slot]):
 				all_skills_ok = false
 	_check("every main element has real primary and area skills", all_skills_ok)
@@ -229,10 +238,10 @@ func _test_mastery_and_passives() -> void:
 
 
 func _test_subclass() -> void:
-	var c := CharacterData.create_sandbox("channeler", ["fire"], 4)
-	_check("no subclass choice before level 5", c.available_subclasses().is_empty() and not c.choose_subclass("spellweaver"))
-	_level_to(c, 5)
-	_check("subclasses offered at level 5", c.available_subclasses().size() == 2)
+	var c := CharacterData.create_sandbox("channeler", ["fire"], 9)
+	_check("no subclass choice before level 10", c.available_subclasses().is_empty() and not c.choose_subclass("spellweaver"))
+	_level_to(c, 10)
+	_check("subclasses offered at level 10", c.available_subclasses().size() == 2)
 	_check("cannot pick another class's subclass", not c.choose_subclass("duelist"))
 	var before := c.spell_damage_mult("fire")
 	_check("can choose a subclass", c.choose_subclass("spellweaver") and c.subclass_id == "spellweaver")
@@ -242,9 +251,10 @@ func _test_subclass() -> void:
 
 func _test_save_round_trip() -> void:
 	var c := CharacterData.create("Round", "vanguard", CharacterData.ELEMENTALIST, _rng(7))
-	_level_to(c, 6)
+	_level_to(c, 10)
 	c.spend_point("strength")
 	c.choose_subclass("bulwark")
+	c.learned_specials.append("inferno_ring")
 	c.add_element_xp(c.elements[0], 35)
 	c.add_weapon_xp(12)
 	var loaded := CharacterData.from_dict(JSON.parse_string(JSON.stringify(c.to_dict())))
@@ -254,6 +264,8 @@ func _test_save_round_trip() -> void:
 		and loaded.attributes == c.attributes and typeof(loaded.attributes["strength"]) == TYPE_INT)
 	_check("save keeps elements and mastery", loaded.elements == c.elements and loaded.element_mastery == c.element_mastery
 		and loaded.weapon_masteries == c.weapon_masteries)
+	_check("save keeps unclaimed rewards and learned specials", c.pending_rewards.size() > 0 and loaded.pending_rewards == c.pending_rewards
+		and loaded.learned_specials == ["inferno_ring"])
 	_check("a reloaded character has identical derived stats", loaded.derived() == c.derived())
 
 
@@ -324,8 +336,8 @@ func _test_ceremony_without_element() -> void:
 func _test_martial_skills() -> void:
 	var c := CharacterData.create("M", "channeler", CharacterData.ATTUNABLE, _rng(1))
 	_check("a non-elementalist can use the first martial skill at level 1", c.castable_sets() == ["martial"] and c.can_use_skill("knife_throw"))
-	_check("the martial area skill is learned at level 2", not c.can_use_skill("whirlwind"))
-	_level_to(c, 2)
+	_check("the martial area skill is learned at level 5, like every other Q", not c.can_use_skill("whirlwind"))
+	_level_to(c, 5)
 	_check("martial area skill unlocks", c.can_use_skill("whirlwind"))
 	_check("martial skills need no element and are not usable by elementalists", not CharacterData.create_sandbox("channeler", ["fire"], 5).can_use_skill("knife_throw"))
 	_check("an attunable character can still be attuned later", c.add_element("fire") and c.can_use_skill("fireball"))
@@ -446,8 +458,9 @@ func _test_attribute_scaling() -> void:
 
 
 func _test_classes() -> void:
-	var playable: Array = Classes.CLASSES.keys().filter(func(id): return not Classes.CLASSES[id].get("hidden", false))
-	_check("there are four playable classes", playable.size() == 4 and "ranger" in playable and "mystic" in playable)
+	var playable: Array = Classes.playable()
+	_check("there are four playable classes and a Novice starter", playable.size() == 4 and "ranger" in playable and "mystic" in playable
+		and Classes.is_starter(Classes.NEUTRAL_CLASS) and not (Classes.NEUTRAL_CLASS in playable))
 	var totals_equal := true
 	var growth_equal := true
 	var refs_ok := true
@@ -474,10 +487,248 @@ func _test_classes() -> void:
 	_check("ranger is the fastest class", ranger["move_speed"] > vanguard["move_speed"] and ranger["move_speed"] > channeler["move_speed"] and ranger["move_speed"] > mystic["move_speed"])
 	_check("ranger bolts fly faster", ranger["projectile_speed_mult"] > 1.0)
 	_check("mystic casts faster than channeler and is sturdier", mystic["max_hp"] > channeler["max_hp"] and CharacterData.create_sandbox("mystic", ["fire"], 2).skill_cooldown("fireball") < CharacterData.create_sandbox("wanderer", ["fire"], 2).skill_cooldown("fireball"))
-	_check("each class learns the area skill at its own level", CharacterData.create_sandbox("mystic", ["fire"], 2).can_use_skill("flame_burst")
-		and not CharacterData.create_sandbox("ranger", ["fire"], 3).can_use_skill("flame_burst") and CharacterData.create_sandbox("ranger", ["fire"], 4).can_use_skill("flame_burst"))
-	var picks: Array = CharacterData.create_sandbox("ranger", [], 5).available_subclasses()
-	_check("ranger and mystic have two subclasses each", picks == ["sharpshooter", "pathfinder"] and CharacterData.create_sandbox("mystic", [], 5).available_subclasses() == ["oracle", "spiritblade"])
+	var picks: Array = CharacterData.create_sandbox("ranger", [], 10).available_subclasses()
+	_check("ranger and mystic have two subclasses each", picks == ["sharpshooter", "pathfinder"] and CharacterData.create_sandbox("mystic", [], 10).available_subclasses() == ["oracle", "spiritblade"])
+
+
+func _test_progression_gates() -> void:
+	_check("gates are class 3, area 5, subclass 10", Classes.CLASS_LEVEL == 3 and Classes.AREA_LEVEL == 5 and Classes.SUBCLASS_LEVEL == 10)
+	var all_same := true
+	for cls in Classes.CLASSES:
+		var c := CharacterData.create_sandbox(cls, ["fire"], 4)
+		var after := CharacterData.create_sandbox(cls, ["fire"], 5)
+		all_same = all_same and c.can_use_skill("fireball") and not c.can_use_skill("flame_burst") and after.can_use_skill("flame_burst")
+	_check("Q unlocks at level 5 for the Novice and every class", all_same)
+	var sub_ok := true
+	for cls in Classes.playable():
+		sub_ok = sub_ok and CharacterData.create_sandbox(cls, [], 9).available_subclasses().is_empty() \
+			and CharacterData.create_sandbox(cls, [], 10).available_subclasses().size() == 2
+	_check("subclasses unlock at level 10 for every class", sub_ok)
+	var novice := CharacterData.create_sandbox(Classes.NEUTRAL_CLASS, [], 10)
+	_check("a Novice that never picked a class has no subclass to choose", novice.available_subclasses().is_empty())
+
+
+func _test_class_choice() -> void:
+	var c := CharacterData.create("N", Classes.NEUTRAL_CLASS, CharacterData.ELEMENTALIST, _rng(21))
+	_check("everyone starts as a Novice", c.class_id == Classes.NEUTRAL_CLASS and Classes.is_starter(c.class_id))
+	_level_to(c, 2)
+	_check("cannot choose a class before level 3", not c.can_choose_class() and not c.choose_class("vanguard"))
+	_level_to(c, 3)
+	_check("a class can be chosen at level 3", c.can_choose_class())
+	_check("cannot choose the Novice or an unknown class", not c.choose_class(Classes.NEUTRAL_CLASS) and not c.choose_class("paladin"))
+	var chosen := []
+	c.class_chosen.connect(func(id): chosen.append(id))
+	for i in 3:
+		c.spend_point("strength")
+	_check("the player has spent points before choosing", c.attributes["strength"] == 8)
+	_check("choose_class succeeds", c.choose_class("vanguard") and chosen == ["vanguard"] and c.class_id == "vanguard")
+	# base 8 + 3 spent points + 1 growth for each of the 2 levels gained so far
+	_check("class base, spent points and retroactive growth combine", c.attributes["strength"] == 13 and c.attributes["agility"] == 4
+		and c.attributes["intellect"] == 3 and c.attributes["vitality"] == 6)
+	_check("the class weapon and passives apply", c.weapon_type == "sword" and "toughened" in c.active_passives())
+	_check("the class cannot be changed afterwards", not c.can_choose_class() and not c.choose_class("mystic"))
+	var mage := CharacterData.create_sandbox(Classes.NEUTRAL_CLASS, [], 3)
+	mage.choose_class("channeler")
+	_check("a mage's intellect grows retroactively", mage.attributes["intellect"] == 9 + 2 and mage.weapon_type == "staff")
+	var restored := CharacterData.from_dict(JSON.parse_string(JSON.stringify(c.to_dict())))
+	_check("a chosen class survives saving", restored.class_id == "vanguard" and restored.attributes == c.attributes)
+
+
+func _test_rewards() -> void:
+	var levels := []
+	for lv in range(1, 31):
+		if Rewards.is_reward_level(lv):
+			levels.append(lv)
+	_check("reward levels are every even level except 10", levels == [2, 4, 6, 8, 12, 14, 16, 18, 20, 22, 24, 26, 28, 30])
+	var counts := {}
+	var valid := true
+	var c := CharacterData.create_sandbox("channeler", ["fire", "water"], 1)
+	var rng := _rng(99)
+	for i in 300:
+		var offer := Rewards.generate(c, rng)
+		counts[offer.size()] = int(counts.get(offer.size(), 0)) + 1
+		var seen := []
+		for option in offer:
+			var key := "%s:%s" % [option["type"], option["id"]]
+			valid = valid and not (key in seen) and (option["type"] in ["skill", "passive"])
+			seen.append(key)
+			if option["type"] == "skill":
+				valid = valid and SkillDB.slot_of(option["id"]) == "special" and (SkillDB.set_of(option["id"]) in ["fire", "water"])
+			else:
+				valid = valid and Classes.TRAITS.has(option["id"])
+	_check("offers hold 1 to 3 distinct, valid options", valid and counts.keys().all(func(n): return n >= 1 and n <= 3))
+	_check("offers of every size from 1 to 3 occur", counts.has(1) and counts.has(2) and counts.has(3))
+	var both := false
+	for i in 100:
+		var types := Rewards.generate(c, rng).map(func(o): return o["type"])
+		if "skill" in types and "passive" in types:
+			both = true
+	_check("an offer can mix skills and passives", both)
+	var no_sets := CharacterData.create_sandbox(Classes.NEUTRAL_CLASS, [], 1)
+	var passive_only := Rewards.generate(no_sets, rng).all(func(o): return o["type"] == "passive")
+	_check("with no element or martial set there are no skill rewards", passive_only)
+
+	var g := CharacterData.create_sandbox("vanguard", ["fire"], 1)
+	g.reward_rng.seed = 5
+	var raised := []
+	g.reward_ready.connect(func(lv): raised.append(lv))
+	_level_to(g, 12)
+	_check("each reward level queues exactly one offer", raised == [2, 4, 6, 8, 12] and g.pending_rewards.size() == 5)
+	var skill_offer := -1
+	var skill_option := -1
+	for i in g.pending_rewards.size():
+		for j in g.pending_rewards[i].size():
+			if g.pending_rewards[i][j]["type"] == "skill" and skill_offer < 0:
+				skill_offer = i
+				skill_option = j
+	if skill_offer < 0:  # force one so the claim path is always covered
+		g.pending_rewards[0] = [{"type": "skill", "id": "inferno_ring"}]
+		skill_offer = 0
+		skill_option = 0
+	var skill_id: String = g.pending_rewards[skill_offer][skill_option]["id"]
+	var before := g.pending_rewards.size()
+	_check("a special skill is not usable before claiming it", not g.can_use_skill(skill_id))
+	_check("claiming a skill reward teaches the special", g.claim_reward(skill_offer, skill_option) and g.can_use_skill(skill_id) and skill_id in g.learned_specials)
+	_check("claiming consumes that offer", g.pending_rewards.size() == before - 1)
+	var passive_offer := 0
+	g.pending_rewards[passive_offer] = [{"type": "passive", "id": "far_reach"}, {"type": "skill", "id": "inferno_ring"}]
+	_check("claiming a passive adds a trait", g.claim_reward(passive_offer, 0) and "far_reach" in g.traits and "far_reach" in g.active_passives())
+	g.pending_rewards.append([{"type": "skill", "id": "deluge"}])
+	_check("cannot claim a skill for a set you don't have", not g.claim_reward(g.pending_rewards.size() - 1, 0))
+	g.pending_rewards.append([{"type": "skill", "id": skill_id}])
+	_check("cannot learn the same special twice", not g.claim_reward(g.pending_rewards.size() - 1, 0))
+	g.pending_rewards.append([{"type": "passive", "id": "far_reach"}])
+	_check("cannot take a trait you already have", not g.claim_reward(g.pending_rewards.size() - 1, 0))
+	_check("bad offer or option indexes are refused", not g.claim_reward(99, 0) and not g.claim_reward(0, 99) and not g.claim_reward(-1, 0))
+	var attuned := CharacterData.create_sandbox("vanguard", ["fire"], 1)
+	attuned.pending_rewards.append([{"type": "skill", "id": "deluge"}])
+	attuned.add_element("water")
+	_check("attuning to an element makes its special claimable", attuned.claim_reward(0, 0) and attuned.can_use_skill("deluge"))
+	var specials_ok := true
+	for set_id in SkillDB.LOADOUTS:
+		specials_ok = specials_ok and SkillDB.slot_of(SkillDB.LOADOUTS[set_id]["special"]) == "special" and SkillDB.set_of(SkillDB.LOADOUTS[set_id]["special"]) == set_id
+	_check("every set has a special skill", specials_ok)
+
+
+func _test_input_bindings() -> void:
+	var has_key := func(action: String, key: Key) -> bool:
+		for event in InputMap.action_get_events(action):
+			if event is InputEventKey and (event.keycode == key or event.physical_keycode == key):
+				return true
+		return false
+	_check("TAB opens the character sheet, not C", has_key.call("character_sheet", KEY_TAB) and not has_key.call("character_sheet", KEY_C))
+	_check("E imbues the blade and R casts the special", has_key.call("imbue", KEY_E) and has_key.call("skill_special", KEY_R))
+	_check("interact moved off E so it cannot clash with imbue", not has_key.call("interact", KEY_E))
+
+
+func _test_melee_reach() -> void:
+	var saved := Game.character
+	var ranges := {}
+	for cls in Classes.playable():
+		ranges[cls] = CharacterData.create_sandbox(cls, [], 1).derived()["melee_range_mult"]
+	_check("fighters reach farther than casters", ranges["vanguard"] > ranges["mystic"] and ranges["mystic"] > ranges["ranger"]
+		and ranges["ranger"] > ranges["channeler"] and ranges["channeler"] < 1.0 and ranges["vanguard"] > 1.0)
+	var duelist := CharacterData.create_sandbox("vanguard", [], 10)
+	duelist.choose_subclass("duelist")
+	_check("a melee subclass adds reach", duelist.derived()["melee_range_mult"] > ranges["vanguard"])
+
+	var hits := {}
+	for cls in ["vanguard", "channeler"]:
+		Game.character = CharacterData.create_sandbox(cls, [], 1)
+		await get_tree().process_frame
+		var player: Node2D = PLAYER.instantiate()
+		add_child(player)
+		var dummy := _dummy(Vector2(31, 0))  # past the base reach of 26, inside Vanguard's 36
+		await get_tree().process_frame
+		dummy.global_position = Vector2(31, 0)
+		player.global_position = Vector2.ZERO
+		player.try_melee(Vector2.RIGHT)
+		hits[cls] = dummy.hp < dummy.max_hp
+		player.queue_free()
+		dummy.queue_free()
+	_check("a Vanguard's slash reaches a target a Channeler's cannot", hits["vanguard"] and not hits["channeler"])
+	Game.character = saved
+	await get_tree().process_frame
+
+
+func _test_special_skill_and_imbue() -> void:
+	var saved := Game.character
+	Game.character = CharacterData.create_sandbox("mystic", ["fire", "water"], 1)
+	await get_tree().process_frame
+	var player: Node2D = PLAYER.instantiate()
+	add_child(player)
+	await get_tree().process_frame
+	var caster: SkillCaster = player.caster
+
+	_check("a special cannot be cast before it is earned", not caster.try_cast("inferno_ring"))
+	Game.character.learned_specials.append("inferno_ring")
+	var mana_before: float = caster.mana
+	_check("an earned special casts with R's skill", caster.skill_for("special") == "inferno_ring" and caster.try_cast("inferno_ring"))
+	_check("the special spends its mana", absf((mana_before - float(SkillDB.DEFS["inferno_ring"]["mana"])) - caster.mana) < 1.0)
+
+	var target := _dummy(Vector2(12, 0))
+	await get_tree().process_frame
+	target.global_position = Vector2(12, 0)
+	player.global_position = Vector2.ZERO
+	caster.mana = caster.max_mana
+	var mana_full: float = caster.mana
+	_check("E imbues the selected element for mana", player.try_imbue() and player.imbue_element == "fire" and absf((mana_full - caster.mana) - player.IMBUE_COST) < 0.5)
+	player.try_melee(Vector2.RIGHT)
+	_check("an imbued slash marks the enemy with the element", target.aura == "fire")
+	_check("an imbued slash applies the element's status", target.effects.has("dot"))
+	_check("imbued hits train the element", Game.character.element_mastery["fire"]["xp"] >= 1)
+	caster.select(1)
+	var before := target.hp
+	target.take_hit({"damage": 10.0, "element": "water", "knockback": 0.0})
+	_check("a bolt after an imbued slash triggers a combo", target.aura == "" and target.effects.has("vuln") and before - target.hp > 10.0)
+
+	player.imbue_left = 0.0
+	player.imbue_element = ""
+	caster.select(0)
+	caster.mana = 5.0
+	_check("imbue needs enough mana", not player.try_imbue() and player.imbue_element == "")
+	caster.mana = caster.max_mana
+	player.try_imbue()
+	_check("pressing E again with the same element turns it off", player.try_imbue() and player.imbue_element == "" and player.imbue_left == 0.0)
+	player.try_imbue()
+	player.imbue_left = 0.02
+	for i in 4:
+		await get_tree().physics_frame
+	_check("the imbue expires", player.imbue_element == "" and player.imbue_left <= 0.0)
+
+	var rooted := _dummy(Vector2(12, 0))
+	await get_tree().process_frame
+	rooted.global_position = Vector2(12, 0)
+	rooted._add_effect("root", 10.0, 1.0)
+	player.global_position = Vector2.ZERO
+	player._melee_cd = 0.0
+	player.try_melee(Vector2.RIGHT)
+	var plain_damage: float = rooted.max_hp - rooted.hp
+	_check("a plain slash on a rooted enemy still shatters", is_equal_approx(plain_damage, SkillDB.MELEE["damage"] * Game.character.derived()["melee_damage_mult"] * Enemy.SHATTER_MULT))
+	var imbued_rooted := _dummy(Vector2(12, 0))
+	await get_tree().process_frame
+	imbued_rooted.global_position = Vector2(12, 0)
+	imbued_rooted._add_effect("root", 10.0, 1.0)
+	caster.mana = caster.max_mana
+	player.try_imbue()
+	player._melee_cd = 0.0
+	player.try_melee(Vector2.RIGHT)
+	var imbued_damage: float = imbued_rooted.max_hp - imbued_rooted.hp
+	_check("an imbued slash gives up the shatter bonus", imbued_damage < plain_damage)
+	player.queue_free()
+	rooted.queue_free()
+	imbued_rooted.queue_free()
+	target.queue_free()
+
+	Game.character = CharacterData.create("M", "vanguard", CharacterData.ATTUNABLE, _rng(2))
+	await get_tree().process_frame
+	var martial_player: Node2D = PLAYER.instantiate()
+	add_child(martial_player)
+	await get_tree().process_frame
+	_check("the martial set cannot be imbued", not martial_player.try_imbue() and martial_player.imbue_element == "")
+	martial_player.queue_free()
+	Game.character = saved
+	await get_tree().process_frame
 
 
 func _test_ui_screens() -> void:
@@ -491,7 +742,29 @@ func _test_ui_screens() -> void:
 		sheet.show_tab(tab)
 		if sheet._content.get_child_count() == 0:
 			all_tabs = false
-	_check("every character sheet tab builds", all_tabs)
+	_check("every character sheet tab builds", all_tabs and CharacterSheet.TABS.has("rewards"))
+	var reward_char := CharacterData.create_sandbox("channeler", ["fire"], 4)
+	Game.character = reward_char
+	var options := 0
+	for offer in reward_char.pending_rewards:
+		options += offer.size()
+	sheet.show_tab("rewards")
+	await get_tree().process_frame  # the previous tab's nodes are freed at end of frame
+	var option_buttons := sheet.find_children("*", "Button", true, false).filter(func(b): return b.text.begins_with("Skill (") or b.text.begins_with("Passive:"))
+	_check("the rewards tab shows one button per option", reward_char.pending_rewards.size() == 2 and option_buttons.size() == options)
+	var offers_before := reward_char.pending_rewards.size()
+	sheet._claim(0, 0)
+	_check("claiming from the sheet uses up an offer", reward_char.pending_rewards.size() == offers_before - 1)
+	await get_tree().process_frame  # let the sheet's deferred rebuild of this tab run first
+	var novice := CharacterData.create_sandbox(Classes.NEUTRAL_CLASS, ["fire"], 3)
+	Game.character = novice
+	sheet.show_tab("stats")
+	await get_tree().process_frame
+	var class_choice_buttons := sheet.find_children("*", "Button", true, false).filter(func(b): return b.text in ["Channeler", "Vanguard", "Ranger", "Mystic"])
+	_check("a level 3 Novice is offered the four classes on the stats tab", class_choice_buttons.size() == 4)
+	sheet._choose_class("ranger")
+	_check("choosing a class from the sheet applies it", novice.class_id == "ranger")
+	Game.character = CharacterData.create_sandbox("channeler", ["fire", "water"], 5)
 	sheet.show_tab("combos")
 	_check("combos tab lists a header and all ten combos", sheet._content.get_child(0).get_child_count() == 11)
 	var lit := sheet._content.get_child(0).get_children().filter(func(l): return l is Label and l.text.contains("Steam") and not l.text.contains("needs"))

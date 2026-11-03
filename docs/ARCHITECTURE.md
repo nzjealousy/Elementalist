@@ -54,11 +54,29 @@ or stunned enemies ("Shatter").
 `CharacterData` holds class, attributes, level/XP, owned elements and mastery, weapon mastery,
 traits and skill-use counts. `Classes` holds the static tables.
 
+**Progression gates** (all in `Classes`): everyone starts as the **Novice** (`NEUTRAL_CLASS`,
+all attributes 5). Level 3 (`CLASS_LEVEL`): `choose_class()` turns the Novice into a real class,
+keeping the points the player spent and applying the class's growth retroactively. Level 5
+(`AREA_LEVEL`): area skills (Q) unlock, for every class. Level 10 (`SUBCLASS_LEVEL`): subclass.
+
 **Elements vs skills.** Owning an element does not give you its skills.
-`CharacterData.can_use_skill(id)` requires (1) owning the skill's element and (2) the class
-having taught it (`Classes.CLASSES[...]["skill_levels"]`). Characters born without elements get
-the **martial** set (`SkillDB.LOADOUTS["martial"]`): stamina-powered, no element, learned at
-`Classes.MARTIAL_LEVELS`.
+`CharacterData.can_use_skill(id)` requires (1) owning the skill's element and (2) having learned
+it: primary skills at level 1, area at level 5 (`Classes.SKILL_LEVELS`), and **special** (R)
+skills only as rewards (`learned_specials`). Characters born without elements get the
+**martial** set (`SkillDB.LOADOUTS["martial"]`): stamina-powered, no element.
+
+**Level rewards** (`Rewards`): even levels except 10 queue an offer of 1-3 options in
+`pending_rewards`: a *skill* (the special of a set the character has) or a *passive* (a trait not
+yet owned). `claim_reward(offer, option)` applies one and discards that offer. The sheet's
+Rewards tab is the UI.
+
+**Imbue (E)** (`Player.try_imbue`): costs 15 mana, lasts 10 s, and makes slashes carry the
+selected element, so they set the aura (combos with bolts), apply that element's primary status
+(`SkillCaster.status_for`), and train the element. An imbued slash gives up the physical
+"Shatter" bonus. The martial set cannot be imbued.
+
+**Melee reach:** `derived()["melee_range_mult"]` = the class's `melee_range` x passives, applied
+to the slash radius (`Player.melee_reach`).
 
 **Affinity:** `elementalist` (rolled elements), `attunable` (born with none; can gain elements
 via `add_element`), `sealed` (can never hold elements). Attunable and sealed characters have the
@@ -128,12 +146,14 @@ a `Classes.ELEMENT_ATTRIBUTE` and `ELEMENT_PASSIVES` entry, two skills in `Skill
 pick it up automatically.
 
 **A new skill.** Add an entry to `SkillDB.DEFS` (see the header comment of `skill_db.gd` for the
-fields) and put it in a loadout. Tune scaling with `scales`.
+fields) and put it in a loadout slot (`primary`, `area` or `special`). Tune scaling with `scales`.
+A new set needs all three slots.
 
 **A new class.** Add it to `Classes.CLASSES` (base attributes totalling 21, one growth
-attribute, `skill_levels`, `weapon`, `passives`, `subclasses`), its subclasses to `SUBCLASSES`,
+attribute, `melee_range`, `weapon`, `passives`, `subclasses`), its subclasses to `SUBCLASSES`,
 their passives to `PASSIVES`, and a `WEAPON_PASSIVES` entry for its weapon. The balance tests
-(`_test_classes`) will tell you if the budget is off.
+(`_test_classes`) will tell you if the budget is off. A class needs no skill-unlock levels: those
+are the same for everyone (see Progression gates).
 
 **A new passive or trait.** Add it to `Classes.PASSIVES` with `mods`; for a trait also add it to
 `Classes.TRAITS`. Supported stats are the keys read in `CharacterData.derived()` and the

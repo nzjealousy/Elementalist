@@ -103,8 +103,12 @@ Coming-of-age ceremony · 1 village hub · 1 dungeon with 3–4 room types · 3 
   tend to roll more traits, and can still gain elements later through items or story. *Sealed*
   characters get the same martial set but can never hold elements. See `docs/ARCHITECTURE.md`.
 - **Four classes** with an equal attribute budget (21 points + 1 per level): Channeler (caster),
-  Vanguard (fighter), Ranger (skirmisher), Mystic (fast-learning hybrid). Two subclasses each,
-  chosen at level 5.
+  Vanguard (fighter), Ranger (skirmisher), Mystic (hybrid). Two subclasses each. Class melee reach
+  differs: fighters reach far, casters barely at all.
+- **Progression gates:** everyone starts as a Novice. Level 3: choose a class. Level 5: the area
+  skill (Q) unlocks. Level 10: choose a subclass. Even levels except 10 give a **reward**: an
+  offer of 1-3 options, a special skill (R) or a passive, of which you pick one.
+- **Imbue (E):** coat your blade in the selected element so slashes carry it (and set up combos).
 - **Passives come in four types:** *class* (fixed), *trait* (rolled at creation, tied to the
   character; fewer other passive sources means more traits), *element* (rare, element mastery 5)
   and *skill* (rare, earned by using one skill many times).
