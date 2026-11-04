@@ -2,6 +2,7 @@ extends Node
 ## Global game state: the current character, loot drops and a short on-screen banner.
 ## A fresh game starts with a real ceremony roll; the sandbox grants every element for testing.
 
+const SANDBOX_LEVEL := 10
 const HURT_TIME := 0.6  # seconds the hit indicator stays on screen
 
 ## Emitted when a kill drops loot (see Loot): the world spawns Pickups at `position`.
@@ -13,6 +14,7 @@ var banner_time := 0.0
 var danger := 0  # how deep the player is (the arena's wave): raises item level and rarity luck
 var loot_rng := RandomNumberGenerator.new()  # tests may seed it
 var combat_rng := RandomNumberGenerator.new()  # crits
+var open_creation := false  # the next scene opens the new-character menu (after a permanent death)
 var run_text := ""          # "Floor 1/3  Room 2/3 ..." for the HUD (set by Dungeon)
 var run_kills := 0
 var boss: Node = null       # the boss being fought, for the HUD's boss bar
@@ -62,7 +64,7 @@ func start_new(class_id: String, affinity: String = CharacterData.ELEMENTALIST) 
 
 ## Every main element and enough levels that all skills are learned. For combat testing.
 func start_sandbox(class_id: String = "channeler") -> void:
-	character = CharacterData.create_sandbox(class_id, Elements.MAIN, Classes.SUBCLASS_LEVEL)
+	character = CharacterData.create_sandbox(class_id, Elements.MAIN, SANDBOX_LEVEL)
 	_stock_sandbox_inventory()
 	_show_banner("Sandbox: all elements, level %d %s (subclass unlocked)" % [character.level, Classes.CLASSES[class_id]["name"]])
 
@@ -102,6 +104,10 @@ func attune_random() -> String:
 func on_enemy_killed(enemy: Node) -> void:
 	run_kills += 1
 	character.gain_xp(int(enemy.xp_reward))
+	character.add_class_xp(1 + floori(float(enemy.xp_reward) / 10.0))
+	var player := get_tree().get_first_node_in_group("player")
+	if player and player.has_method("restore_on_kill"):
+		player.restore_on_kill()
 	var drops: Array[Dictionary]
 	if enemy.boss:
 		drops = Loot.boss_drops(loot_rng, loot_level(), loot_bonus(), character.missing_elements(), loot_allows_spell())

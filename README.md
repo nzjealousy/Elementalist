@@ -23,13 +23,13 @@ Inspirations: The Mageseeker (action magic), Witchbrook (a cozy, lived-in hub), 
 |---|---|
 | `WASD` | Move |
 | Mouse | Aim |
-| `LMB` (hold) | The **fused cast**: one bolt that hits with each of your 2-3 locked elements in turn, so their combos fire in a single shot. Disabled until two or more are locked. With no elements: a straight slash (melee classes) or a knife throw (ranged classes) |
+| `LMB` (hold) | **Fuse**: one bolt that hits with each of your locked elements in turn, so their combos fire in a single shot. Needs two or more locked; each extra element costs +30% mana and its hit is weaker (75% for two down to 50% for five). With no elements: a straight slash (melee classes) or a knife throw (ranged classes) |
 | `RMB` (hold) | The basic attack: a slash (stamina), or, for ranged classes while imbued, a bolt of the selected element (mana). Reach depends on your class |
-| `Q` | **Lock** the selected element (up to 3). Needs two or more elements, no level required |
+| `Q` | **Lock** the selected element (any number, up to all of yours). Needs two or more elements, no level required. The Q slot shows the combo the lock makes ("Steam") in its colour |
 | `F` | Area skill (unlocks at level 5; lands under the cursor, up to its range) |
 | `R` | Special skill (learned only as a level reward) |
 | `1`-`5` or mouse wheel | Select element (or the martial set) |
-| `E` | Toggle **imbue** (no cooldown, no timer). Slashes then carry the locked/selected elements for a little mana each, and ranged classes can shoot with RMB |
+| `E` | Toggle **imbue** (no cooldown, no timer). A blade holds **one** element, the selected one: slashes carry it for a little mana, and ranged classes can shoot it with RMB |
 | `Space` | Dodge roll (stamina, short i-frames). **Dodge + RMB = a 360 degree spin**: costs more stamina, can be imbued, and you take no damage until it finishes |
 | `G` | Use what you stand next to: open a chest, use the forge |
 | `I` | Gear: open the character sheet on the Gear tab (click a bag item to wear it, a worn item to take it off) |
@@ -37,6 +37,9 @@ Inspirations: The Mageseeker (action magic), Witchbrook (a cozy, lived-in hub), 
 | `N` | New character: pick how they are born |
 | `V` | Support skill (unlocks at level 7): a buff on yourself or a debuff on enemies |
 | `Esc` | Close a menu |
+
+The bottom of the screen: the element tabs (1-5) at the **bottom left**; the actions at the **bottom
+right**: Fuse (LMB), Slash/Bolt (RMB, tinted with the imbued element), Q, then the abilities F, V, R.
 
 **Debug keys (dungeon):** `[` clear the room, `]` jump to the boss.
 
@@ -72,6 +75,26 @@ Inspirations: The Mageseeker (action magic), Witchbrook (a cozy, lived-in hub), 
 - **Passives** come in four kinds: class, character traits (rolled at creation or chosen as
   rewards), rare element passives (mastery level 5) and rare skill passives (many uses of one
   skill).
+
+## Resources and death (the game is meant to be punishing)
+
+- **Recovery is slow.** Health, stamina and mana come back at roughly half the old rate, and health
+  recovery waits 6 seconds after a hit. Plan your fights: kills give back a little stamina and mana,
+  and traits and gear can add health, mana or stamina per kill. Monsters hit 35% harder than their
+  listed numbers, and a forge room heals only half your health.
+- **Chaining abilities is cheaper.** An F/V/R ability of a *different element* than your last one,
+  cast within 3 seconds, costs 30% less mana (a gold frame shows it on the slot).
+- **More elements, more mana.** A fusion costs +30% per extra element. **Elemental Harmony** (owning
+  two or more elements) gives small bonuses per extra element, but every spell also costs 4% more.
+- **Attack speed** comes from the new **Dexterity** attribute (+3% per point) and from every character
+  level (+1%). It speeds slashes, bolts and fusions, not abilities.
+- **Dying costs elements.** If you have elements you survive, losing as many as the number of times
+  you have died (one, then two, then three...), chosen at random; their mastery starts over. With no
+  element left to lose, dying ends the character: you make a new one.
+- **Classes are cards.** At level 3 pick any of the eight classes from a card screen. Your class gains
+  **mastery** from kills; at class mastery 5 you choose a subclass (cards again).
+- **Monsters** are melee, ranged or both; imps and duelists **dash** (after a warning flash), wraiths and
+  duelists **dodge**. Both get sharper on deeper floors.
 
 ## The dungeon
 

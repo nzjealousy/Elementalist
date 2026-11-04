@@ -22,6 +22,10 @@ const CONTACT_MARGIN := 1.0  # px; bodies this close count as touching
 @export var xp_reward := 12
 
 var monster_id := "slime"
+var level := 1               # the dungeon floor it came from: dash and dodge sharpen with it
+var attack_type := "melee"   # "melee", "ranged" or "both" (see Monsters)
+var dash: Dictionary = {}    # {range, cooldown, windup, time, speed, damage_mult}
+var dodge_ability: Dictionary = {}  # {chance, cooldown}
 var display_name := "Slime"
 var behavior := "chase"
 var variant := ""            # elemental variant: "" or a main element (see Monsters)
@@ -51,6 +55,11 @@ var _fx_timer := 0.0
 var _age := 0.0
 var _phase := 0.0
 var _attack_cd := 1.0
+var _dash_state := ""   # "", "windup" (warning flash) or "dash" (the lunge)
+var _dash_left := 0.0
+var _dash_cd := 0.0
+var _dash_dir := Vector2.ZERO
+var _dodge_cd := 0.0
 var _summon_stage := 0
 var _base_tint := Color.WHITE
 var _telegraph: Telegraph
@@ -61,20 +70,36 @@ var _telegraph: Telegraph
 ## Turns this enemy into monster `id` (call before adding it to the tree). `hp_scale` and
 ## `damage_scale` are the dungeon floor's multipliers; a `variant_element` makes it an
 ## elemental variant: tougher, tinted, resistant to its element and weak to another.
-func configure(id: String, variant_element: String = "", hp_scale: float = 1.0, damage_scale: float = 1.0) -> void:
+func configure(id: String, variant_element: String = "", hp_scale: float = 1.0, damage_scale: float = 1.0, monster_level: int = 1) -> void:
 	var def: Dictionary = Monsters.DEFS[id]
 	monster_id = id
 	display_name = String(def["name"])
 	sprite_id = String(def["sprite"])
 	behavior = String(def["behavior"])
+	attack_type = String(def.get("attack", "melee"))
+	level = monster_level
 	boss = def.get("boss", false)
 	knock_resist = float(def.get("knock_resist", 0.0))
 	attack_range = float(def.get("attack_range", 0.0))
 	keep_distance = float(def.get("keep_distance", 0.0))
+	damage_scale *= Monsters.HARDNESS
 	max_hp = float(def["hp"]) * hp_scale
 	speed = float(def["speed"])
 	contact_damage = float(def["contact"]) * damage_scale
 	xp_reward = int(def["xp"])
+	var sharpen := float(monster_level - 1)  # each level: +4% speed, dash and dodge get better
+	speed *= 1.0 + 0.04 * sharpen
+	dash = def.get("dash", {}).duplicate()
+	if not dash.is_empty():
+		dash["cooldown"] = maxf(1.2, float(dash["cooldown"]) * (1.0 - 0.12 * sharpen))
+		dash["windup"] = maxf(0.2, float(dash["windup"]) * (1.0 - 0.1 * sharpen))
+		dash["speed"] = float(dash["speed"]) * (1.0 + 0.12 * sharpen)
+	dodge_ability = def.get("dodge", {}).duplicate()
+	if not dodge_ability.is_empty():
+		dodge_ability["chance"] = minf(0.7, float(dodge_ability["chance"]) + 0.08 * sharpen)
+		dodge_ability["cooldown"] = maxf(0.8, float(dodge_ability["cooldown"]) * (1.0 - 0.1 * sharpen))
+	if attack_type == "ranged":
+		contact_damage = 0.0  # it never touches you: it shoots
 	shot = def.get("shot", {}).duplicate()
 	if not shot.is_empty():
 		shot["damage"] = float(shot["damage"]) * damage_scale
@@ -110,6 +135,8 @@ func take_hit(hit: Dictionary) -> void:
 	if hp <= 0.0:
 		return  # already dead (e.g. a fused bolt's later hits): never reward or react twice
 	_text_offset = hit.get("text_offset", Vector2.ZERO)
+	if _try_dodge(hit):
+		return
 	var dmg: float = hit.get("damage", 0.0)
 	var element: String = hit.get("element", "")
 	var text_color := Elements.color_of(element)
@@ -197,6 +224,21 @@ func take_hit(hit: Dictionary) -> void:
 		FloatText.spawn(get_parent(), global_position + Vector2(0, -8) + _text_offset, label + "!", text_color)
 
 
+## A dodging monster may sidestep a discrete hit (not burn ticks) and take nothing.
+func _try_dodge(hit: Dictionary) -> bool:
+	if dodge_ability.is_empty() or _dodge_cd > 0.0 or is_rooted() or not hit.get("juice", true):
+		return false
+	if Game.combat_rng.randf() >= float(dodge_ability["chance"]):
+		return false
+	_dodge_cd = float(dodge_ability["cooldown"])
+	var from: Vector2 = hit.get("from", global_position + Vector2.UP)
+	var side := (global_position - from).normalized().orthogonal() * (1.0 if Game.combat_rng.randf() < 0.5 else -1.0)
+	_knock += side * 160.0
+	FloatText.spawn(get_parent(), global_position + Vector2(0, -8), "Dodged!", Color("c0c0d0"))
+	SkillFx.burst(get_parent(), global_position, "air", 0.4)
+	return true
+
+
 ## The enemy's body rectangle in world space (its sprite's footprint).
 func hit_rect() -> Rect2:
 	var size := sprite.texture.get_size()
@@ -274,10 +316,12 @@ func _physics_process(delta: float) -> void:
 	move_and_slide()
 
 	_contact_cd = maxf(0.0, _contact_cd - delta)
-	if target and not is_stunned() and _contact_cd == 0.0:
+	_dodge_cd = maxf(0.0, _dodge_cd - delta)
+	if attack_type != "ranged" and target and not is_stunned() and _contact_cd == 0.0:
 		if touches(target) and target.has_method("take_damage"):
 			# Only start the cooldown if the hit connected; i-frames shouldn't waste it.
-			if target.take_damage(damage_out(contact_damage), global_position):
+			var lunge := float(dash["damage_mult"]) if _dash_state == "dash" else 1.0
+			if target.take_damage(damage_out(contact_damage * lunge), global_position):
 				_contact_cd = 0.9
 
 	_attack(delta, target)
@@ -288,6 +332,10 @@ func _physics_process(delta: float) -> void:
 func _desired_velocity(target: Node2D) -> Vector2:
 	if target == null or is_rooted() or _telegraph != null:
 		return Vector2.ZERO
+	if _dash_state == "windup":
+		return Vector2.ZERO  # braced, the warning flash
+	if _dash_state == "dash":
+		return _dash_dir * float(dash["speed"])
 	var mult := 1.0
 	if effects.has("slow"):
 		mult = 1.0 - float(effects["slow"]["power"])
@@ -310,19 +358,48 @@ func _desired_velocity(target: Node2D) -> Vector2:
 func _attack(delta: float, target: Node2D) -> void:
 	if boss:
 		_boss_summons()
-	if target == null or is_stunned():
-		return
+	if target == null or is_stunned() or is_rooted():
+		_dash_state = ""
+		if target == null or is_stunned():
+			return
+	_tick_dash(delta, target)
 	_attack_cd -= delta
 	if _attack_cd > 0.0:
 		return
 	var distance := target.global_position.distance_to(global_position)
-	if behavior == "ranged" and distance <= attack_range:
+	if not shot.is_empty() and attack_type in ["ranged", "both"] and distance <= attack_range:
 		_attack_cd = float(shot["cooldown"])
 		EnemyProjectile.spawn(get_parent(), global_position, target.global_position - global_position,
 			float(shot["speed"]), damage_out(float(shot["damage"])), variant)
 	elif behavior == "boss" and _telegraph == null and distance <= float(slam["radius"]) * 1.7:
 		_attack_cd = float(slam["cooldown"])
 		_telegraph = Telegraph.start(get_parent(), global_position, float(slam["radius"]), float(slam["telegraph"]), _land_slam)
+
+
+## Imp / duelist dash: warn, then lunge at where you are.
+func _tick_dash(delta: float, target: Node2D) -> void:
+	if dash.is_empty():
+		return
+	_dash_cd = maxf(0.0, _dash_cd - delta)
+	match _dash_state:
+		"":
+			var distance := target.global_position.distance_to(global_position)
+			if _dash_cd <= 0.0 and not is_rooted() and distance <= float(dash["range"]) and distance > 22.0:
+				_dash_state = "windup"
+				_dash_left = float(dash["windup"])
+				FloatText.spawn(get_parent(), global_position + Vector2(0, -10), "!", Color("ff6a4a"), 12)
+		"windup":
+			_dash_left -= delta
+			if _dash_left <= 0.0:
+				_dash_state = "dash"
+				_dash_left = float(dash["time"])
+				_dash_dir = (target.global_position - global_position).normalized()
+		"dash":
+			_dash_left -= delta
+			SkillFx.burst(get_parent(), global_position, "", 0.15)
+			if _dash_left <= 0.0:
+				_dash_state = ""
+				_dash_cd = float(dash["cooldown"])
 
 
 ## The slam hits whoever is still standing in the circle.
@@ -399,6 +476,8 @@ func _update_tint(delta: float) -> void:
 	_flash = maxf(0.0, _flash - delta)
 	if _flash > 0.0:
 		sprite.modulate = Color(2.5, 2.5, 2.5)
+	elif _dash_state == "windup":
+		sprite.modulate = Color(1.8, 0.45, 0.4)
 	elif aura != "":
 		sprite.modulate = _base_tint.lerp(Elements.color_of(aura), 0.55)
 	else:

@@ -4,6 +4,7 @@ extends CanvasLayer
 ## (or the button) starts a new dungeon with the same character.
 
 var _open := false
+var _final := false  # the character is gone for good: the button starts a new character instead
 var _theme: Theme
 
 
@@ -23,8 +24,9 @@ func is_open() -> bool:
 	return _open
 
 
-## `lines` are the run's summary, one per row.
-func show_result(won: bool, lines: Array) -> void:
+## `lines` are the run's summary, one per row. `final` means the character died for good.
+func show_result(won: bool, lines: Array, final: bool = false) -> void:
+	_final = final
 	_open = true
 	visible = true
 	get_tree().paused = true
@@ -42,7 +44,8 @@ func show_result(won: bool, lines: Array) -> void:
 	column.theme = _theme
 	column.add_theme_constant_override("separation", 4)
 	center.add_child(column)
-	var title := _label("Dungeon cleared!" if won else "You fell", Color("ffd84a") if won else Color("ff7a7a"), 12)
+	var title_text := "Dungeon cleared!" if won else ("You died" if final else "You fell")
+	var title := _label(title_text, Color("ffd84a") if won else Color("ff7a7a"), 12)
 	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	column.add_child(title)
 	for line in lines:
@@ -50,7 +53,7 @@ func show_result(won: bool, lines: Array) -> void:
 		row.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		column.add_child(row)
 	var button := Button.new()
-	button.text = "New dungeon (Enter)"
+	button.text = "New character (Enter)" if final else "New dungeon (Enter)"
 	button.focus_mode = Control.FOCUS_NONE
 	button.pressed.connect(restart)
 	column.add_child(button)
@@ -58,13 +61,16 @@ func show_result(won: bool, lines: Array) -> void:
 
 func _input(event: InputEvent) -> void:
 	if _open and event is InputEventKey and event.pressed and not event.echo and event.keycode in [KEY_ENTER, KEY_KP_ENTER]:
+		get_viewport().set_input_as_handled()  # before the restart: the reload removes this node (and its viewport)
 		restart()
-		get_viewport().set_input_as_handled()
 
 
 func restart() -> void:
 	_open = false
 	get_tree().paused = false
+	if _final:
+		Game.start_new(Classes.NEUTRAL_CLASS)  # a stand-in until the creation menu (opened next) replaces it
+		Game.open_creation = true
 	get_tree().reload_current_scene()
 
 

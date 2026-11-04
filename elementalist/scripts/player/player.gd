@@ -7,8 +7,8 @@ extends CharacterBody2D
 ##   RMB is the basic attack: a slash, or (ranged-style classes while imbued) a bolt of the
 ##   selected element, which the SkillCaster casts. LMB is the fused cast (SkillCaster); for a
 ##   melee-style character with no elements it is a straight slash instead.
-##   E toggles imbue. Every slash then carries the locked elements (or the selected one),
-##   costing a little mana per element per swing; if you can't pay, it is a plain slash.
+##   E toggles imbue. Every slash then carries the selected element (one only), costing a little
+##   mana per swing; if you can't pay, it is a plain slash.
 ##   Buffs (V support skills) are timed effects in `buffs`: might (+damage), mend (heal per
 ##   second), ward (less damage taken) and haste (speed). Their length scales with Wisdom.
 ##   Dodge + attack = a 360 degree spin: costs more stamina, hits all around, can be imbued,
@@ -16,7 +16,7 @@ extends CharacterBody2D
 
 signal died
 
-const STAMINA_REGEN_DELAY := 0.5
+const STAMINA_REGEN_DELAY := 0.8
 const DODGE_BUFFER := 0.15  # a dodge pressed this early still fires once it becomes possible
 const IMBUE_SWING_COST := 4.0    # mana per element per imbued slash
 const SPIN_STAMINA_MULT := 1.8   # a spin costs this many slashes' worth of stamina
@@ -29,13 +29,13 @@ const SPIN_DURATION := 0.32  # how long the spin lasts, during which you cannot 
 @export var dodge_time := 0.18
 @export var dodge_iframes := 0.12  # invulnerable only for the start of the dodge
 @export var dodge_cooldown := 0.4
-@export var dodge_stamina_cost := 25.0
+@export var dodge_stamina_cost := 30.0
 @export var max_hp := 100.0
 @export var hp_regen := 0.6  # HP per second
-@export var hp_regen_delay := 3.0  # seconds after a hit before regen resumes
+@export var hp_regen_delay := 6.0  # seconds after a hit before regen resumes
 @export var max_stamina := 100.0
 @export var stamina_regen := 30.0
-@export var hurt_invulnerability := 0.5
+@export var hurt_invulnerability := 0.35
 
 var hp := 0.0
 var stamina := 0.0
@@ -258,12 +258,11 @@ func _sync_imbue_fx() -> void:
 
 # ---------- imbue ----------
 
-## The elements an imbued blade carries: the locked elements if any, else the selected one
-## (none for the martial set, which has no element).
+## The element an imbued blade carries: always just the selected one (a blade holds a single
+## element; mixing is what the fused cast on LMB is for). None for the martial set.
 func imbue_elements() -> Array[String]:
 	var out: Array[String] = []
-	out.assign(caster.locked)
-	if out.is_empty() and caster.selected_element() in Game.character.castable_elements():
+	if caster.selected_element() in Game.character.castable_elements():
 		out.append(caster.selected_element())
 	return out
 
@@ -300,7 +299,7 @@ func try_melee(dir: Vector2 = Vector2.ZERO, spin: bool = false) -> bool:
 	if dir == Vector2.ZERO:
 		dir = aim_direction
 	spend_stamina(cost)
-	_melee_cd = SPIN_COOLDOWN if spin else float(m["cooldown"])
+	_melee_cd = (SPIN_COOLDOWN if spin else float(m["cooldown"])) / float(stats["attack_speed"])
 	if spin:
 		_spin_left = SPIN_DURATION  # immune until the attack finishes
 	else:
@@ -365,14 +364,24 @@ func try_spin() -> bool:
 
 ## Starts a dodge roll in `dir` (defaults to the mouse aim). Costs stamina.
 func try_dodge(dir: Vector2 = Vector2.ZERO) -> bool:
-	if is_dodging() or _dodge_cd > 0.0 or stamina < dodge_stamina_cost:
+	var dodge_cost := dodge_stamina_cost * float(Game.character.derived()["dodge_cost_mult"])
+	if is_dodging() or _dodge_cd > 0.0 or stamina < dodge_cost:
 		return false
 	_dodge_dir = dir.normalized() if dir != Vector2.ZERO else aim_direction
 	_dodge_left = dodge_time
 	_dodge_cd = dodge_cooldown
 	_spun = false
-	spend_stamina(dodge_stamina_cost)
+	spend_stamina(dodge_cost)
 	return true
+
+
+## What a kill gives back (see Classes.KILL_MANA and the kill_* passive stats).
+func restore_on_kill() -> void:
+	var d: Dictionary = Game.character.derived()
+	hp = minf(max_hp, hp + float(d["kill_hp"]))
+	stamina = minf(max_stamina, stamina + float(d["kill_stamina"]))
+	if caster:
+		caster.mana = minf(caster.max_mana, caster.mana + float(d["kill_mana"]))
 
 
 ## Spends stamina and pauses its regeneration briefly. Also used by martial skills.

@@ -131,6 +131,12 @@ func _fill_stats() -> void:
 		title += " / " + String(Classes.SUBCLASSES[ch.subclass_id]["name"])
 	left.add_child(_label(title, GOLD))
 	left.add_child(_label("XP %d / %d" % [ch.xp, CharacterData.xp_to_next(ch.level)]))
+	if not Classes.is_starter(ch.class_id):
+		var mastery: Dictionary = ch.class_mastery.get(ch.class_id, {"level": 1, "xp": 0})
+		var need := CharacterData.class_mastery_xp_to_next(int(mastery["level"]))
+		left.add_child(_label("%s mastery %d  (%d/%d)" % [cls["name"], mastery["level"], mastery["xp"], need], Color("b6ff8a")))
+	if ch.deaths > 0:
+		left.add_child(_label("Deaths: %d (the next costs %d elements)" % [ch.deaths, ch.deaths + 1], Color("ff7a7a")))
 	left.add_child(_label("Points to spend: %d" % ch.unspent_points, GOLD if ch.unspent_points > 0 else Color.WHITE))
 	left.add_child(_spacer())
 	for attr in Classes.ATTRIBUTES:
@@ -150,19 +156,18 @@ func _fill_stats() -> void:
 	var d := ch.derived()
 	left.add_child(_label("HP %d   Mana %d   Stamina %d" % [d["max_hp"], d["max_mana"], d["max_stamina"]]))
 	left.add_child(_label("Move %d   Melee x%.2f   Reach x%.2f" % [d["move_speed"], d["melee_damage_mult"], d["melee_range_mult"]]))
-	left.add_child(_label("Crit %d%% (x%.2f)   Buffs x%.2f" % [roundi(float(d["crit_chance"]) * 100.0), d["crit_mult"], d["buff_duration_mult"]]))
+	left.add_child(_label("Crit %d%% (x%.2f)   Buffs x%.2f   Attack speed x%.2f" % [roundi(float(d["crit_chance"]) * 100.0), d["crit_mult"], d["buff_duration_mult"], d["attack_speed"]]))
+	left.add_child(_label("Recovery /s: HP %.2f  Stamina %.1f  Mana %.1f" % [d["hp_regen"], d["stamina_regen"], d["mana_regen"]], Color(0.7, 0.9, 1.0)))
+	left.add_child(_label("On a kill: HP +%.0f  Stamina +%.0f  Mana +%.1f" % [d["kill_hp"], d["kill_stamina"], d["kill_mana"]], Color(0.7, 0.9, 1.0)))
 
 	right.add_child(_label(String(cls["desc"]), Color(0.8, 0.85, 1.0)))
 	right.add_child(_label(_affinity_text(ch), Color(0.7, 0.9, 1.0)))
 	right.add_child(_spacer())
 	if ch.can_choose_class():
-		right.add_child(_label("Choose your class:", GOLD))
-		for id in Classes.playable():
-			var button := _button(String(Classes.CLASSES[id]["name"]))
-			button.alignment = HORIZONTAL_ALIGNMENT_LEFT
-			button.pressed.connect(_choose_class.bind(id))
-			right.add_child(button)
-			right.add_child(_label(String(Classes.CLASSES[id]["desc"]), Color(0.75, 0.75, 0.8)))
+		right.add_child(_label("You can choose your class now.", GOLD))
+		var choose := _button("Choose your class...")
+		choose.pressed.connect(_open_cards.bind("class"))
+		right.add_child(choose)
 		return
 	if Classes.is_starter(ch.class_id):
 		right.add_child(_label("Class at level %d" % Classes.CLASS_LEVEL, DIM))
@@ -175,16 +180,13 @@ func _fill_stats() -> void:
 	var subclasses := ch.available_subclasses()
 	if not subclasses.is_empty():
 		right.add_child(_spacer())
-		right.add_child(_label("Choose a subclass:", GOLD))
-		for id in subclasses:
-			var button := _button(String(Classes.SUBCLASSES[id]["name"]))
-			button.alignment = HORIZONTAL_ALIGNMENT_LEFT
-			button.pressed.connect(_choose_subclass.bind(id))
-			right.add_child(button)
-			right.add_child(_label(String(Classes.SUBCLASSES[id]["desc"]), Color(0.75, 0.75, 0.8)))
-	elif ch.subclass_id == "" and not Classes.is_starter(ch.class_id) and ch.level < Classes.SUBCLASS_LEVEL:
+		right.add_child(_label("Your class mastery opens a subclass.", GOLD))
+		var choose_sub := _button("Choose a subclass...")
+		choose_sub.pressed.connect(_open_cards.bind("subclass"))
+		right.add_child(choose_sub)
+	elif ch.subclass_id == "" and not Classes.is_starter(ch.class_id):
 		right.add_child(_spacer())
-		right.add_child(_label("Subclass at level %d" % Classes.SUBCLASS_LEVEL, DIM))
+		right.add_child(_label("Subclass at class mastery %d" % Classes.SUBCLASS_MASTERY, DIM))
 
 
 ## Equipped gear on the left (click to take off), the bag on the right (click to equip), and a
@@ -363,7 +365,7 @@ func _fill_combos() -> void:
 func _fill_rewards() -> void:
 	var ch := Game.character
 	var col := _column(CONTENT_WIDTH)
-	col.add_child(_label("Level rewards: pick one option from each offer. Every even level except %d gives one." % Classes.SUBCLASS_LEVEL, GOLD))
+	col.add_child(_label("Level rewards: pick one option from each offer. Every even level gives one.", GOLD))
 	if ch.pending_rewards.is_empty():
 		col.add_child(_label("Nothing to claim. Next offer at level %d." % _next_reward_level(ch.level), DIM))
 		return
@@ -400,14 +402,15 @@ func _spend(attr: String) -> void:
 	show_tab.call_deferred(_tab)
 
 
-func _choose_class(id: String) -> void:
-	Game.character.choose_class(id)
-	show_tab.call_deferred(_tab)
-
-
-func _choose_subclass(id: String) -> void:
-	Game.character.choose_subclass(id)
-	show_tab.call_deferred(_tab)
+## Opens the class or subclass cards over the sheet; the sheet refreshes when they close.
+func _open_cards(wanted: String) -> void:
+	var cards := get_tree().get_first_node_in_group("class_cards")
+	if cards:
+		cards.open(wanted)
+		await get_tree().process_frame
+		while cards.is_open():
+			await get_tree().process_frame
+		show_tab.call_deferred(_tab)
 
 
 func _use_gem(element: String) -> void:

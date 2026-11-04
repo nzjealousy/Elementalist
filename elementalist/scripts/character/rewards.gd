@@ -5,8 +5,8 @@ extends RefCounted
 ## (a trait they don't have yet). Offers are rolled when the level is reached and kept until
 ## claimed; CharacterData.claim_reward applies the choice.
 ##
-## Reward levels are every even level except 10 (which is when subclasses unlock):
-## 2, 4, 6, 8, 12, 14, ... 30. Class (3), area skills (5) and subclass (10) are separate gates.
+## Reward levels are every even level: 2, 4, 6, ... 30. The class (level 3), area skills (5) and
+## the subclass (class mastery) are separate gates.
 
 const MIN_OPTIONS := 1
 const MAX_OPTIONS := 3
@@ -14,7 +14,7 @@ const SKILL_CHANCE := 0.5  # chance an option is a skill rather than a passive, 
 
 
 static func is_reward_level(level: int) -> bool:
-	return level % 2 == 0 and level != Classes.SUBCLASS_LEVEL
+	return level % 2 == 0
 
 
 ## Rolls an offer for `character`: 1 to 3 distinct options of the form {"type", "id"}, where

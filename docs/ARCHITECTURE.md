@@ -177,9 +177,32 @@ growth attribute +1. A level-up heals 40% of max HP (`LEVEL_UP_HEAL_FRACTION`).
 **Saving:** `to_dict()` / `from_dict()` survive a JSON round trip (JSON turns ints into
 floats; `from_dict` converts them back). There is no save file or UI yet (Phase 5).
 
+## The resource model (Phase 4.2)
+
+Constants live in `Classes` (`HP_REGEN_BASE`, `STAMINA_REGEN_BASE`, `MANA_REGEN_BASE`, `KILL_MANA`,
+`KILL_STAMINA`): recovery is deliberately slow. `derived()` adds `attack_speed` (Dexterity and level),
+`mana_cost_mult`, `dodge_cost_mult` and `kill_hp / kill_mana / kill_stamina`; `Player.restore_on_kill()`
+applies the kill restores (called from `Game.on_enemy_killed`). `SkillCaster.mana_multiplier(id)` is the one
+place mana costs are scaled: the stat (Elemental Harmony's spread-thin penalty, gear, traits), +30% per
+extra element in a fusion (`FUSION_COST_PER_EXTRA`), and the chain discount (`chain_discount`: an F/V/R
+ability of a different element within `CHAIN_WINDOW`). `fusion_hit_scale(n)` is 75% for two elements down
+to 50%. Imbue holds a single element (`Player.imbue_elements`). Monsters multiply everything by
+`Monsters.HARDNESS`.
+
+**Death** (`CharacterData.die()`): with elements, lose `deaths` of them at random (`remove_element` resets
+that element's mastery, special and skill uses; none left means attunable); with none, the result is `final`
+and `RunEndScreen` starts a new character (`Game.open_creation` opens the creation menu in the next scene).
+
+**Class mastery** (`class_mastery`, `add_class_xp`): grows with kills; `Classes.SUBCLASS_MASTERY` opens the
+subclass. `ClassCards` shows the class (level 3) and subclass choices as cards; signals `class_available` /
+`subclass_available` open them.
+
+**Enemy abilities** (`Monsters.DEFS`): `attack` is melee, ranged or both; `dash` (warning flash then a lunge,
+`Enemy._tick_dash`) and `dodge` (`Enemy._try_dodge`, discrete hits only) sharpen with the floor (`level`).
+
 ## Attributes and classes
 
-Six attributes (`Classes.ATTRIBUTES`): Strength, Agility, Intellect, Vitality, and two newer ones.
+Seven attributes (`Classes.ATTRIBUTES`): Strength, Agility, Intellect, Vitality, Wisdom, Luck and Dexterity (attack speed).
 **Wisdom** (per point above 5: +0.6 mana regen, -1% spell cooldowns, +4% buff and debuff duration)
 and **Luck** (+1.5% crit chance, +5% loot luck). At 5 each they change nothing, so the tuned
 baseline is intact. `wisdom_add` / `luck_add` passive mods add to the attribute (the Scholar trait,
@@ -188,7 +211,7 @@ rolls them with `Game.combat_rng`, only for discrete hits, and only when the cha
 
 **Eight classes**, two subclasses each (sixteen in all): Channeler, Vanguard, Ranger, Mystic and the
 newer Assassin (melee, dagger, crits), Berserker (melee, axe, fury), Sage (ranged, tome, wisdom) and
-Druid (ranged, staff, regeneration). Every class has the same 31 attribute points and +1 per level in
+Druid (ranged, staff, regeneration). Every class has the same 36 attribute points and +1 per level in
 one attribute (a self-test checks it). New weapon types: dagger, axe, tome (starter weapons, craftable
 upgrades and a weapon-mastery passive each).
 

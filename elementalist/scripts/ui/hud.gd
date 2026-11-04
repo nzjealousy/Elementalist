@@ -1,9 +1,11 @@
 extends CanvasLayer
 ## Combat HUD drawn in code: HP / mana / stamina / XP bars, a status line (points, pending
-## choices, imbue and melee/ranged mode), the ceremony banner, the element tabs (1-5), and the
-## action slots: LMB, Q (element lock), F (area), R (special), RMB (slash).
+## choices, imbue and melee/ranged mode), the ceremony banner, and two groups along the bottom:
+## bottom left the element tabs (1-5); bottom right the actions: Fuse (LMB), Attack (RMB), the
+## lock (Q, showing the combo name and colour), and the abilities F, V and R.
 
 const SLOT := 20.0
+const LOCK_SLOT := 28.0  # wider, so a combo's name fits
 const GAP := 3.0
 
 var _ctrl: Control
@@ -49,19 +51,17 @@ func _draw_hud() -> void:
 	if Game.banner_time > 0.0:
 		var alpha := clampf(Game.banner_time, 0.0, 1.0)
 		_ctrl.draw_multiline_string(font, Vector2(0, 62), Game.banner_text, HORIZONTAL_ALIGNMENT_CENTER, 320.0, 8, -1, Color(1, 0.95, 0.7, alpha))
-	_ctrl.draw_string(font, Vector2(0, 8), "TAB sheet  I gear  G use  E imbue  Q lock  LMB fuse  RMB attack  F area  V buff  R special", HORIZONTAL_ALIGNMENT_RIGHT, 316.0, 5, Color(1, 1, 1, 0.45))
+	_ctrl.draw_string(font, Vector2(0, 8), "TAB sheet  I gear  G use  E imbue  LMB fuse  RMB attack  Q lock  F area  V buff  R special", HORIZONTAL_ALIGNMENT_RIGHT, 316.0, 5, Color(1, 1, 1, 0.45))
 
-	# Layout: [1..5] element tabs, gap, LMB, RMB, Q, F, R (just RMB if no castable set)
-	var count := caster.elements.size()
-	var slots := (count + 6) if count > 0 else 1
-	var width := slots * (SLOT + GAP) + (GAP * 2.0 if count > 0 else 0.0)
-	var x := (320.0 - width) * 0.5
+	_draw_elements(font, caster)
+	_draw_actions(font, caster)
+
+
+## Bottom left: the element tabs (1-5), the selected one lit, a white mark on each locked one.
+func _draw_elements(font: Font, caster: SkillCaster) -> void:
+	var x := 4.0
 	var y := 154.0
-	if count == 0:
-		_melee_slot(Vector2(x, y))
-		return
-
-	for i in count:
+	for i in caster.elements.size():
 		var element := caster.elements[i]
 		var rect := Rect2(Vector2(x, y + 4.0), Vector2(SLOT, SLOT - 4.0))
 		var color := Elements.color_of(element)
@@ -74,13 +74,24 @@ func _draw_hud() -> void:
 			_ctrl.draw_rect(Rect2(rect.position + Vector2(rect.size.x - 4, 0), Vector2(4, 4)), Color.WHITE)  # locked marker
 		x += SLOT + GAP
 
-	x += GAP * 2.0
+
+## Bottom right: Fuse (LMB), Attack (RMB), the lock (Q) showing the combo it makes, then the
+## abilities F (area), V (buff or debuff) and R (special).
+func _draw_actions(font: Font, caster: SkillCaster) -> void:
+	var y := 154.0
+	if caster.elements.is_empty():
+		_melee_slot(Vector2(316.0 - SLOT, y))
+		return
+	var widths := [SLOT, SLOT, LOCK_SLOT, SLOT, SLOT, SLOT]
+	var x := 316.0 + GAP
+	for width in widths:
+		x -= width + GAP
 	_lmb_slot(Vector2(x, y), caster)
 	x += SLOT + GAP
 	_rmb_slot(Vector2(x, y), caster)
 	x += SLOT + GAP
 	_lock_slot(Vector2(x, y), caster)
-	x += SLOT + GAP
+	x += LOCK_SLOT + GAP
 	_skill_slot(Vector2(x, y), caster, caster.skill_for("area"), "F")
 	x += SLOT + GAP
 	_skill_slot(Vector2(x, y), caster, caster.skill_for("support"), "V")
@@ -147,7 +158,7 @@ func _draw_status(font: Font, caster: SkillCaster, character: CharacterData) -> 
 	var text := ""
 	var color := Color(1, 1, 1, 0.7)
 	if _player.imbued and not elements.is_empty():
-		text = "Imbued: %s" % names
+		text = "Imbued: %s (one element per blade)" % names
 		color = Elements.color_of(elements[0]).lightened(0.3)
 	elif not character.castable_elements().is_empty():
 		match Classes.style_of(character.class_id):
@@ -158,29 +169,29 @@ func _draw_status(font: Font, caster: SkillCaster, character: CharacterData) -> 
 	if text != "":
 		_ctrl.draw_string(font, Vector2(88, 34), text, HORIZONTAL_ALIGNMENT_LEFT, -1, 6, color)
 	if caster.lmb_mode() == "locked":
-		var hint := "LMB needs 2-3 locked elements (Q)" if caster.lock_available() else "LMB needs 2+ elements to fuse"
+		var hint := "Fuse (LMB) needs 2+ locked elements (Q)" if caster.lock_available() else "Fuse (LMB) needs 2+ elements"
 		_ctrl.draw_string(font, Vector2(88, 42), hint, HORIZONTAL_ALIGNMENT_LEFT, -1, 6, Color(1, 1, 1, 0.45))
 
 
-## LMB: the fused cast; a plain slash or knife throw for characters with no elements; or a
-## dimmed, unusable slot while fewer than two elements are locked.
+## LMB: "Fuse" (the fused cast), or "Slash" / "Knife" for characters with no elements. While
+## fewer than two elements are locked the Fuse slot is dimmed: it can't be used.
 func _lmb_slot(pos: Vector2, caster: SkillCaster) -> void:
 	match caster.lmb_mode():
 		"fusion":
 			_fusion_slot(pos, caster, caster.primary_id())
 		"knife":
-			_skill_slot(pos, caster, caster.primary_id(), "LMB")
+			_skill_slot(pos, caster, caster.primary_id(), "LMB", "Knife")
 		"slash":
-			_plain_slot(pos, "LMB", "Slas", Color(0.75, 0.75, 0.78, 0.6))
+			_plain_slot(pos, "LMB", "Slash", Color(0.75, 0.75, 0.78, 0.6))
 		_:
-			_plain_slot(pos, "LMB", "Q 2+", Color(0.2, 0.22, 0.3, 0.9))
+			_plain_slot(pos, "LMB", "Fuse", Color(0.2, 0.22, 0.3, 0.9))
 			_ctrl.draw_rect(Rect2(pos, Vector2(SLOT, SLOT)), Color(0, 0, 0, 0.45))
 
 
-## RMB: the slash, or the selected element's bolt for a ranged class while imbued.
+## RMB: "Bolt" (ranged class, imbued) or "Slash". The colour follows the imbued element.
 func _rmb_slot(pos: Vector2, caster: SkillCaster) -> void:
 	if caster.rmb_mode() == "bolt":
-		_skill_slot(pos, caster, caster.bolt_id(), "RMB")
+		_skill_slot(pos, caster, caster.bolt_id(), "RMB", "Bolt")
 	else:
 		_melee_slot(pos)
 
@@ -198,32 +209,39 @@ func _fusion_slot(pos: Vector2, caster: SkillCaster, id: String) -> void:
 	if not caster.can_afford(id):
 		_ctrl.draw_rect(rect, Color(0, 0, 0.3, 0.45))
 	_ctrl.draw_rect(rect, Color.BLACK, false, 1.0)
-	_ctrl.draw_string(font, pos + Vector2(2, 7), "LMB", HORIZONTAL_ALIGNMENT_LEFT, -1, 6, Color.WHITE)
-	_ctrl.draw_string(font, pos + Vector2(2, 17), "Fuse%d" % parts.size(), HORIZONTAL_ALIGNMENT_LEFT, -1, 6, Color.WHITE)
+	_ctrl.draw_string(font, pos + Vector2(2, 6), "LMB", HORIZONTAL_ALIGNMENT_LEFT, -1, 5, Color(1, 1, 1, 0.7))
+	_ctrl.draw_string(font, pos + Vector2(2, 17), "Fuse", HORIZONTAL_ALIGNMENT_LEFT, -1, 6, Color.WHITE)
+	_ctrl.draw_string(font, pos + Vector2(12, 6), "x%d" % parts.size(), HORIZONTAL_ALIGNMENT_LEFT, -1, 5, Color.WHITE)
 
 
-## Q: shows up to three lock pips (filled = locked element).
+## Q: shows the combination the locked elements make: the pair's combo name and colour for two
+## ("Steam"), "Trio" / "Quartet" / "Prism" for more, the element itself for one, "Lock" for none.
 func _lock_slot(pos: Vector2, caster: SkillCaster) -> void:
 	var font := ThemeDB.fallback_font
-	var rect := Rect2(pos, Vector2(SLOT, SLOT))
+	var rect := Rect2(pos, Vector2(LOCK_SLOT, SLOT))
 	var available := caster.lock_available()
+	var label: Dictionary = Elements.fusion_label(caster.locked)
 	_ctrl.draw_rect(rect, Color(0.18, 0.2, 0.28, 0.9))
-	_ctrl.draw_rect(rect, Color.BLACK, false, 1.0)
-	_ctrl.draw_string(font, pos + Vector2(2, 7), "Q", HORIZONTAL_ALIGNMENT_LEFT, -1, 6, Color.WHITE if available else Color(1, 1, 1, 0.4))
-	if not available:  # needs two elements to have anything to fuse
-		var why := "none" if Game.character.castable_elements().is_empty() else "2 el"
-		_ctrl.draw_string(font, pos + Vector2(2, 17), why, HORIZONTAL_ALIGNMENT_LEFT, -1, 6, Color(1, 1, 1, 0.4))
-		_ctrl.draw_rect(rect, Color(0, 0, 0, 0.55))
-		return
-	for i in Classes.MAX_LOCKED:
-		var pip := Rect2(pos + Vector2(2 + i * 6, 11), Vector2(5, 6))
-		if i < caster.locked.size():
-			_ctrl.draw_rect(pip, Elements.color_of(caster.locked[i]))
+	if not caster.locked.is_empty():
+		if caster.locked.size() >= 3:  # a stripe per element
+			var stripe := LOCK_SLOT / caster.locked.size()
+			for i in caster.locked.size():
+				_ctrl.draw_rect(Rect2(pos + Vector2(i * stripe, 0), Vector2(stripe, SLOT)), Color(Elements.color_of(caster.locked[i]), 0.55))
 		else:
-			_ctrl.draw_rect(pip, Color(1, 1, 1, 0.2), false, 1.0)
+			_ctrl.draw_rect(rect, Color(label["color"], 0.7))
+	_ctrl.draw_rect(rect, Color.BLACK, false, 1.0)
+	_ctrl.draw_string(font, pos + Vector2(2, 6), "Q", HORIZONTAL_ALIGNMENT_LEFT, -1, 5, Color(1, 1, 1, 0.7))
+	var text := String(label["name"]).substr(0, 8)
+	var dark := not caster.locked.is_empty() and Color(label["color"]).get_luminance() > 0.6
+	if not available:  # needs two elements to have anything to fuse
+		text = "none" if Game.character.castable_elements().is_empty() else "2 el"
+		_ctrl.draw_rect(rect, Color(0, 0, 0, 0.55))
+	_ctrl.draw_string(font, pos + Vector2(2, 17), text, HORIZONTAL_ALIGNMENT_LEFT, LOCK_SLOT - 3.0, 5, Color.BLACK if dark else Color.WHITE)
 
 
-func _skill_slot(pos: Vector2, caster: SkillCaster, skill_id: String, key: String) -> void:
+## F, V and R: key at the top, the skill's name below. A gold frame marks the chain discount:
+## the next ability of a different element than your last costs less mana.
+func _skill_slot(pos: Vector2, caster: SkillCaster, skill_id: String, key: String, name_override: String = "") -> void:
 	var def: Dictionary = SkillDB.DEFS[skill_id]
 	var font := ThemeDB.fallback_font
 	var rect := Rect2(pos, Vector2(SLOT, SLOT))
@@ -236,10 +254,12 @@ func _skill_slot(pos: Vector2, caster: SkillCaster, skill_id: String, key: Strin
 		_ctrl.draw_rect(rect, Color(0, 0, 0, 0.75))
 	elif not caster.can_afford(skill_id):
 		_ctrl.draw_rect(rect, Color(0, 0, 0.3, 0.45))
-	_ctrl.draw_rect(rect, Color.BLACK, false, 1.0)
-	_ctrl.draw_string(font, pos + Vector2(2, 7), key, HORIZONTAL_ALIGNMENT_LEFT, -1, 6, Color.WHITE)
+	var chained := learned and caster.chain_discount(skill_id) < 1.0
+	_ctrl.draw_rect(rect, Color("ffd84a") if chained else Color.BLACK, false, 1.0)
+	_ctrl.draw_string(font, pos + Vector2(2, 6), key, HORIZONTAL_ALIGNMENT_LEFT, -1, 5, Color(1, 1, 1, 0.7))
 	if learned:
-		_ctrl.draw_string(font, pos + Vector2(2, 17), String(def["name"]).substr(0, 4), HORIZONTAL_ALIGNMENT_LEFT, -1, 6, Color.WHITE)
+		var label := name_override if name_override != "" else String(def["name"]).substr(0, 4)
+		_ctrl.draw_string(font, pos + Vector2(2, 17), label, HORIZONTAL_ALIGNMENT_LEFT, SLOT - 3.0, 6, Color.WHITE)
 	else:
 		_ctrl.draw_string(font, pos + Vector2(2, 17), ("Lv%d" % Game.character.skill_unlock_level(skill_id)) if Game.character.skill_unlock_level(skill_id) > 0 else "Rwd", HORIZONTAL_ALIGNMENT_LEFT, -1, 6, Color("ffd84a"))
 
@@ -249,14 +269,19 @@ func _plain_slot(pos: Vector2, key: String, label: String, color: Color) -> void
 	var rect := Rect2(pos, Vector2(SLOT, SLOT))
 	_ctrl.draw_rect(rect, color)
 	_ctrl.draw_rect(rect, Color.BLACK, false, 1.0)
-	_ctrl.draw_string(font, pos + Vector2(2, 7), key, HORIZONTAL_ALIGNMENT_LEFT, -1, 6, Color.WHITE)
-	_ctrl.draw_string(font, pos + Vector2(2, 17), label, HORIZONTAL_ALIGNMENT_LEFT, -1, 6, Color.WHITE)
+	_ctrl.draw_string(font, pos + Vector2(2, 6), key, HORIZONTAL_ALIGNMENT_LEFT, -1, 5, Color(1, 1, 1, 0.7))
+	_ctrl.draw_string(font, pos + Vector2(2, 17), label, HORIZONTAL_ALIGNMENT_LEFT, SLOT - 3.0, 6, Color.WHITE)
 
 
+## The slash (RMB): grey normally, the imbued element's colour while the blade is coated.
 func _melee_slot(pos: Vector2) -> void:
 	var m: Dictionary = SkillDB.MELEE
 	var rect := Rect2(pos, Vector2(SLOT, SLOT))
-	_plain_slot(pos, "RMB", String(m["name"]).substr(0, 4), Color(0.75, 0.75, 0.78, 0.6))
+	var imbued_elements: Array[String] = _player.imbue_elements()
+	var color := Color(0.75, 0.75, 0.78, 0.6)
+	if _player.imbued and not imbued_elements.is_empty():
+		color = Color(Elements.color_of(imbued_elements[0]), 0.85)
+	_plain_slot(pos, "RMB", "Slash", color)
 	if _player.stamina < float(m["stamina"]):
 		_ctrl.draw_rect(rect, Color(0, 0, 0, 0.55))
 

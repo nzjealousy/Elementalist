@@ -61,6 +61,26 @@ func resolve(a: String, b: String) -> Dictionary:
 
 
 ## One-line description of a combo's payoff, e.g. "x1.4 damage, vulnerable 3s".
+## The name and colour a set of locked elements goes by on the HUD: the pair's combo for two
+## ("Steam"), "Trio" / "Quartet" / "Prism" for three, four or more (colours blended), the element
+## itself for one, and "Lock" for none.
+func fusion_label(locked: Array) -> Dictionary:
+	match locked.size():
+		0:
+			return {"name": "Lock", "color": Color(0.5, 0.52, 0.6)}
+		1:
+			return {"name": String(locked[0]).capitalize(), "color": color_of(String(locked[0]))}
+		2:
+			var combo := resolve(String(locked[0]), String(locked[1]))
+			if not combo.is_empty():
+				return {"name": combo["name"], "color": combo["color"]}
+	var blend := Color(0, 0, 0)
+	for element in locked:
+		blend += color_of(String(element))
+	blend = Color(blend.r / locked.size(), blend.g / locked.size(), blend.b / locked.size())
+	return {"name": {3: "Trio", 4: "Quartet"}.get(locked.size(), "Prism"), "color": blend}
+
+
 func describe_combo(combo: Dictionary) -> String:
 	var effects := {
 		"dot": "burning", "slow": "slowed", "root": "rooted", "stun": "stunned",

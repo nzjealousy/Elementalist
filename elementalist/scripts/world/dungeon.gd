@@ -11,6 +11,7 @@ extends Node2D
 const TILE := 16
 const WAVE_DELAY := 1.2   # seconds before a room's first wave, and between waves
 const FADE_TIME := 0.25
+const FORGE_HEAL := 0.5   # share of max HP a forge room restores (stamina and mana are refilled)
 const MIN_SPAWN_DISTANCE := 100.0  # monsters appear at least this far from the player
 
 var layout: Array = []   # floors -> rooms (see DungeonGen)
@@ -20,6 +21,7 @@ var room: Dictionary = {}
 var state := "idle"      # fighting, clear, transition, won or dead
 var wave := 0            # waves of this room already spawned
 var run_time := 0.0
+var death: Dictionary = {}  # what dying cost: {"final": bool, "lost": [elements]}
 var with_ui := true      # the menus and the fade layer (tests turn it off)
 var rng := RandomNumberGenerator.new()
 
@@ -44,8 +46,13 @@ func _ready() -> void:
 		player.died.connect(_on_player_died)
 	if with_ui:
 		var parent := get_parent()
-		parent.add_child.call_deferred(NewCharacterMenu.new())
+		var creation := NewCharacterMenu.new()
+		parent.add_child.call_deferred(creation)
+		if Game.open_creation:
+			Game.open_creation = false
+			creation.toggle.call_deferred()
 		parent.add_child.call_deferred(RewardCards.new())
+		parent.add_child.call_deferred(ClassCards.new())
 		parent.add_child.call_deferred(ForgeScreen.new())
 		_end_screen = RunEndScreen.new()
 		parent.add_child.call_deferred(_end_screen)
@@ -144,7 +151,7 @@ func _load_room(floor_number: int, room_number: int) -> void:
 			forge.position = _centre()
 			_room_node.add_child(forge)
 			_heal_player()
-			_clear_room("A place to rest: the forge (G) and a free heal.")
+			_clear_room("A place to rest: the forge (G). Half your health, all your stamina and mana.")
 	if String(room["kind"]) in ["combat", "boss"]:
 		Game.say("%s\n%s" % [DungeonGen.describe(room), "Defeat the boss!" if room["kind"] == "boss" else "Clear the room to open the door"])
 	_update_run_text()
@@ -251,7 +258,7 @@ func _spawn_wave() -> void:
 	var floor_scale := Monsters.floor_scale(int(room["floor"]))
 	for entry in entries:
 		var pos := _spawn_point()
-		var enemy := Monsters.spawn(_room_node, String(entry["id"]), pos, String(entry["variant"]), floor_scale)
+		var enemy := Monsters.spawn(_room_node, String(entry["id"]), pos, String(entry["variant"]), floor_scale, int(room["floor"]))
 		SkillFx.ring(_room_node, pos, 12.0, Elements.color_of(String(entry["variant"])) if entry["variant"] != "" else Color("c8c8d0"), 0.5, 1.0)
 		enemy.name = "%s%d" % [String(entry["id"]).capitalize(), enemy.get_instance_id()]
 	if room["waves"].size() > 1:
@@ -261,7 +268,7 @@ func _spawn_wave() -> void:
 func _spawn_boss() -> void:
 	_boss_spawned = true
 	var pos := _centre() + Vector2(0, -float(room["rows"]) * TILE * 0.25)
-	var boss := Monsters.spawn(_room_node, String(room["boss"]), pos, "", Monsters.floor_scale(int(room["floor"])))
+	var boss := Monsters.spawn(_room_node, String(room["boss"]), pos, "", Monsters.floor_scale(int(room["floor"])), int(room["floor"]))
 	Game.boss = boss
 	SkillFx.ring(_room_node, pos, 30.0, Color("ff6a4a"), 0.8, 2.0)
 	Game.say("%s awakens!" % boss.display_name)
@@ -292,7 +299,7 @@ func _clear_room(message: String) -> void:
 func _heal_player() -> void:
 	var player := _player()
 	if player and "hp" in player:
-		player.hp = player.max_hp
+		player.hp = minf(player.max_hp, player.hp + player.max_hp * FORGE_HEAL)  # half your health, not all of it
 		player.stamina = player.max_stamina
 		if player.caster:
 			player.caster.mana = player.caster.max_mana
@@ -359,13 +366,14 @@ func _on_player_died() -> void:
 	if state in ["won", "dead"]:
 		return
 	state = "dead"
+	death = Game.character.die()
 	_end(false)
 
 
 func _end(won: bool) -> void:
 	var lines := summary_lines(won)
 	if _end_screen and is_instance_valid(_end_screen):
-		_end_screen.show_result(won, lines)
+		_end_screen.show_result(won, lines, bool(death.get("final", false)))
 
 
 func summary_lines(won: bool) -> Array:
@@ -376,6 +384,13 @@ func summary_lines(won: bool) -> Array:
 	lines.append("Monsters slain: %d" % Game.run_kills)
 	lines.append("Time: %d:%02d" % [minutes, seconds])
 	lines.append("Level %d    Gold %d" % [Game.character.level, Game.character.inventory.gold])
+	if not won and not death.is_empty():
+		if death["final"]:
+			lines.append("With no elements left to lose, this is the end of %s." % Game.character.display_name)
+		else:
+			var lost: Array = death["lost"].map(func(e): return String(e).capitalize())
+			lines.append("Lost: %s (their mastery starts over)" % ", ".join(lost))
+			lines.append("Deaths so far: %d. The next one costs %d." % [Game.character.deaths, Game.character.deaths + 1])
 	return lines
 
 

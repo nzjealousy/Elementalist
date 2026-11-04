@@ -133,6 +133,26 @@ Coming-of-age ceremony · 1 village hub · 1 dungeon with 3–4 room types · 3 
   speed, knockback or cooldown from an attribute.
 - **Level-ups heal 40% of max HP**, not all of it.
 
+## 15. Design updates (Phase 4.2: the game is about managing resources)
+
+The aim: make the player think fast and plan ahead. Health, stamina and mana recover slowly, monsters hit
+hard, and the choices that cost resources (more elements, more fusion, chained abilities) are made to matter.
+
+- **Slow recovery, small refills.** Recovery is about half the old rate; a hit pauses health recovery for
+  six seconds; a level-up heals a fifth; a forge room heals half. A kill gives back a little stamina and
+  mana, and traits and gear can add health, mana or stamina per kill.
+- **More elements cost more.** A fused cast costs +30% mana per extra element and each hit is weaker. Q
+  can lock every element you own (the fuse needs two). A blade holds only one imbued element. **Elemental
+  Harmony** (the multi-element passive) now gives small bonuses but makes every spell cost 4% more per
+  extra element.
+- **Chain your abilities.** An F/V/R ability of a different element within 3 seconds of the last costs 30% less.
+- **Attack speed** is a new attribute (Dexterity) and grows a little with level.
+- **Death costs elements; the story can end.** Dying with elements: lose as many as your death count, at
+  random, and their mastery starts over. Dying with none: the character is gone and you create a new one.
+- **Classes are a card choice**, and each class has **mastery** that opens its subclass.
+- **Enemies** are melee, ranged or both; some dash after a warning flash, some dodge; both sharpen per floor.
+- **Gear, passives and traits** were reworked around these systems (kills, mana cost, attack speed, dodge cost).
+
 ## 14. Design updates (Phase 4.1: content and the dungeon)
 
 - **Six attributes:** the four old ones plus **Wisdom** (mana regen, shorter cooldowns, longer buffs) and

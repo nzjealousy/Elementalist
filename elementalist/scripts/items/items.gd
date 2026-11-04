@@ -47,6 +47,8 @@ const MOD_NAMES := {
 	"melee_stamina_cost_mult": "Slash stamina cost", "projectile_speed_mult": "Bolt speed",
 	"fusion_damage_mult": "Fused damage", "burn_time_mult": "Burn time",
 	"crit_chance_add": "Crit chance", "crit_damage_add": "Crit damage", "buff_duration_mult": "Buff duration",
+	"attack_speed_mult": "Attack speed", "mana_cost_mult": "Mana costs", "dodge_cost_mult": "Dodge stamina cost",
+	"kill_hp_add": "HP on kill", "kill_mana_add": "Mana on kill", "kill_stamina_add": "Stamina on kill",
 }
 
 ## *_add stats that are fractions, shown as percentages.
@@ -57,6 +59,7 @@ const PERCENT_ADD := ["crit_chance_add", "crit_damage_add"]
 const SPELL_MODS := [
 	"max_mana_add", "mana_regen_add", "spell_damage_mult", "spell_cooldown_mult",
 	"fusion_damage_mult", "projectile_speed_mult", "burn_time_mult", "buff_duration_mult",
+	"mana_cost_mult", "kill_mana_add",
 ]
 
 ## Random bonuses. "min"/"max" are the roll range at item level 1; prefix/suffix build the name.
@@ -64,9 +67,9 @@ const AFFIXES := [
 	{"mod": "max_hp_add", "min": 5.0, "max": 12.0, "prefix": "Sturdy", "suffix": "of Vigor"},
 	{"mod": "max_mana_add", "min": 6.0, "max": 14.0, "prefix": "Arcane", "suffix": "of the Well"},
 	{"mod": "max_stamina_add", "min": 6.0, "max": 14.0, "prefix": "Hardy", "suffix": "of Endurance"},
-	{"mod": "hp_regen_add", "min": 0.15, "max": 0.4, "prefix": "Mending", "suffix": "of Recovery"},
-	{"mod": "mana_regen_add", "min": 0.6, "max": 1.8, "prefix": "Flowing", "suffix": "of Tides"},
-	{"mod": "stamina_regen_add", "min": 3.0, "max": 8.0, "prefix": "Tireless", "suffix": "of Stamina"},
+	{"mod": "hp_regen_add", "min": 0.08, "max": 0.2, "prefix": "Mending", "suffix": "of Recovery"},
+	{"mod": "mana_regen_add", "min": 0.3, "max": 0.8, "prefix": "Flowing", "suffix": "of Tides"},
+	{"mod": "stamina_regen_add", "min": 2.0, "max": 4.0, "prefix": "Tireless", "suffix": "of Stamina"},
 	{"mod": "move_speed_mult", "min": 0.02, "max": 0.05, "prefix": "Swift", "suffix": "of the Wind"},
 	{"mod": "melee_damage_mult", "min": 0.03, "max": 0.07, "prefix": "Keen", "suffix": "of Edges"},
 	{"mod": "spell_damage_mult", "min": 0.03, "max": 0.07, "prefix": "Potent", "suffix": "of Power"},
@@ -78,6 +81,12 @@ const AFFIXES := [
 	{"mod": "fusion_damage_mult", "min": 0.04, "max": 0.10, "prefix": "Blending", "suffix": "of Fusion"},
 	{"mod": "crit_chance_add", "min": 0.01, "max": 0.03, "prefix": "Deadly", "suffix": "of Precision"},
 	{"mod": "crit_damage_add", "min": 0.05, "max": 0.15, "prefix": "Brutal", "suffix": "of Ruin"},
+	{"mod": "attack_speed_mult", "min": 0.03, "max": 0.07, "prefix": "Rapid", "suffix": "of Speed"},
+	{"mod": "mana_cost_mult", "min": -0.06, "max": -0.03, "prefix": "Frugal", "suffix": "of Thrift"},
+	{"mod": "dodge_cost_mult", "min": -0.12, "max": -0.05, "prefix": "Agile", "suffix": "of Evasion"},
+	{"mod": "kill_hp_add", "min": 1.0, "max": 3.0, "prefix": "Ravenous", "suffix": "of Feasting"},
+	{"mod": "kill_mana_add", "min": 1.5, "max": 4.0, "prefix": "Siphoning", "suffix": "of Draining"},
+	{"mod": "kill_stamina_add", "min": 3.0, "max": 7.0, "prefix": "Driven", "suffix": "of Momentum"},
 ]
 
 ## Gear. "mods" are amounts at item level 1, common rarity. "weapon" (weapons only) is the weapon
@@ -92,7 +101,7 @@ const BASES := {
 	"worn_rod": {"name": "Worn Rod", "slot": "weapon", "weapon": "rod", "starter": true, "mods": {"max_mana_add": 8.0}},
 	"worn_dagger": {"name": "Worn Dagger", "slot": "weapon", "weapon": "dagger", "starter": true, "mods": {"melee_damage_mult": 0.04, "crit_chance_add": 0.01}},
 	"worn_axe": {"name": "Worn Axe", "slot": "weapon", "weapon": "axe", "starter": true, "mods": {"melee_damage_mult": 0.1}},
-	"worn_tome": {"name": "Worn Tome", "slot": "weapon", "weapon": "tome", "starter": true, "mods": {"spell_damage_mult": 0.06, "mana_regen_add": 0.5}},
+	"worn_tome": {"name": "Worn Tome", "slot": "weapon", "weapon": "tome", "starter": true, "mods": {"spell_damage_mult": 0.06, "mana_regen_add": 0.25}},
 	# weapons
 	"iron_sword": {"name": "Iron Sword", "slot": "weapon", "weapon": "sword", "min_ilvl": 2, "craft": {"scrap": 8, "gold": 30}, "mods": {"melee_damage_mult": 0.18, "melee_range_mult": 0.05}},
 	"hunter_bow": {"name": "Hunter's Bow", "slot": "weapon", "weapon": "bow", "min_ilvl": 2, "craft": {"scrap": 8, "slime_gel": 3, "gold": 30}, "mods": {"melee_damage_mult": 0.08, "projectile_speed_mult": 0.12}},
@@ -100,28 +109,28 @@ const BASES := {
 	"bone_rod": {"name": "Bone Rod", "slot": "weapon", "weapon": "rod", "min_ilvl": 2, "craft": {"scrap": 8, "slime_gel": 2, "gold": 30}, "mods": {"max_mana_add": 14.0, "spell_cooldown_mult": -0.05}},
 	"steel_dagger": {"name": "Steel Dagger", "slot": "weapon", "weapon": "dagger", "min_ilvl": 2, "craft": {"scrap": 8, "gold": 30}, "mods": {"melee_damage_mult": 0.1, "crit_chance_add": 0.03}},
 	"battle_axe": {"name": "Battle Axe", "slot": "weapon", "weapon": "axe", "min_ilvl": 2, "craft": {"scrap": 9, "gold": 35}, "mods": {"melee_damage_mult": 0.22, "melee_range_mult": 0.04}},
-	"scribe_tome": {"name": "Scribe's Tome", "slot": "weapon", "weapon": "tome", "min_ilvl": 2, "craft": {"scrap": 8, "slime_gel": 2, "gold": 30}, "mods": {"spell_damage_mult": 0.12, "mana_regen_add": 1.2}},
+	"scribe_tome": {"name": "Scribe's Tome", "slot": "weapon", "weapon": "tome", "min_ilvl": 2, "craft": {"scrap": 8, "slime_gel": 2, "gold": 30}, "mods": {"spell_damage_mult": 0.12, "mana_regen_add": 0.6}},
 	# armour and trinkets
 	"leather_cap": {"name": "Leather Cap", "slot": "head", "craft": {"scrap": 4, "slime_gel": 2, "gold": 15}, "mods": {"max_hp_add": 6.0}},
 	"iron_helm": {"name": "Iron Helm", "slot": "head", "min_ilvl": 3, "craft": {"scrap": 7, "gold": 25}, "mods": {"max_hp_add": 8.0, "damage_taken_mult": -0.02}},
 	"scholar_hood": {"name": "Scholar's Hood", "slot": "head", "craft": {"scrap": 5, "slime_gel": 2, "gold": 20}, "mods": {"max_mana_add": 8.0, "spell_damage_mult": 0.03}},
 	"padded_tunic": {"name": "Padded Tunic", "slot": "body", "craft": {"scrap": 5, "slime_gel": 3, "gold": 20}, "mods": {"max_hp_add": 10.0}},
 	"chain_mail": {"name": "Chain Mail", "slot": "body", "min_ilvl": 3, "craft": {"scrap": 10, "gold": 40}, "mods": {"max_hp_add": 14.0, "damage_taken_mult": -0.03}},
-	"mage_robe": {"name": "Mage Robe", "slot": "body", "craft": {"scrap": 6, "slime_gel": 3, "gold": 25}, "mods": {"max_mana_add": 12.0, "mana_regen_add": 0.8}},
+	"mage_robe": {"name": "Mage Robe", "slot": "body", "craft": {"scrap": 6, "slime_gel": 3, "gold": 25}, "mods": {"max_mana_add": 12.0, "mana_regen_add": 0.4}},
 	"travel_boots": {"name": "Travel Boots", "slot": "feet", "craft": {"scrap": 4, "slime_gel": 2, "gold": 15}, "mods": {"move_speed_mult": 0.04}},
-	"runner_boots": {"name": "Runner Boots", "slot": "feet", "min_ilvl": 3, "craft": {"scrap": 7, "gold": 25}, "mods": {"move_speed_mult": 0.05, "stamina_regen_add": 3.0}},
-	"copper_ring": {"name": "Copper Ring", "slot": "ring", "craft": {"scrap": 4, "gold": 20}, "mods": {"hp_regen_add": 0.15}},
+	"runner_boots": {"name": "Runner Boots", "slot": "feet", "min_ilvl": 3, "craft": {"scrap": 7, "gold": 25}, "mods": {"move_speed_mult": 0.05, "stamina_regen_add": 2.0}},
+	"copper_ring": {"name": "Copper Ring", "slot": "ring", "craft": {"scrap": 4, "gold": 20}, "mods": {"hp_regen_add": 0.08}},
 	"silver_ring": {"name": "Silver Ring", "slot": "ring", "min_ilvl": 3, "craft": {"scrap": 6, "gold": 35}, "mods": {"melee_damage_mult": 0.03, "spell_damage_mult": 0.03}},
 	"bone_amulet": {"name": "Bone Amulet", "slot": "amulet", "craft": {"scrap": 4, "slime_gel": 2, "gold": 20}, "mods": {"max_stamina_add": 8.0}},
-	"lucky_charm": {"name": "Lucky Charm", "slot": "amulet", "min_ilvl": 3, "craft": {"scrap": 6, "gold": 35}, "mods": {"max_hp_add": 6.0, "hp_regen_add": 0.1}},
+	"lucky_charm": {"name": "Lucky Charm", "slot": "amulet", "min_ilvl": 3, "craft": {"scrap": 6, "gold": 35}, "mods": {"max_hp_add": 6.0, "kill_hp_add": 1.0}},
 }
 
 ## Enchanting: infuse gear with a main element's essence. Re-enchanting replaces the old enchant.
 const ENCHANTS := {
 	"fire": {"name": "Flame", "mods": {"melee_damage_mult": 0.06, "burn_time_mult": 0.2}},
-	"water": {"name": "Tide", "mods": {"stamina_regen_add": 4.0}},
+	"water": {"name": "Tide", "mods": {"stamina_regen_add": 2.5}},
 	"earth": {"name": "Stone", "mods": {"max_hp_add": 8.0}},
-	"air": {"name": "Gale", "mods": {"move_speed_mult": 0.04}},
+	"air": {"name": "Gale", "mods": {"move_speed_mult": 0.04, "attack_speed_mult": 0.03}},
 	"mineral": {"name": "Bulwark", "mods": {"damage_taken_mult": -0.03}},
 }
 

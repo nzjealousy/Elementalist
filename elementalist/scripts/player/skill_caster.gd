@@ -27,8 +27,11 @@ signal element_changed(element: String)  # also fires for the martial set
 signal lock_changed
 
 const FUSION_PREFIX := "fusion:"
-const FUSION_DAMAGE := 0.75        # each hit of a fused bolt deals this share of its normal damage
+const FUSION_DAMAGE := 0.75        # each hit of a two-element fusion deals this share of its normal damage
 const FUSION_COOLDOWN_STEP := 0.15  # extra cooldown per fused element beyond the first
+const FUSION_COST_PER_EXTRA := 0.3  # a fusion costs (1 + this x extra elements) times the sum of its parts
+const CHAIN_WINDOW := 3.0           # cast an ability of a different element within this long...
+const CHAIN_DISCOUNT := 0.7         # ...and it costs this much of its mana (chaining abilities is cheaper)
 
 var body: Node2D
 var max_mana := 100.0
@@ -36,7 +39,9 @@ var mana := 100.0
 var mana_regen := 9.0
 var elements: Array[String] = []  # selectable sets: owned elements, then "martial" if any
 var selected := 0
-var locked: Array[String] = []    # elements locked together for fusion (max Classes.MAX_LOCKED)
+var locked: Array[String] = []    # elements locked together for fusion (any number of your elements)
+var _chain_element := ""          # element of the last ability cast
+var _chain_left := 0.0            # seconds left in which a different-element ability is discounted
 var cooldowns: Dictionary = {}    # skill id (or fusion id) -> seconds left
 
 
@@ -103,7 +108,8 @@ func fusion_ready() -> bool:
 
 
 ## Locks the selected element, or unlocks it if already locked. False if it can't (locking not
-## available, the martial set is selected, or three elements are already locked).
+## available, or the martial set is selected). Any number of elements can be locked, up to all of
+## them; the fused cast needs two.
 func toggle_lock() -> bool:
 	if not lock_available():
 		return false
@@ -112,8 +118,6 @@ func toggle_lock() -> bool:
 		return false
 	if element in locked:
 		locked.erase(element)
-	elif locked.size() >= Classes.MAX_LOCKED:
-		return false
 	else:
 		locked.append(element)
 	lock_changed.emit()
@@ -187,6 +191,7 @@ func _unhandled_input(event: InputEvent) -> void:
 
 func _process(delta: float) -> void:
 	mana = minf(max_mana, mana + mana_regen * delta)
+	_chain_left = maxf(0.0, _chain_left - delta)
 	for id in cooldowns.keys():
 		cooldowns[id] -= delta
 		if cooldowns[id] <= 0.0:
@@ -223,7 +228,32 @@ func costs(id: String) -> Vector2:
 			total.y += SkillDB.cost_of(def)
 		else:
 			total.x += SkillDB.cost_of(def)
+	total.x *= mana_multiplier(id)
 	return total
+
+
+## Everything that scales an action's mana: the character's mana-cost stat (passives, gear,
+## Elemental Harmony's spread-thin penalty), +30% per extra element in a fusion, and the chain
+## discount for abilities.
+func mana_multiplier(id: String) -> float:
+	var multiplier := float(Game.character.derived()["mana_cost_mult"])
+	if is_fusion(id):
+		multiplier *= 1.0 + FUSION_COST_PER_EXTRA * (components(id).size() - 1)
+	return multiplier * chain_discount(id)
+
+
+## Abilities are the F, V and R skills of an element (not the LMB/RMB attacks).
+func is_ability(id: String) -> bool:
+	return not is_fusion(id) and SkillDB.DEFS.has(id) and SkillDB.slot_of(id) in ["area", "support", "special"] \
+		and String(SkillDB.DEFS[id]["element"]) != ""
+
+
+## 0.7 for an ability of a different element than the last one, cast within CHAIN_WINDOW (so
+## setting up a combo with two abilities in quick succession is cheaper); otherwise 1.0.
+func chain_discount(id: String) -> float:
+	if _chain_left > 0.0 and is_ability(id) and _chain_element != "" and String(SkillDB.DEFS[id]["element"]) != _chain_element:
+		return CHAIN_DISCOUNT
+	return 1.0
 
 
 ## Enough of the right resources (mana, and stamina for martial skills)?
@@ -251,7 +281,10 @@ func cooldown_total(id: String) -> float:
 	var parts := components(id)
 	for skill_id in parts:
 		longest = maxf(longest, Game.character.skill_cooldown(skill_id))
-	return longest + FUSION_COOLDOWN_STEP * maxi(parts.size() - 1, 0)
+	var total := longest + FUSION_COOLDOWN_STEP * maxi(parts.size() - 1, 0)
+	if is_fusion(id) or (SkillDB.DEFS.has(id) and SkillDB.slot_of(id) == "primary"):
+		total /= float(Game.character.derived()["attack_speed"])  # attack speed: the basic attacks, not abilities
+	return total
 
 
 func cooldown_fraction(id: String) -> float:
@@ -268,6 +301,9 @@ func try_cast(id: String) -> bool:
 	if cost.y > 0.0:
 		body.spend_stamina(cost.y)
 	cooldowns[id] = cooldown_total(id)
+	if is_ability(id):
+		_chain_element = String(SkillDB.DEFS[id]["element"])
+		_chain_left = CHAIN_WINDOW
 	if is_fusion(id):
 		_spawn_fusion(components(id))
 	else:
@@ -292,6 +328,12 @@ func area_target(id: String) -> Vector2:
 ## Damage multiplier from the caster's "might" buff (1.0 without one).
 func _might() -> float:
 	return float(body.damage_mult()) if body.has_method("damage_mult") else 1.0
+
+
+## Share of its normal damage each hit of an n-element fusion deals: 75% for two, down to 50%
+## for five, so fusing everything is not simply the best choice.
+static func fusion_hit_scale(n: int) -> float:
+	return maxf(0.5, 0.85 - 0.1 * (n - 1))
 
 
 ## The status a skill applies on hit, scaled by the character: the element's potency (its
@@ -368,7 +410,7 @@ func _spawn_fusion(skill_ids: Array[String]) -> void:
 		var id := skill_ids[i]
 		var def: Dictionary = SkillDB.DEFS[id]
 		hits.append({
-			"damage": character.skill_damage(id) * FUSION_DAMAGE * float(stats["fusion_damage_mult"]) * _might(),
+			"damage": character.skill_damage(id) * fusion_hit_scale(skill_ids.size()) * float(stats["fusion_damage_mult"]) * _might(),
 			"element": String(def["element"]),
 			"apply": status_for(def),
 			"knockback": float(def.get("knockback", 50.0)) * character.skill_scale(id, "knockback"),

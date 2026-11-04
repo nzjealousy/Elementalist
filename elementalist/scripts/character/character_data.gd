@@ -23,6 +23,8 @@ signal leveled_up(new_level: int)
 signal mastery_leveled(label: String, new_level: int)
 signal passive_unlocked(passive_name: String)
 signal class_chosen(class_id: String)
+signal class_available            # a Novice reached the class level: time to pick one (cards)
+signal subclass_available         # class mastery reached SUBCLASS_MASTERY: pick a subclass (cards)
 signal reward_ready(level: int)
 signal reward_claimed(reward_name: String)
 signal elements_changed
@@ -35,7 +37,7 @@ const SEALED := "sealed"              # can never hold elements; martial skills 
 const MAX_LEVEL := 30
 const MASTERY_CAP := 10
 const FREE_POINTS_PER_LEVEL := 2
-const LEVEL_UP_HEAL_FRACTION := 0.4  # a level-up restores this share of max HP, not all of it
+const LEVEL_UP_HEAL_FRACTION := 0.2  # a level-up restores this share of max HP, not all of it
 
 var display_name := "Hero"
 var class_id := Classes.NEUTRAL_CLASS
@@ -52,6 +54,9 @@ var weapon_masteries: Dictionary = {}  # weapon type -> {"level": int, "xp": int
 var inventory := Inventory.new()       # gold, materials, bag and equipped gear (Phase 4)
 var traits: Array[String] = []         # innate passives: rolled at creation or chosen as rewards
 var skill_uses: Dictionary = {}        # skill id -> times used (unlocks skill mastery passives)
+var deaths := 0                        # times this character has died (each costs more elements)
+var class_mastery: Dictionary = {}     # class id -> {"level": int, "xp": int}; opens the subclass
+var death_rng := RandomNumberGenerator.new()  # picks which elements are lost on death (tests may seed it)
 var learned_specials: Array[String] = []  # special (R) skills earned as rewards
 var pending_rewards: Array = []        # unclaimed offers: each is an Array of {"type", "id"}
 var reward_rng := RandomNumberGenerator.new()  # rolls reward offers (tests may seed it)
@@ -82,6 +87,8 @@ static func create_sandbox(cls: String, owned: Array, start_level: int = 1) -> C
 		c.add_element(String(element))
 	while c.level < start_level:
 		c._level_up()
+	if start_level >= 10 and not Classes.is_starter(cls):
+		c.class_mastery[cls]["level"] = Classes.SUBCLASS_MASTERY  # a sandbox character can pick a subclass at once
 	return c
 
 
@@ -90,6 +97,8 @@ func _setup(char_name: String, cls: String, aff: String) -> void:
 	class_id = cls
 	affinity = aff
 	attributes = Classes.CLASSES[cls]["base"].duplicate()
+	if not Classes.is_starter(cls):
+		class_mastery[cls] = {"level": 1, "xp": 0}
 	inventory.equipped["weapon"] = _starter_weapon(Classes.CLASSES[cls]["weapon"])
 	inventory.changed.connect(_on_inventory_changed)
 	_refresh_weapon()
@@ -137,6 +146,8 @@ func choose_class(id: String) -> bool:
 	var current: Dictionary = inventory.equipped.get("weapon", {})
 	if current.is_empty() or Items.is_starter(current):
 		inventory.equipped["weapon"] = _starter_weapon(cls["weapon"])
+	if not class_mastery.has(id):
+		class_mastery[id] = {"level": 1, "xp": 0}
 	_refresh_weapon()
 	class_chosen.emit(id)
 	changed.emit()
@@ -154,6 +165,43 @@ func add_element(id: String) -> bool:
 	elements_changed.emit()
 	changed.emit()
 	return true
+
+
+## Takes an element away (on death): its mastery, learned special and skill use counts start over
+## if it is ever regained. A character left with none becomes attunable (martial skills).
+func remove_element(id: String) -> bool:
+	if not (id in elements):
+		return false
+	elements.erase(id)
+	element_mastery.erase(id)
+	if SkillDB.LOADOUTS.has(id):
+		var loadout: Dictionary = SkillDB.LOADOUTS[id]
+		learned_specials.erase(String(loadout["special"]))
+		for slot in loadout:
+			skill_uses.erase(String(loadout[slot]))
+	if elements.is_empty() and affinity == ELEMENTALIST:
+		affinity = ATTUNABLE
+	elements_changed.emit()
+	changed.emit()
+	return true
+
+
+## The character dies. Someone with elements survives it, losing `deaths` of them at random (so
+## each death costs more than the last); someone with none is gone for good: the run ends and
+## a new character must be made. Returns {"final": bool, "lost": Array[String]}.
+func die() -> Dictionary:
+	deaths += 1
+	if elements.is_empty():
+		return {"final": true, "lost": []}
+	var pool: Array = elements.duplicate()  # a copy: picking must not touch `elements` itself
+	var lost: Array[String] = []
+	while lost.size() < deaths and not pool.is_empty():
+		var pick: String = pool[death_rng.randi_range(0, pool.size() - 1)]
+		pool.erase(pick)
+		lost.append(pick)
+	for element in lost:
+		remove_element(element)
+	return {"final": false, "lost": lost}
 
 
 ## Main elements this character does not have yet (none for a sealed character, who never can).
@@ -214,6 +262,8 @@ func _level_up() -> void:
 		if not offer.is_empty():
 			pending_rewards.append(offer)
 			reward_ready.emit(level)
+	if level == Classes.CLASS_LEVEL and can_choose_class():
+		class_available.emit()
 	leveled_up.emit(level)
 
 
@@ -298,8 +348,34 @@ func record_skill_use(skill_id: String) -> void:
 
 # ---------- subclass (level 10) ----------
 
+## Class mastery: grows with kills while in the class. At SUBCLASS_MASTERY the subclass opens.
+static func class_mastery_xp_to_next(lv: int) -> int:
+	return 10 + 6 * (lv - 1)
+
+
+func class_mastery_level() -> int:
+	return int(class_mastery.get(class_id, {"level": 0})["level"])
+
+
+## Adds class mastery xp (a kill gives 1 plus a tenth of the monster's xp). Nothing for a Novice.
+func add_class_xp(amount: int) -> void:
+	if not class_mastery.has(class_id):
+		return
+	var m: Dictionary = class_mastery[class_id]
+	if int(m["level"]) >= MASTERY_CAP:
+		return
+	m["xp"] = int(m["xp"]) + amount
+	while int(m["level"]) < MASTERY_CAP and int(m["xp"]) >= class_mastery_xp_to_next(int(m["level"])):
+		m["xp"] = int(m["xp"]) - class_mastery_xp_to_next(int(m["level"]))
+		m["level"] = int(m["level"]) + 1
+		mastery_leveled.emit(String(Classes.CLASSES[class_id]["name"]), int(m["level"]))
+		if int(m["level"]) == Classes.SUBCLASS_MASTERY and subclass_id == "":
+			subclass_available.emit()
+	changed.emit()
+
+
 func available_subclasses() -> Array:
-	if level < Classes.SUBCLASS_LEVEL or subclass_id != "":
+	if class_mastery_level() < Classes.SUBCLASS_MASTERY or subclass_id != "":
 		return []
 	return Classes.CLASSES[class_id]["subclasses"]
 
@@ -379,13 +455,14 @@ func derived() -> Dictionary:
 	var weapon_bonus := 1.0 + 0.03 * (weapon_level() - 1)
 	var wis := float(attributes["wisdom"]) + _mod(m, "wisdom_add")
 	var luck := float(attributes["luck"]) + _mod(m, "luck_add")
+	var dex := float(attributes["dexterity"]) + _mod(m, "dexterity_add")
 	return {
 		"max_hp": 60.0 + vit * 8.0 + _mod(m, "max_hp_add"),
-		"hp_regen": 0.3 + vit * 0.06 + _mod(m, "hp_regen_add"),
+		"hp_regen": Classes.HP_REGEN_BASE + vit * Classes.HP_REGEN_PER_VIT + _mod(m, "hp_regen_add"),
 		"max_mana": (50.0 + intel * 10.0 + _mod(m, "max_mana_add")) if uses_mana() else 0.0,
-		"mana_regen": (5.0 + intel * 0.8 + Classes.WISDOM_MANA_REGEN * (wis - 5.0) + _mod(m, "mana_regen_add")) if uses_mana() else 0.0,
+		"mana_regen": maxf(Classes.MANA_REGEN_BASE + intel * Classes.MANA_REGEN_PER_INT + Classes.WISDOM_MANA_REGEN * (wis - 5.0) + _mod(m, "mana_regen_add"), 0.0) if uses_mana() else 0.0,
 		"max_stamina": 70.0 + agi * 6.0 + _mod(m, "max_stamina_add"),
-		"stamina_regen": 20.0 + agi * 2.0 + _mod(m, "stamina_regen_add"),
+		"stamina_regen": Classes.STAMINA_REGEN_BASE + agi * Classes.STAMINA_REGEN_PER_AGI + _mod(m, "stamina_regen_add"),
 		"move_speed": (70.0 + agi * 2.0) * _mod(m, "move_speed_mult"),
 		"melee_damage_mult": (1.0 + (str_ - 5.0) * 0.06) * weapon_bonus * _mod(m, "melee_damage_mult"),
 		"melee_range_mult": float(Classes.CLASSES[class_id]["melee_range"]) * _mod(m, "melee_range_mult"),
@@ -398,6 +475,12 @@ func derived() -> Dictionary:
 		"crit_mult": Classes.BASE_CRIT_MULT + _mod(m, "crit_damage_add"),
 		"buff_duration_mult": (1.0 + Classes.WISDOM_BUFF_DURATION * (wis - 5.0)) * _mod(m, "buff_duration_mult"),
 		"loot_luck": Classes.LUCK_LOOT * (luck - 5.0),
+		"attack_speed": clampf((1.0 + Classes.DEXTERITY_ATTACK_SPEED * (dex - 5.0) + Classes.LEVEL_ATTACK_SPEED * (level - 1)) * _mod(m, "attack_speed_mult"), 0.5, 2.5),
+		"mana_cost_mult": maxf(_mod(m, "mana_cost_mult"), 0.4),
+		"dodge_cost_mult": maxf(_mod(m, "dodge_cost_mult"), 0.4),
+		"kill_hp": _mod(m, "kill_hp_add"),
+		"kill_mana": (Classes.KILL_MANA + _mod(m, "kill_mana_add")) if uses_mana() else 0.0,
+		"kill_stamina": Classes.KILL_STAMINA + _mod(m, "kill_stamina_add"),
 	}
 
 
@@ -514,6 +597,8 @@ func to_dict() -> Dictionary:
 		"weapon_masteries": weapon_masteries.duplicate(true),
 		"traits": Array(traits),
 		"skill_uses": skill_uses.duplicate(),
+		"deaths": deaths,
+		"class_mastery": class_mastery.duplicate(true),
 		"learned_specials": Array(learned_specials),
 		"pending_rewards": pending_rewards.duplicate(true),
 		"inventory": inventory.to_dict(),
@@ -547,6 +632,9 @@ static func from_dict(d: Dictionary) -> CharacterData:
 		for option in offer:
 			options.append({"type": String(option["type"]), "id": String(option["id"])})
 		c.pending_rewards.append(options)
+	c.deaths = int(d.get("deaths", 0))
+	if d.has("class_mastery"):
+		c.class_mastery = _ints_in(d["class_mastery"])
 	if d.has("inventory"):
 		c.inventory.load_dict(d["inventory"])  # also re-derives the weapon type
 	return c
