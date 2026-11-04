@@ -60,6 +60,9 @@ var _session_start := 0.0
 
 
 func _ready() -> void:
+	# Text with no theme of its own (damage numbers, signs in the world) uses the menus' font, hinted to whole pixels.
+	ThemeDB.fallback_font = UiTheme.font()
+	ThemeDB.fallback_font_size = 7
 	loot_rng.randomize()
 	combat_rng.randomize()
 	start_new(Classes.NEUTRAL_CLASS)

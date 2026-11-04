@@ -428,13 +428,17 @@ a hero wears from class, subclass and equipped items; `HeroComposer` stacks the 
 (warm highlights, cool shadows). Results are cached by look and registered in `AssetDB` as `hero:<n>:<facing>` so `SpriteAnim` plays them.
 `HeroDoll`, `CardFrame` (class borders) and the equipment paper doll in the character sheet reuse the same pictures.
 
-**The isometric view (`IsoView`).** Gameplay stays 2D. `IsoView` (a child of the Dungeon) draws it in 3D: the 2D world is shared with a
-SubViewport that renders the floor and every flat effect onto a plane; walls and pillars are 3D boxes built from the room's solid tiles
-(`Dungeon._add_tile` calls `add_wall`); creatures, pickups, props and projectiles are mirrored by upright billboard `Sprite3D`s with blob
-shadows, text by `Label3D`, health bars by quads. Canvas items are sorted by `visibility_layer`: layer 2 = ground (drawn into the plane),
-layer 4 = mirrored (hidden from both viewports); the main window's `canvas_cull_mask` hides both so the HUD (layer 1) is all that draws in 2D.
-`Controls.aim_point` casts a ray from the camera to the ground; movement and facing use `IsoView.world_dir` / `screen_dir`. The setting
-`iso_view` (off: the flat top-down picture) applies from the next scene.
+**The isometric view (`IsoView`).** Gameplay stays flat and so does the picture: `IsoView` (a child of the Dungeon) is a 2D renderer, no
+3D nodes. A world point p is shown at `project(p) = (x - y, (x + y) / 2)`, so a 16 px tile is a 32 x 16 diamond. The flat world is shared with a
+SubViewport that renders the floor and every flat effect (telegraphs, rings, the melee ring, the aim marker) into one texture, laid on the screen as
+a skewed `Sprite2D`. Walls and pillars are `IsoView.Block` nodes that draw a top face and two shaded side faces from the tile's art
+(`Dungeon._add_tile` calls `add_wall`). Creatures, pickups, props and projectiles are mirrored by ordinary `Sprite2D`s that stand on their position,
+with an indigo blob shadow; text is a `Label`, health bars a small `Bar` node. Walls and mirrors live in one y-sorted node, so whatever is nearer
+the bottom of the screen draws in front. All of it sits in a `CanvasLayer` below the HUD that is scrolled to follow the hero (the player's own
+`Camera2D` is not used for the picture). Canvas items are sorted by `visibility_layer`: layer 2 = ground (drawn into the floor texture), layer 4 =
+mirrored (hidden from both viewports); the main window's `canvas_cull_mask` hides both. Because nothing is 3D, text goes through the normal 2D
+font path and stays sharp. `Controls.aim_point` inverts the projection (`IsoView.unproject`); movement and facing use `IsoView.world_dir` /
+`screen_dir`. The setting `iso_view` (off: the flat top-down picture) applies from the next scene.
 
 **Multiplayer (`Net`, `CoopHost`, `CoopClient`).** ENet, up to four players, host-authoritative for the world. Every player (host too) plays
 their own `Player` locally. The host's monsters are mirrored on guests as *ghost* `Enemy` nodes (`ghost = true`: no AI, `take_hit` forwards

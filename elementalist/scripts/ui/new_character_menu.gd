@@ -4,6 +4,7 @@ extends CanvasLayer
 ## world, then Begin restarts the arena with that character. Pauses the game while open.
 ## This stands in for the full character creation of the story phase.
 
+const PANEL_WIDTH := 264.0
 const BIRTHS := [
 	{"id": CharacterData.ELEMENTALIST, "name": "Ceremony",
 		"desc": "Roll your elements at the coming-of-age ceremony. 8% are born with none and become attunable."},
@@ -58,25 +59,31 @@ func toggle() -> void:
 func _build() -> void:
 	for child in get_children():
 		child.queue_free()
+	# Centred in whatever the screen is, never past its edges: the whole form is compact (about 150 of the 180 rows).
+	var centre := CenterContainer.new()
+	centre.set_anchors_preset(Control.PRESET_FULL_RECT)
+	centre.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_child(centre)
 	var panel := PanelContainer.new()
 	panel.theme = _theme
-	panel.position = Vector2(30, 6)
-	panel.custom_minimum_size = Vector2(260, 150)
-	add_child(panel)
+	panel.custom_minimum_size = Vector2(PANEL_WIDTH, 0)
+	centre.add_child(panel)
 	var root := VBoxContainer.new()
-	root.add_theme_constant_override("separation", 3)
+	root.add_theme_constant_override("separation", 2)
 	panel.add_child(root)
 
 	root.add_child(_label("New character   (Esc to cancel)", Color("ffd84a")))
 	var name_row := HBoxContainer.new()
 	name_row.add_theme_constant_override("separation", 3)
 	root.add_child(name_row)
-	name_row.add_child(_label("Name"))
+	var name_label := _label("Name")
+	name_label.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	name_row.add_child(name_label)
 	_name_edit = LineEdit.new()
 	_name_edit.max_length = Game.NAME_MAX
 	_name_edit.placeholder_text = "Your hero's name"
 	_name_edit.text = _hero_name
-	_name_edit.custom_minimum_size = Vector2(110, 0)
+	_name_edit.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	_name_edit.text_changed.connect(func(text: String): _hero_name = text)
 	_name_edit.text_submitted.connect(func(_text: String): _name_edit.release_focus())
 	name_row.add_child(_name_edit)
@@ -87,24 +94,27 @@ func _build() -> void:
 		_hero_name = Game.random_name()
 		_name_edit.text = _hero_name)
 	name_row.add_child(dice)
-	root.add_child(_label("Class  (everyone normally starts as a Novice; pick one to skip ahead for testing)"))
+	root.add_child(_label("Class  (heroes start as a Novice; pick one only to test)"))
 	var class_row := GridContainer.new()
 	class_row.columns = 5
+	class_row.add_theme_constant_override("h_separation", 2)
+	class_row.add_theme_constant_override("v_separation", 2)
 	root.add_child(class_row)
 	var class_group := ButtonGroup.new()
 	class_row.add_child(_choice("Novice", class_group, _class_id == Classes.NEUTRAL_CLASS, _pick_class.bind(Classes.NEUTRAL_CLASS)))
 	for id in Classes.playable():
 		class_row.add_child(_choice(String(Classes.CLASSES[id]["name"]), class_group, id == _class_id, _pick_class.bind(id)))
 
-	root.add_child(_label("Birth"))
 	var birth_row := HBoxContainer.new()
+	birth_row.add_theme_constant_override("separation", 2)
 	root.add_child(birth_row)
+	birth_row.add_child(_label("Birth"))
 	var birth_group := ButtonGroup.new()
 	for birth in BIRTHS:
 		birth_row.add_child(_choice(String(birth["name"]), birth_group, birth["id"] == _birth, _pick_birth.bind(birth["id"])))
 
-	_description = _label("", Color(0.8, 0.85, 1.0))
-	_description.custom_minimum_size = Vector2(240, 44)
+	_description = _label("", Color(0.8, 0.85, 1.0), true)
+	_description.custom_minimum_size = Vector2(PANEL_WIDTH - 24.0, 0)
 	root.add_child(_description)
 	_refresh_description()
 
@@ -158,9 +168,10 @@ func _begin() -> void:
 	get_tree().reload_current_scene()
 
 
-func _label(text: String, color: Color = Color.WHITE) -> Label:
+func _label(text: String, color: Color = Color.WHITE, wrap: bool = false) -> Label:
 	var label := Label.new()
 	label.text = text
 	label.add_theme_color_override("font_color", color)
-	label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	if wrap:  # only a label with a fixed width may wrap, or it collapses to one letter per line
+		label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	return label

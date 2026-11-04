@@ -1,51 +1,55 @@
 class_name IsoView
-extends Node3D
-## The isometric HD-2D view of the world: 2D simulation, 3D picture.
+extends Node
+## The isometric view of the world, drawn entirely in 2D: 2D simulation, 2D picture seen from a slanted angle.
 ##
-## Gameplay stays in the 2D scene (positions are 2D pixels, physics is 2D). IsoView draws it for the player:
+## Gameplay stays in the flat scene (positions are 2D pixels, physics is 2D). IsoView paints it for the player:
 ##   * the ground (floor tiles and every flat effect: telegraphs, rings, area bursts, slash arcs, the aim
-##     marker, the melee range ring) is rendered by the 2D scene into a SubViewport and laid on a plane;
-##   * walls and pillars are real 3D boxes, so they have height, take light and cast shadows;
-##   * every creature, pickup, prop and projectile is an upright sprite (Sprite3D, billboard) standing
-##     where its 2D body stands, with a blob shadow; text above them is Label3D, health bars are quads;
-##   * a sun with shadows, cool ambient light and a warm torch around the hero light it all, seen through
-##     an orthographic camera at the classic isometric angle (yaw 45, pitch 35.3 degrees).
-## 1 world unit = TILE pixels (16), so a tile is one unit. The 2D canvas items of the world are sorted into
-## two canvas layers so the main window does not draw them flat: LAYER_GROUND goes to the ground texture,
-## LAYER_ENTITY (the things mirrored in 3D) to nobody.
+##     marker, the melee range ring) is rendered by the flat scene into a SubViewport and laid on the screen
+##     as a skewed picture, so a square tile becomes a 2:1 diamond;
+##   * walls and pillars are blocks drawn from three faces (top, left, right) with the tile's own art;
+##   * every creature, pickup, prop and projectile is an ordinary Sprite2D standing where its flat body
+##     stands, with a blob shadow; text above them is a Label, health bars are small rectangles;
+##   * everything that stands up lives in one y-sorted node, so whatever is nearer the bottom of the screen
+##     is drawn in front (a hero walks behind a wall, in front of a pillar).
+## Nothing is 3D, so text and sprites stay as sharp as in the flat game. The screen position of a world point p is
+## project(p) = (x - y, (x + y) / 2): one world pixel is one screen pixel along each diagonal.
+##
+## The flat canvas items of the world are sorted into two visibility layers so the main window does not draw them
+## twice: LAYER_GROUND goes to the ground picture, LAYER_ENTITY (the things mirrored by standing sprites) to nobody.
+## The stage sits in its own CanvasLayer below the HUD and is scrolled to follow the hero.
 ##
 ## Settings "iso_view" off keeps the plain top-down picture; IsoView is then not created at all.
 
-const UNIT := 16.0
-const PITCH := 35.264
-const YAW := 45.0
-const CAMERA_SIZE := 10.5         # world units across the screen's height at the centre
-const STRETCH := 1.2247           # 1 / cos(pitch): upright sprites are stretched so they keep their height on screen
-const WALL_HEIGHT := 1.6
-const CURB_HEIGHT := 0.4          # the walls nearest the camera are kept low so they never hide the room
-const PILLAR_HEIGHT := 1.35
+const TILE := 16.0
+const WALL_HEIGHT := 22.0         # screen pixels a wall rises
+const CURB_HEIGHT := 5.0          # the walls nearest the viewer are kept low so they never hide the room
+const PILLAR_HEIGHT := 18.0
+const PILLAR_RADIUS := 6.5
 const LAYER_GROUND := 2
 const LAYER_ENTITY := 4
 const FOLLOW_SPEED := 9.0
+const BACKGROUND := Color(0.03, 0.025, 0.05)
+const SHADE_LEFT := Color(0.74, 0.74, 0.82)   # the face looking south-west on the screen
+const SHADE_RIGHT := Color(0.5, 0.5, 0.62)    # the face looking south-east, darker
+const SHADE_TOP := Color(1.0, 0.97, 0.92)
 
 static var active: IsoView = null  # the running view (null in flat mode and in tests)
 
 var dungeon: Node2D
-var camera: Camera3D
 var ground_viewport: SubViewport
-var ground_mesh: MeshInstance3D
-var sun: DirectionalLight3D
-var torch: OmniLight3D
 
-var _walls: Node3D
-var _room_size := Vector2(320, 180)  # pixels
-var _focus := Vector2.ZERO           # the 2D point the camera looks at
-var _mirrors: Dictionary = {}        # CanvasItem -> Node3D standing in for it
-var _shadows: Dictionary = {}        # mirrored sprite -> its blob shadow
-var _wall_materials: Dictionary = {} # Texture2D -> StandardMaterial3D
+var _layer: CanvasLayer             # the scrolling stage
+var _back_layer: CanvasLayer        # the colour behind the room
+var _ground: Sprite2D               # the flat floor laid on the screen as a diamond
+var _stage: Node2D                  # y-sorted: walls, sprites, shadows
+var _room_size := Vector2(320, 180) # world pixels
+var _focus := Vector2.ZERO          # the world point the view is centred on
+var _mirrors: Dictionary = {}       # CanvasItem -> CanvasItem standing in for it
+var _shadows: Dictionary = {}       # mirrored sprite -> its blob shadow
+var _walls: Array[Node2D] = []
 var _blob: Texture2D
 var _world_root: Node
-var _snap := true                    # the next frame puts the camera straight on the hero
+var _snap := true                   # the next frame puts the view straight on the hero
 
 
 ## Builds an IsoView for `world` (the Dungeon) and puts it next to it in the scene.
@@ -60,7 +64,7 @@ func _ready() -> void:
 	active = self
 	_world_root = dungeon.get_parent()
 	_blob = _make_blob()
-	_build_scene()
+	_build_stage()
 	get_viewport().canvas_cull_mask = 0xFFFFFFFF & ~(LAYER_GROUND | LAYER_ENTITY)
 	get_tree().node_added.connect(_on_node_added)
 	_sweep(_world_root)
@@ -79,18 +83,19 @@ func _exit_tree() -> void:
 
 # ---------- coordinates ----------
 
-static func ground_to_3d(p: Vector2) -> Vector3:
-	return Vector3(p.x / UNIT, 0.0, p.y / UNIT)
+## Where a world point lands on the stage (before the stage is scrolled).
+static func project(p: Vector2) -> Vector2:
+	return Vector2(p.x - p.y, (p.x + p.y) * 0.5)
 
 
-static func to_ground(p: Vector3) -> Vector2:
-	return Vector2(p.x, p.z) * UNIT
+## The world point that lands at stage point `s`: the inverse of project.
+static func unproject(s: Vector2) -> Vector2:
+	return Vector2(s.x * 0.5 + s.y, s.y - s.x * 0.5)
 
 
 ## Where a world direction points on the screen (x right, y down; the ground is foreshortened).
 static func screen_dir(d: Vector2) -> Vector2:
-	var s := 0.70710678
-	return Vector2((d.x - d.y) * s, (d.x + d.y) * s * 0.577)
+	return project(d) * 0.70710678
 
 
 ## The world direction that appears as `screen` (x right, y down) on the screen: the inverse of screen_dir.
@@ -98,74 +103,44 @@ static func screen_dir(d: Vector2) -> Vector2:
 static func world_dir(screen: Vector2) -> Vector2:
 	if screen == Vector2.ZERO:
 		return Vector2.ZERO
-	var s := 0.70710678
-	var a := screen.x / s                 # dx - dy
-	var b := screen.y / (s * 0.577)       # dx + dy
-	return Vector2((a + b) * 0.5, (b - a) * 0.5).normalized() * screen.length()
+	return unproject(screen).normalized() * screen.length()
 
 
-## The 2D world point under the mouse, found by casting a ray from the camera to the ground plane.
+## The 2D world point under the mouse.
 static func mouse_ground() -> Vector2:
-	if active == null or active.camera == null or not active.is_inside_tree():
+	if active == null or not active.is_inside_tree():
 		return Vector2.ZERO
 	return active.ground_point_at(active.get_viewport().get_mouse_position())
 
 
+## The world point shown at `screen_point` (viewport pixels).
 func ground_point_at(screen_point: Vector2) -> Vector2:
-	var origin := camera.project_ray_origin(screen_point)
-	var dir := camera.project_ray_normal(screen_point)
-	if absf(dir.y) < 0.0001:
-		return _focus
-	var t := -origin.y / dir.y
-	return to_ground(origin + dir * t)
+	return unproject(screen_point - _layer.offset)
 
 
-## Where a 2D world point appears in the window (for anything that has to line up with the picture).
+## Where a world point appears in the viewport, `height` pixels above the ground.
 func screen_point_of(p: Vector2, height: float = 0.0) -> Vector2:
-	return camera.unproject_position(ground_to_3d(p) + Vector3(0, height, 0))
+	return project(p) - Vector2(0.0, height) + _layer.offset
 
 
-# ---------- the 3D scene ----------
+# ---------- the stage ----------
 
-func _build_scene() -> void:
-	camera = Camera3D.new()
-	camera.projection = Camera3D.PROJECTION_ORTHOGONAL
-	camera.size = CAMERA_SIZE
-	camera.near = 0.1
-	camera.far = 140.0
-	camera.rotation_degrees = Vector3(-PITCH, YAW, 0.0)
-	camera.current = true
-	add_child(camera)
+func _build_stage() -> void:
+	_back_layer = CanvasLayer.new()
+	_back_layer.layer = -3
+	add_child(_back_layer)
+	var back := ColorRect.new()
+	back.color = BACKGROUND
+	back.set_anchors_preset(Control.PRESET_FULL_RECT)
+	back.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_back_layer.add_child(back)
 
-	sun = DirectionalLight3D.new()
-	sun.rotation_degrees = Vector3(-58.0, -32.0, 0.0)
-	sun.light_color = Color(1.0, 0.92, 0.8)
-	sun.light_energy = 1.05
-	sun.shadow_enabled = true
-	sun.shadow_bias = 0.04
-	sun.directional_shadow_max_distance = 60.0
-	add_child(sun)
-
-	torch = OmniLight3D.new()
-	torch.light_color = Color(1.0, 0.78, 0.5)
-	torch.light_energy = 1.1
-	torch.omni_range = 7.5
-	torch.omni_attenuation = 1.4
-	add_child(torch)
-
-	var world_env := WorldEnvironment.new()
-	var env := Environment.new()
-	env.background_mode = Environment.BG_COLOR
-	env.background_color = Color(0.03, 0.025, 0.05)
-	env.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
-	env.ambient_light_color = Color(0.55, 0.58, 0.78)
-	env.ambient_light_energy = 0.75
-	env.tonemap_mode = Environment.TONE_MAPPER_LINEAR
-	world_env.environment = env
-	add_child(world_env)
+	_layer = CanvasLayer.new()
+	_layer.layer = -2
+	add_child(_layer)
 
 	ground_viewport = SubViewport.new()
-	ground_viewport.world_2d = get_viewport().world_2d  # the very same 2D world, drawn once more, for the floor
+	ground_viewport.world_2d = get_viewport().world_2d  # the very same flat world, drawn once more, for the floor
 	ground_viewport.disable_3d = true
 	ground_viewport.transparent_bg = false
 	ground_viewport.canvas_cull_mask = 1 | LAYER_GROUND  # (the nodes above the world, left on layer 1, must not hide it)
@@ -173,78 +148,128 @@ func _build_scene() -> void:
 	ground_viewport.size = Vector2i(_room_size)
 	add_child(ground_viewport)
 
-	ground_mesh = MeshInstance3D.new()
-	ground_mesh.mesh = PlaneMesh.new()
-	var ground_material := StandardMaterial3D.new()
-	ground_material.albedo_texture = ground_viewport.get_texture()
-	ground_material.texture_filter = BaseMaterial3D.TEXTURE_FILTER_NEAREST
-	ground_material.roughness = 1.0
-	ground_material.specular_mode = BaseMaterial3D.SPECULAR_DISABLED
-	ground_mesh.material_override = ground_material
-	ground_mesh.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-	add_child(ground_mesh)
+	_ground = Sprite2D.new()
+	_ground.centered = false
+	_ground.texture = ground_viewport.get_texture()
+	_ground.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+	_ground.transform = Transform2D(Vector2(1.0, 0.5), Vector2(-1.0, 0.5), Vector2.ZERO)  # x runs right-down, y left-down
+	_ground.z_index = -100
+	_layer.add_child(_ground)
 
-	_walls = Node3D.new()
-	add_child(_walls)
+	_stage = Node2D.new()
+	_stage.y_sort_enabled = true
+	_layer.add_child(_stage)
 	_apply_room_size()
 
 
 func _apply_room_size() -> void:
 	ground_viewport.size = Vector2i(maxi(int(_room_size.x), 16), maxi(int(_room_size.y), 16))
-	(ground_mesh.mesh as PlaneMesh).size = Vector2(_room_size.x / UNIT, _room_size.y / UNIT)
-	ground_mesh.position = Vector3(_room_size.x / UNIT * 0.5, 0.0, _room_size.y / UNIT * 0.5)
 
 
 # ---------- rooms ----------
 
 ## A new room is about to be built: forget the old walls and size the ground.
 func begin_room(room: Dictionary, tile: int) -> void:
-	for child in _walls.get_children():
-		child.queue_free()
+	for wall in _walls:
+		if is_instance_valid(wall):
+			wall.queue_free()
+	_walls.clear()
 	_room_size = Vector2(int(room["cols"]), int(room["rows"])) * float(tile)
 	_apply_room_size()
 	_snap = true
 
 
-## One solid tile of the room (a wall, a door's seal or a pillar) becomes a box.
+## One solid tile of the room (a wall, a door's seal or a pillar) becomes a block.
 func add_wall(tile: Vector2i, texture: Texture2D, cols: int, rows: int, pillar: bool = false) -> void:
 	var height := PILLAR_HEIGHT if pillar else WALL_HEIGHT
 	if not pillar and (tile.x == cols - 1 or tile.y == rows - 1):
 		height = CURB_HEIGHT  # the near walls stay low
-	var box := MeshInstance3D.new()
-	if pillar:  # a round column
-		var column := CylinderMesh.new()
-		column.top_radius = 0.4
-		column.bottom_radius = 0.46
-		column.height = height
-		column.radial_segments = 10
-		box.mesh = column
-	else:
-		var mesh := BoxMesh.new()
-		mesh.size = Vector3(1.0, height, 1.0)
-		box.mesh = mesh
-	box.material_override = _wall_material(texture)
-	box.position = Vector3(tile.x + 0.5, height * 0.5, tile.y + 0.5)
-	_walls.add_child(box)
+	var block := Block.new()
+	block.texture = texture
+	block.height = height
+	block.pillar = pillar
+	block.position = project((Vector2(tile) + Vector2(0.5, 0.5)) * TILE)
+	_stage.add_child(block)
+	_walls.append(block)
 
 
 func wall_count() -> int:
-	return _walls.get_child_count()
+	return _walls.size()
 
 
-func _wall_material(texture: Texture2D) -> StandardMaterial3D:
-	if _wall_materials.has(texture):
-		return _wall_materials[texture]
-	var material := StandardMaterial3D.new()
-	material.albedo_texture = texture
-	material.texture_filter = BaseMaterial3D.TEXTURE_FILTER_NEAREST
-	material.roughness = 1.0
-	material.specular_mode = BaseMaterial3D.SPECULAR_DISABLED
-	_wall_materials[texture] = material
-	return material
+## A wall or pillar: its three visible faces, drawn about the block's own centre on the ground.
+class Block extends Node2D:
+	var texture: Texture2D
+	var height := 20.0
+	var pillar := false
+
+	func _draw() -> void:
+		if texture == null:
+			return
+		if pillar:
+			_draw_column()
+		else:
+			_draw_box()
+
+	## Screen offset of a corner (wx, wy are world pixels from the tile centre) `h` pixels above the ground.
+	func _pt(wx: float, wy: float, h: float) -> Vector2:
+		return IsoView.project(Vector2(wx, wy)) - Vector2(0.0, h)
+
+	func _draw_box() -> void:
+		var half := IsoView.TILE * 0.5
+		var uv := PackedVector2Array([Vector2(0, 0), Vector2(1, 0), Vector2(1, 1), Vector2(0, 1)])
+		var left := PackedVector2Array([_pt(-half, half, height), _pt(half, half, height), _pt(half, half, 0.0), _pt(-half, half, 0.0)])
+		draw_colored_polygon(left, IsoView.SHADE_LEFT, uv, texture)
+		var right := PackedVector2Array([_pt(half, half, height), _pt(half, -half, height), _pt(half, -half, 0.0), _pt(half, half, 0.0)])
+		draw_colored_polygon(right, IsoView.SHADE_RIGHT, uv, texture)
+		var top := PackedVector2Array([_pt(-half, -half, height), _pt(half, -half, height), _pt(half, half, height), _pt(-half, half, height)])
+		draw_colored_polygon(top, IsoView.SHADE_TOP, uv, texture)
+		var edge := Color(0.0, 0.0, 0.0, 0.45)  # the outline that makes the block read against the floor
+		draw_polyline(PackedVector2Array([top[3], top[2], top[1]]), edge, 1.0)
+		draw_line(top[2], left[2], edge, 1.0)
+		draw_line(left[3], left[2], edge, 1.0)
+		draw_line(left[2], right[2], edge, 1.0)
+		draw_line(right[2], right[1], edge, 1.0)
+
+	func _draw_column() -> void:
+		var rx := IsoView.PILLAR_RADIUS * 1.4142
+		var ry := IsoView.PILLAR_RADIUS * 0.7071
+		var steps := 12
+		var body := PackedVector2Array()
+		var colours := PackedColorArray()
+		var uvs := PackedVector2Array()
+		for i in range(steps + 1):  # the lower half of the base, left to right
+			var a := PI * float(i) / float(steps)
+			body.append(Vector2(-cos(a) * rx, sin(a) * ry))
+			colours.append(IsoView.SHADE_LEFT.lerp(IsoView.SHADE_RIGHT, float(i) / float(steps)))
+			uvs.append(Vector2(float(i) / float(steps), 1.0))
+		for i in range(steps, -1, -1):  # and the lower half of the rim back
+			var a := PI * float(i) / float(steps)
+			body.append(Vector2(-cos(a) * rx, sin(a) * ry - height))
+			colours.append(IsoView.SHADE_LEFT.lerp(IsoView.SHADE_RIGHT, float(i) / float(steps)))
+			uvs.append(Vector2(float(i) / float(steps), 0.0))
+		draw_polygon(body, colours, uvs, texture)
+		var rim := PackedVector2Array()
+		var rim_uv := PackedVector2Array()
+		for i in 16:
+			var a := TAU * float(i) / 16.0
+			rim.append(Vector2(cos(a) * rx, sin(a) * ry - height))
+			rim_uv.append(Vector2(0.5 + cos(a) * 0.4, 0.5 + sin(a) * 0.4))
+		draw_colored_polygon(rim, IsoView.SHADE_TOP, rim_uv, texture)
+		draw_polyline(PackedVector2Array(rim + PackedVector2Array([rim[0]])), Color(0, 0, 0, 0.4), 1.0)
 
 
-# ---------- sorting the 2D world into layers ----------
+## A monster's health bar on the stage.
+class Bar extends Node2D:
+	var fraction := 1.0
+	var bar_width := 14.0
+
+	func _draw() -> void:
+		draw_rect(Rect2(-bar_width * 0.5 - 1.0, -1.0, bar_width + 2.0, 4.0), Color(0, 0, 0, 0.85))
+		draw_rect(Rect2(-bar_width * 0.5, 0.0, maxf(bar_width * fraction, 0.5), 2.0), Color("e24b3b").lerp(Color("6bd66b"), fraction))
+
+
+# ---------- sorting the flat world into layers ----------
 
 func _sweep(node: Node) -> void:
 	_on_node_added(node)
@@ -286,55 +311,30 @@ func _stands_up(owner: Node) -> bool:
 		or owner is Player or owner is RemoteAvatar
 
 
-func _make_mirror(node: CanvasItem) -> Node3D:
+func _make_mirror(node: CanvasItem) -> CanvasItem:
 	if node is Sprite2D:
-		var sprite := Sprite3D.new()
-		sprite.pixel_size = 1.0 / UNIT
-		sprite.billboard = BaseMaterial3D.BILLBOARD_FIXED_Y
-		sprite.texture_filter = BaseMaterial3D.TEXTURE_FILTER_NEAREST
-		sprite.shaded = false
-		sprite.double_sided = true
-		sprite.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-		sprite.alpha_cut = SpriteBase3D.ALPHA_CUT_OPAQUE_PREPASS
-		add_child(sprite)
-		var shadow := Sprite3D.new()
+		var sprite := Sprite2D.new()
+		sprite.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+		_stage.add_child(sprite)
+		var shadow := Sprite2D.new()
 		shadow.texture = _blob
-		shadow.pixel_size = 1.0 / UNIT
-		shadow.axis = Vector3.AXIS_Y
-		shadow.shaded = false
+		shadow.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
 		shadow.modulate = Color(0, 0, 0, 0.4)
-		shadow.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-		shadow.transparent = true
-		add_child(shadow)
+		shadow.z_index = -1  # on the floor, under every standing sprite
+		_stage.add_child(shadow)
 		_shadows[node] = shadow
 		return sprite
 	if node is Label:
-		var label := Label3D.new()
-		label.billboard = BaseMaterial3D.BILLBOARD_ENABLED
-		label.pixel_size = 1.0 / UNIT
-		label.no_depth_test = true
-		label.fixed_size = false
-		label.shaded = false
-		label.double_sided = true
-		label.texture_filter = BaseMaterial3D.TEXTURE_FILTER_NEAREST
-		label.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-		label.render_priority = 10
-		label.outline_render_priority = 9
-		add_child(label)
+		var label := Label.new()
+		label.z_index = 60
+		label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+		label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		_stage.add_child(label)
 		return label
-	var bar := Node3D.new()  # a health bar: a dark quad with a coloured fill
-	for i in 2:
-		var quad := MeshInstance3D.new()
-		quad.mesh = QuadMesh.new()
-		var material := StandardMaterial3D.new()
-		material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-		material.billboard_mode = BaseMaterial3D.BILLBOARD_ENABLED
-		material.no_depth_test = true
-		material.render_priority = 8 + i
-		quad.material_override = material
-		quad.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-		bar.add_child(quad)
-	add_child(bar)
+	var bar := Bar.new()  # a health bar
+	bar.z_index = 50
+	_stage.add_child(bar)
 	return bar
 
 
@@ -347,16 +347,16 @@ func mirror_count() -> int:
 func _process(delta: float) -> void:
 	_follow_hero(delta)
 	for node in _mirrors.keys():
-		var mirror: Node3D = _mirrors[node]
+		var mirror: CanvasItem = _mirrors[node]
 		if not is_instance_valid(node) or not (node as Node).is_inside_tree():
 			_drop(node)
 			continue
 		if node is Sprite2D:
-			_update_sprite(node, mirror)
+			_update_sprite(node, mirror as Sprite2D)
 		elif node is Label:
-			_update_label(node, mirror)
+			_update_label(node, mirror as Label)
 		else:
-			_update_bar(node, mirror)
+			_update_bar(node, mirror as Bar)
 
 
 func _drop(node) -> void:
@@ -376,7 +376,7 @@ func _follow_hero(delta: float) -> void:
 		return
 	var look: Vector2 = hero.get("_look") if hero.get("_look") != null else Vector2.ZERO
 	var target := hero.global_position + look
-	var margin := Vector2(1.5, 1.5) * UNIT
+	var margin := Vector2(1.5, 1.5) * TILE
 	target.x = clampf(target.x, margin.x, maxf(_room_size.x - margin.x, margin.x))
 	target.y = clampf(target.y, margin.y, maxf(_room_size.y - margin.y, margin.y))
 	if _snap:
@@ -384,94 +384,89 @@ func _follow_hero(delta: float) -> void:
 		_snap = false
 	else:
 		_focus = _focus.lerp(target, 1.0 - exp(-FOLLOW_SPEED * delta))
-	var back := camera.global_transform.basis.z
-	camera.position = ground_to_3d(_focus) + back * 40.0
-	var shake := Juice.offset() / UNIT
-	camera.h_offset = shake.x
-	camera.v_offset = shake.y
-	torch.position = ground_to_3d(hero.global_position) + Vector3(0, 1.8, 0)
+	var centre := get_viewport().get_visible_rect().size * 0.5
+	_layer.offset = (centre - project(_focus) + Juice.offset()).round()
 
 
-func _update_sprite(src: Sprite2D, mirror: Node3D) -> void:
-	var sprite := mirror as Sprite3D
+func _update_sprite(src: Sprite2D, mirror: Sprite2D) -> void:
 	var visible_now := src.is_visible_in_tree() and src.texture != null
-	sprite.visible = visible_now
-	var shadow := _shadows.get(src) as Sprite3D
+	mirror.visible = visible_now
+	var shadow := _shadows.get(src) as Sprite2D
 	if shadow:
 		shadow.visible = visible_now
 	if not visible_now:
 		return
 	var texture := src.texture
-	sprite.texture = texture
-	sprite.flip_h = src.flip_h
-	sprite.flip_v = src.flip_v
-	sprite.offset = Vector2(src.offset.x, 0.0)
+	var size_scale := Vector2(absf(src.global_scale.x), absf(src.global_scale.y))
+	mirror.texture = texture
+	mirror.flip_h = src.flip_h
+	mirror.flip_v = src.flip_v
+	mirror.scale = size_scale
+	mirror.offset = Vector2(src.offset.x, -float(texture.get_height()) * 0.5)  # the picture stands on its position
 	var colour := src.modulate * src.self_modulate
-	sprite.modulate = colour
-	var height := float(texture.get_height()) * absf(src.global_scale.y)
-	var width := float(texture.get_width()) * absf(src.global_scale.x)
-	sprite.scale = Vector3(absf(src.global_scale.x), absf(src.global_scale.y) * STRETCH, 1.0)
-	var ground := ground_to_3d(src.global_position)
+	mirror.modulate = colour
+	mirror.material = src.material
+	var parent := src.get_parent()
 	var lift := 0.0
-	if src.get_parent() is Enemy and (src.get_parent() as Enemy).behavior == "flutter":
-		lift = 0.45
-	sprite.position = ground + Vector3(0.0, height * 0.5 / UNIT * STRETCH + lift, 0.0)
+	if parent is Enemy and (parent as Enemy).behavior == "flutter":
+		lift = 7.0
+	elif parent is Projectile or parent is EnemyProjectile:
+		lift = 5.0
+	var ground := project(src.global_position)
+	mirror.position = (ground - Vector2(0.0, lift)).round()
+	if parent is Projectile:  # a bolt points where it flies, as seen on the screen (its art points right)
+		mirror.rotation = project(Vector2.RIGHT.rotated(src.global_rotation)).angle()
+		mirror.offset = src.offset
+	else:
+		mirror.rotation = 0.0
 	if shadow:
-		var span := clampf(width * 0.9, 6.0, 40.0)
-		shadow.scale = Vector3(span / 16.0, span / 16.0 * 0.6, 1.0)
-		shadow.position = ground + Vector3(0.0, 0.03, 0.0)
+		var span := clampf(float(texture.get_width()) * size_scale.x * 0.9, 6.0, 40.0)
+		shadow.scale = Vector2(span / 16.0, span / 16.0 * 0.5)
+		shadow.position = ground.round()
 		shadow.modulate.a = 0.4 * colour.a
 
 
-func _update_label(src: Label, mirror: Node3D) -> void:
-	var label := mirror as Label3D
-	label.visible = src.is_visible_in_tree() and src.text != ""
-	if not label.visible:
+func _update_label(src: Label, mirror: Label) -> void:
+	mirror.visible = src.is_visible_in_tree() and src.text != ""
+	if not mirror.visible:
 		return
-	label.text = src.text
-	label.font = src.get_theme_font("font")
-	label.font_size = src.get_theme_font_size("font_size")
+	if mirror.text != src.text:
+		mirror.text = src.text
+		mirror.reset_size()
 	var colour := src.get_theme_color("font_color") * src.modulate
-	label.modulate = colour
-	label.outline_modulate = Color(0, 0, 0, colour.a)
-	label.outline_size = src.get_theme_constant("outline_size")
+	mirror.add_theme_font_override("font", src.get_theme_font("font"))
+	mirror.add_theme_font_size_override("font_size", src.get_theme_font_size("font_size"))
+	mirror.add_theme_color_override("font_color", colour)
+	mirror.add_theme_color_override("font_outline_color", Color(0, 0, 0, colour.a))
+	mirror.add_theme_constant_override("outline_size", src.get_theme_constant("outline_size"))
 	var anchor: Vector2 = src.global_position + Vector2(src.size.x * 0.5, src.size.y)
-	var height := 1.6
-	var rise := 0.0
+	var up := 26.0
 	if src is FloatText:  # damage numbers float up from where they appeared
 		if not src.has_meta("iso_origin"):
 			src.set_meta("iso_origin", src.global_position)
 		var origin: Vector2 = src.get_meta("iso_origin")
-		rise = maxf(origin.y - src.global_position.y, 0.0)
+		var rise := maxf(origin.y - src.global_position.y, 0.0)
 		anchor = origin + Vector2(src.size.x * 0.5, src.size.y)
-		height = 1.8 + rise / UNIT
+		up = 29.0 + rise
 	else:
-		var owner := src.get_parent() as Node2D
-		if owner != null and owner != _world_root and owner.get_parent() != _world_root:
-			anchor = owner.global_position
-			height = 1.4
-	label.position = ground_to_3d(anchor) + Vector3(0.0, height, 0.0)
+		var holder := src.get_parent() as Node2D
+		if holder != null and holder != _world_root and holder.get_parent() != _world_root:
+			anchor = holder.global_position
+			up = 22.0
+	mirror.position = (project(anchor) - Vector2(0.0, up) - mirror.size * 0.5).round()
 
 
-func _update_bar(src: Node2D, mirror: Node3D) -> void:
+func _update_bar(src: Node2D, mirror: Bar) -> void:
 	var bar_src := src as EnemyHealthBar
 	var enemy := bar_src.enemy
 	if enemy == null or not is_instance_valid(enemy) or not enemy.is_inside_tree():
 		mirror.visible = false
 		return
-	var frac := clampf(enemy.hp / maxf(enemy.max_hp, 1.0), 0.0, 1.0)
 	mirror.visible = true
-	var height := float(enemy.hit_rect().size.y) / UNIT * STRETCH + 0.5
-	mirror.position = ground_to_3d(enemy.global_position) + Vector3(0.0, height, 0.0)
-	var width := EnemyHealthBar.SIZE.x / UNIT
-	var back := mirror.get_child(0) as MeshInstance3D
-	var fill := mirror.get_child(1) as MeshInstance3D
-	(back.mesh as QuadMesh).size = Vector2(width + 0.1, 0.2)
-	(fill.mesh as QuadMesh).size = Vector2(maxf(width * frac, 0.01), 0.12)
-	fill.position = Vector3((width * frac - width) * 0.5, 0.0, 0.001)
-	(back.material_override as StandardMaterial3D).albedo_color = Color(0, 0, 0, 0.85)
-	(fill.material_override as StandardMaterial3D).albedo_color = Color("e24b3b").lerp(Color("6bd66b"), frac)
-	(back.material_override as StandardMaterial3D).transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	mirror.fraction = clampf(enemy.hp / maxf(enemy.max_hp, 1.0), 0.0, 1.0)
+	mirror.bar_width = EnemyHealthBar.SIZE.x
+	mirror.queue_redraw()
+	mirror.position = (project(enemy.global_position) - Vector2(0.0, float(enemy.hit_rect().size.y) + 6.0)).round()
 
 
 # ---------- helpers ----------

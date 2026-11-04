@@ -81,7 +81,9 @@ func _ready() -> void:
 	await _test_phase6a()
 	await _test_phase6b()
 	_test_dungeons5()
+	_test_generation_soak()
 	await _test_iso()
+	await _test_fixes()
 	await _test_net_world()
 	_test_items()
 	_test_inventory_and_gear_stats()
@@ -4427,7 +4429,75 @@ func _test_dungeons5() -> void:
 	_check("loot luck from depth is capped", capped <= 5.0 + float(Game.character.derived()["loot_luck"]) + 1.0)
 
 
-# ---------- Phase 6c: the isometric HD-2D view ----------
+# ---------- soak: many generated dungeons must be playable ----------
+
+## Walkable tiles reachable from the spawn tile (4-way), the way the hero moves around pillars.
+func _reachable_tiles(room: Dictionary) -> Dictionary:
+	var cols: int = room["cols"]
+	var rows: int = room["rows"]
+	var solid := {}
+	for rect in room["obstacles"]:
+		for y in range(rect.position.y, rect.end.y):
+			for x in range(rect.position.x, rect.end.x):
+				solid[Vector2i(x, y)] = true
+	var open := {}
+	var queue: Array[Vector2i] = [DungeonGen.spawn_tile(room)]
+	open[queue[0]] = true
+	while not queue.is_empty():
+		var at: Vector2i = queue.pop_back()
+		for step in [Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1)]:
+			var next: Vector2i = at + step
+			if next.x < 1 or next.y < 1 or next.x > cols - 2 or next.y > rows - 2 or solid.has(next) or open.has(next):
+				continue
+			open[next] = true
+			queue.append(next)
+	return open
+
+
+func _test_generation_soak() -> void:
+	var rooms_seen := 0
+	var problems: Array[String] = []
+	for tier in Game.TIERS:
+		var spec: Dictionary = Game.TIERS[tier]
+		for seed_value in 12:
+			var rng := RandomNumberGenerator.new()
+			rng.seed = 9000 + seed_value * 31 + int(tier)
+			var layout := DungeonGen.generate(rng, int(spec["floors"]), int(tier), int(spec.get("depth", 0)))
+			if layout.size() != int(spec["floors"]):
+				problems.append("tier %d has %d floors" % [tier, layout.size()])
+			for floor_rooms in layout:
+				var previous: Dictionary = {}
+				for room in floor_rooms:
+					rooms_seen += 1
+					var open := _reachable_tiles(room)
+					var spawn := DungeonGen.spawn_tile(room)
+					if not open.has(spawn):
+						problems.append("t%d s%d spawn blocked in %s" % [tier, seed_value, DungeonGen.describe(room)])
+					if room["exit"] != "":
+						var door := DungeonGen.door_rect(room, "exit")
+						var reached := false
+						for y in range(door.position.y, door.end.y):
+							for x in range(door.position.x, door.end.x):
+								var inward: Vector2i = {"north": Vector2i(0, 1), "south": Vector2i(0, -1), "west": Vector2i(1, 0), "east": Vector2i(-1, 0)}[room["exit"]]
+								var inside := Vector2i(x, y) + inward
+								reached = reached or open.has(inside)
+						if not reached:
+							problems.append("t%d s%d exit door cannot be reached in %s" % [tier, seed_value, DungeonGen.describe(room)])
+					var fraction := float(open.size()) / float((int(room["cols"]) - 2) * (int(room["rows"]) - 2))
+					if fraction < 0.6:
+						problems.append("t%d s%d room is mostly pillars (%d%%)" % [tier, seed_value, int(fraction * 100.0)])
+					if room["kind"] == "combat" and room["waves"].is_empty():
+						problems.append("t%d s%d combat room with no waves" % [tier, seed_value])
+					if not previous.is_empty() and DungeonGen.OPPOSITE[previous["exit"]] != room["entry"]:
+						problems.append("t%d s%d doors do not line up" % [tier, seed_value])
+					previous = room
+		var last_room: Dictionary = DungeonGen.generate(RandomNumberGenerator.new(), int(spec["floors"]), int(tier), 0)[-1][-1]
+		if last_room["kind"] != "boss" or not Monsters.bosses(int(tier)).has(last_room["boss"]):
+			problems.append("tier %d does not end with its own boss" % tier)
+	_check("%d generated rooms across five dungeons are all playable (%s)" % [rooms_seen, "; ".join(problems.slice(0, 3))], problems.is_empty())
+
+
+# ---------- Phase 6c: the isometric view (drawn in 2D) ----------
 
 func _test_iso() -> void:
 	_check("the screen and ground directions are inverse", (func():
@@ -4437,7 +4507,7 @@ func _test_iso() -> void:
 			ok = ok and absf(back.angle_to(d)) < 0.01
 		return ok).call())
 	_check("up on the screen is north-west on the ground and right is north-east", IsoView.world_dir(Vector2(0, -1)).dot(Vector2(-1, -1).normalized()) > 0.99 and IsoView.world_dir(Vector2(1, 0)).dot(Vector2(1, -1).normalized()) > 0.99)
-	_check("a tile is one world unit", IsoView.ground_to_3d(Vector2(32, 48)).is_equal_approx(Vector3(2, 0, 3)) and IsoView.to_ground(Vector3(2, 0, 3)) == Vector2(32, 48))
+	_check("a world point projects to a 2:1 diamond and back", IsoView.project(Vector2(32, 48)) == Vector2(-16, 40) and IsoView.unproject(IsoView.project(Vector2(32, 48))).is_equal_approx(Vector2(32, 48)))
 
 	var world := Node2D.new()
 	add_child(world)
@@ -4454,10 +4524,10 @@ func _test_iso() -> void:
 	dungeon.debug_goto(0, 0)  # builds the room again, now with walls
 	await get_tree().process_frame
 	await get_tree().process_frame
-	_check("the view is the active one and has a sloped orthographic camera", IsoView.active == view and view.camera.projection == Camera3D.PROJECTION_ORTHOGONAL and is_equal_approx(view.camera.rotation_degrees.x, -IsoView.PITCH))
+	_check("the view is the active one and draws in 2D only", IsoView.active == view and view.find_children("*", "Camera3D", true, false).is_empty() and view.find_children("*", "Node3D", true, false).is_empty())
 	var room := DungeonGen.camp_room()
 	var ring_tiles := 2 * (int(room["cols"]) + int(room["rows"])) - 4
-	_check("the room's walls and pillars became boxes", view.wall_count() == ring_tiles + room["obstacles"].size())
+	_check("the room's walls and pillars became blocks", view.wall_count() == ring_tiles + room["obstacles"].size())
 	_check("the ground texture is as big as the room", view.ground_viewport.size == Vector2i(int(room["cols"]) * 16, int(room["rows"]) * 16))
 	_check("the main window hides the flat world and the ground shows it", (get_viewport().canvas_cull_mask & (IsoView.LAYER_GROUND | IsoView.LAYER_ENTITY)) == 0 and (view.ground_viewport.canvas_cull_mask & IsoView.LAYER_GROUND) != 0 and (view.ground_viewport.canvas_cull_mask & IsoView.LAYER_ENTITY) == 0)
 	var floor_sprite: Sprite2D = null
@@ -4466,30 +4536,30 @@ func _test_iso() -> void:
 			floor_sprite = node
 			break
 	_check("floor tiles go to the ground layer", floor_sprite != null and floor_sprite.visibility_layer == IsoView.LAYER_GROUND)
-	_check("the hero's sprite stands up in 3D", hero.get_node("Sprite2D").visibility_layer == IsoView.LAYER_ENTITY and view.mirror_count() >= 1)
+	_check("the hero's sprite is redrawn standing up", hero.get_node("Sprite2D").visibility_layer == IsoView.LAYER_ENTITY and view.mirror_count() >= 1)
 	var before := view.mirror_count()
 	var enemy := Monsters.spawn(dungeon._room_node, "slime", Vector2(120, 100), "", Vector2.ONE, 1)
 	await get_tree().process_frame
 	await get_tree().process_frame
 	_check("a monster gets a standing sprite, a shadow and a health bar", view.mirror_count() >= before + 2 and enemy.sprite.visibility_layer == IsoView.LAYER_ENTITY)
-	var mirror: Sprite3D = view._mirrors[enemy.sprite]
-	_check("the 3D sprite stands where the monster does", absf(mirror.position.x - enemy.sprite.global_position.x / 16.0) < 0.2 and absf(mirror.position.z - enemy.sprite.global_position.y / 16.0) < 0.2 and mirror.position.y > 0.2)
-	_check("it faces the camera upright", mirror.billboard == BaseMaterial3D.BILLBOARD_FIXED_Y)
+	var mirror: Sprite2D = view._mirrors[enemy.sprite]
+	_check("the stand-in sits where the monster does, on the screen", mirror.position.distance_to(IsoView.project(enemy.sprite.global_position)) < 1.5)
+	_check("it stands on its spot, not centred on it", mirror.offset.y < 0.0 and mirror.get_parent() == view._stage and view._stage.y_sort_enabled)
 	var tex_before := mirror.texture
 	enemy.sprite.flip_h = true
 	await get_tree().process_frame
-	_check("it copies the 2D sprite's picture and flip", mirror.texture == enemy.sprite.texture and tex_before != null and mirror.flip_h)
+	_check("it copies the flat sprite's picture and flip", mirror.texture == enemy.sprite.texture and tex_before != null and mirror.flip_h)
 	var screen := view.screen_point_of(hero.global_position)
 	_check("a ground point projected to the screen and back lands where it started", view.ground_point_at(screen).distance_to(hero.global_position) < 0.5)
 	FloatText.spawn(world, hero.global_position, "-9", Color.RED)
 	await get_tree().process_frame
 	await get_tree().process_frame
-	_check("floating text becomes a 3D label", view._mirrors.keys().any(func(n): return n is FloatText) and view.get_children().any(func(c): return c is Label3D and c.text == "-9"))
+	_check("floating text becomes a label on the stage", view._mirrors.keys().any(func(n): return n is FloatText) and view._stage.get_children().any(func(c): return c is Label and c.text == "-9"))
 	enemy.queue_free()
 	await get_tree().process_frame
 	await get_tree().process_frame
 	_check("a monster that goes takes its stand-ins with it", not view._mirrors.has(enemy.sprite) if is_instance_valid(enemy) else true)
-	_check("the camera follows the hero", view.camera.position.distance_to(IsoView.ground_to_3d(hero.global_position)) < 60.0)
+	_check("the view is centred on the hero", view.screen_point_of(hero.global_position).distance_to(get_viewport().get_visible_rect().size * 0.5) < 60.0)
 	var player_dir := IsoView.screen_dir(Vector2.RIGHT)
 	_check("east runs right and down the screen", player_dir.x > 0.0 and player_dir.y > 0.0)
 	var settings_on := Settings.DEFAULTS["iso_view"] == true
@@ -4498,6 +4568,56 @@ func _test_iso() -> void:
 	await get_tree().process_frame
 	_check("closing the view gives the window its flat world back", IsoView.active == null and get_viewport().canvas_cull_mask == 0xFFFFFFFF)
 	world.queue_free()
+
+
+# ---------- the fixes after Phase 6: screens inside the window, sharp text, light and dark keys ----------
+
+func _test_fixes() -> void:
+	_check("every element has a number key, light and dark included", InputMap.has_action("element_6") and InputMap.has_action("element_7") and not InputMap.action_get_events("element_7").is_empty())
+	_check("the controls screen lists the rare element keys", Controls.ACTIONS.any(func(a): return a[0] == "element_7"))
+	_check("unthemed text (damage numbers, world signs) uses the menus' font", ThemeDB.fallback_font is SystemFont and ThemeDB.fallback_font_size == 7)
+
+	var screen := get_viewport().get_visible_rect()
+	var saved := Game.character
+	var menu := NewCharacterMenu.new()
+	add_child(menu)
+	await get_tree().process_frame
+	menu.toggle()
+	await get_tree().process_frame
+	await get_tree().process_frame
+	var panel: Control = menu.find_children("*", "PanelContainer", true, false)[0]
+	_check("the creation screen sits inside the window", screen.encloses(panel.get_global_rect()))
+	var name_label: Label = menu.find_children("*", "Label", true, false).filter(func(l): return l.text == "Name")[0]
+	_check("the Name label is on one line beside its field", name_label.size.y < 16.0 and name_label.size.x > 14.0)
+	var field: LineEdit = menu.find_children("*", "LineEdit", true, false)[0]
+	_check("the name field is one row tall and has room to type", field.size.y < 20.0 and field.size.x > 100.0)
+	var tallest := 0.0
+	for id in Classes.playable():  # every class and birth description must fit too
+		for birth in NewCharacterMenu.BIRTHS:
+			menu._class_id = id
+			menu._birth = birth["id"]
+			menu._refresh_description()
+			await get_tree().process_frame
+			await get_tree().process_frame
+			tallest = maxf(tallest, panel.size.y)
+			if not screen.encloses(panel.get_global_rect()):
+				_check("the creation screen fits with %s and %s" % [id, birth["id"]], false)
+	_check("the creation screen fits for every class and birth (tallest %d of %d)" % [int(tallest), int(screen.size.y)], tallest <= screen.size.y - 4.0)
+	menu.toggle()
+	menu.queue_free()
+	await get_tree().process_frame
+	Game.character = saved
+
+	var online := MultiplayerMenu.new()
+	add_child(online)
+	await get_tree().process_frame
+	for screen_name in ["show_choice", "show_join"]:
+		online.call(screen_name)
+		await get_tree().process_frame
+		await get_tree().process_frame
+		var shown: Control = online._view.find_children("*", "PanelContainer", true, false)[0]
+		_check("multiplayer screen %s sits inside the window" % screen_name, screen.encloses(shown.get_global_rect()))
+	online.queue_free()
 
 
 # ---------- Phase 6d: multiplayer, the parts that need no network ----------

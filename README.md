@@ -234,7 +234,7 @@ No license has been chosen yet. All rights reserved for now.
 ## What is new in Phase 6
 
 Hero names; a melee range ring; elements that play differently; a training grounds with an altar; layered Stardew-style heroes that change
-with class, subclass and gear; class cards with sprites and borders; an equipment paper doll; five dungeons; an isometric HD-2D view; and
+with class, subclass and gear; class cards with sprites and borders; an equipment paper doll; five dungeons; a 2D isometric view; and
 multiplayer (co-op for up to four, arena duels). Tools: `tools/art/gen_heroes.py` and `preview_heroes.py` for the hero parts,
 `tools/run_net_test.ps1` for the two-process network test. Multiplayer: Multiplayer on the title screen, one player hosts (port 24680), the
 others join with the host's address.

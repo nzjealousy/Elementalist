@@ -225,6 +225,7 @@ hard, and the choices that cost resources (more elements, more fusion, chained a
   class in the middle of a card with its own border, the name below; the character sheet shows a paper doll with six slots.
 * **Five dungeons**, each harder than the last: Ashen Vaults (5 floors), Drowned Crypts (10), Thornroot Hollow (12), Cinder Forge (15), Gloaming
   Spire (20). Each opens when the one before is cleared.
-* **Isometric view.** The world is shown from an isometric camera with real walls, shadows and upright sprites (HD-2D).
+* **Isometric view.** The world is shown in 2D isometric: diamond floor tiles, walls with a lit and a shaded face, upright sprites with
+  shadows. Drawn entirely in 2D, so pixels and text stay sharp. A setting switches back to the flat top-down picture.
 * **Multiplayer.** From the title screen: host or join (address and port), wait in the lobby, then a co-op dungeon (up to four heroes, each
   keeps its XP and loot; a fallen hero returns after 5 s) or an arena duel (first to three kills).

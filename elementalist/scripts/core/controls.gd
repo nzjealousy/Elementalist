@@ -27,7 +27,8 @@ const ACTIONS := [
 	["element_prev", "Previous element", "Elements"], ["element_next", "Next element", "Elements"],
 	["element_1", "Element 1", "Elements"], ["element_2", "Element 2", "Elements"],
 	["element_3", "Element 3", "Elements"], ["element_4", "Element 4", "Elements"],
-	["element_5", "Element 5", "Elements"],
+	["element_5", "Element 5", "Elements"], ["element_6", "Element 6 (light)", "Elements"],
+	["element_7", "Element 7 (dark)", "Elements"],
 	["interact", "Interact", "Menus"], ["inventory", "Gear", "Menus"],
 	["character_sheet", "Character sheet", "Menus"], ["pause", "Pause / back", "Menus"],
 ]
@@ -57,6 +58,13 @@ func _ready() -> void:
 	for name in ["aim_left", "aim_right", "aim_up", "aim_down"]:
 		if not InputMap.has_action(name):
 			InputMap.add_action(name, 0.2)
+	# Light and dark are rare elements; their number keys are not in project.godot.
+	for pair in [["element_6", KEY_6], ["element_7", KEY_7]]:
+		if not InputMap.has_action(pair[0]):
+			InputMap.add_action(pair[0])
+			var key := InputEventKey.new()
+			key.keycode = pair[1]
+			InputMap.action_add_event(pair[0], key)
 	for action in PAD_DEFAULTS:
 		if InputMap.has_action(action):
 			_add_pad_default(action)

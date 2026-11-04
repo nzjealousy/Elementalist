@@ -200,7 +200,8 @@ func _process(delta: float) -> void:
 		return
 
 	for i in elements.size():
-		if Input.is_action_just_pressed("element_%d" % (i + 1)):
+		var key_action := "element_%d" % (i + 1)
+		if InputMap.has_action(key_action) and Input.is_action_just_pressed(key_action):
 			select(i)
 	# LMB fuses locked elements (or throws knives); a slash-mode LMB is the Player's melee.
 	if Input.is_action_pressed("skill_primary") and primary_id() != "":

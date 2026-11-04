@@ -22,6 +22,7 @@ static func font() -> Font:
 	system.font_names = PackedStringArray(["Palatino Linotype", "Book Antiqua", "Georgia", "Cambria", "Times New Roman", "serif"])
 	system.antialiasing = TextServer.FONT_ANTIALIASING_GRAY
 	system.hinting = TextServer.HINTING_LIGHT
+	system.generate_mipmaps = false
 	return system
 
 
@@ -52,6 +53,19 @@ static func make() -> Theme:
 			theme.set_stylebox(state, control, box)
 	theme.set_stylebox("hover_pressed", "Button", frame("button_pressed", 5, 3, 1))
 	theme.set_stylebox("focus", "Button", frame("button_focus", 5, 3, 1))
+
+	# Text fields (the hero's name, the join address): a dark well with a gold rim, like the slider groove.
+	var well := _flat(Color("120d0a"), GOLD_DARK, 1, 2)
+	well.content_margin_left = 3
+	well.content_margin_right = 3
+	theme.set_stylebox("normal", "LineEdit", well)
+	theme.set_stylebox("focus", "LineEdit", _flat(Color("1a130d"), GOLD, 1, 2))
+	theme.set_stylebox("read_only", "LineEdit", well)
+	theme.set_color("font_color", "LineEdit", TEXT)
+	theme.set_color("font_placeholder_color", "LineEdit", TEXT_DIM)
+	theme.set_color("caret_color", "LineEdit", GOLD)
+	theme.set_color("selection_color", "LineEdit", Color(GOLD_DARK, 0.55))
+	theme.set_constant("caret_width", "LineEdit", 1)
 
 	# Sliders (settings): a dark groove with a gold fill.
 	theme.set_stylebox("slider", "HSlider", _flat(Color("120d0a"), Color("4a3512"), 1, 2))
