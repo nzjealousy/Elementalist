@@ -9,6 +9,8 @@ extends CharacterBody2D
 ##   melee-style character with no elements it is a straight slash instead.
 ##   E toggles imbue. Every slash then carries the locked elements (or the selected one),
 ##   costing a little mana per element per swing; if you can't pay, it is a plain slash.
+##   Buffs (V support skills) are timed effects in `buffs`: might (+damage), mend (heal per
+##   second), ward (less damage taken) and haste (speed). Their length scales with Wisdom.
 ##   Dodge + attack = a 360 degree spin: costs more stamina, hits all around, can be imbued,
 ##   and makes you immune to damage until it finishes.
 
@@ -40,6 +42,7 @@ var stamina := 0.0
 var aim_direction := Vector2.RIGHT
 var caster: SkillCaster
 var imbued := false  # the blade is coated (see class comment); toggled with E, no timer
+var buffs: Dictionary = {}  # kind -> {"time": seconds left, "power": float}
 
 var _dodge_left := 0.0
 var _dodge_cd := 0.0
@@ -52,6 +55,10 @@ var _hp_regen_delay := 0.0
 var _melee_cd := 0.0
 var _stamina_delay := 0.0
 var _knock := Vector2.ZERO
+var _dodge_text_cd := 0.0
+var _mend_text := 0.0   # heal accumulated since the last "+N" number
+var _buff_fx: Dictionary = {}  # buff kind -> its aura particles
+var _imbue_fx: CPUParticles2D
 
 @onready var sprite: Sprite2D = $Sprite2D
 @onready var camera: Camera2D = $Camera2D
@@ -153,17 +160,23 @@ func is_invulnerable() -> bool:
 ## their cooldown on hits that actually connect.
 func take_damage(amount: float, from: Vector2) -> bool:
 	if is_invulnerable():
+		if _hurt_cd <= 0.0 and _dodge_text_cd <= 0.0:  # avoided by dodging or spinning, not by a recent hit
+			FloatText.spawn(get_parent(), global_position + Vector2(0, -6), "Dodge!", Color("bfe3ff"))
+			_dodge_text_cd = 0.6
 		return false
-	amount *= float(Game.character.derived()["damage_taken_mult"])
+	amount *= float(Game.character.derived()["damage_taken_mult"]) * (1.0 - buff_power("ward"))
 	hp -= amount
 	_hurt_cd = hurt_invulnerability
 	_hp_regen_delay = hp_regen_delay
 	_knock = (global_position - from).normalized() * 120.0
-	FloatText.spawn(get_parent(), global_position, str(int(round(amount))), Color("ff5a5a"))
+	FloatText.spawn(get_parent(), global_position + Vector2(0, -4), "-%d" % int(round(amount)), Color("ff5a5a"), 10)
+	Game.player_hurt(from - global_position)
 	Juice.shake(2.0, 0.2)
 	if hp <= 0.0:
-		died.emit()
-		get_tree().reload_current_scene()
+		if died.get_connections().is_empty():
+			get_tree().reload_current_scene()  # no run is listening (e.g. a bare scene): just restart
+		else:
+			died.emit()
 	return true
 
 
@@ -172,6 +185,75 @@ func regen_hp(delta: float) -> void:
 	_hp_regen_delay -= delta
 	if _hp_regen_delay <= 0.0:
 		hp = minf(max_hp, hp + hp_regen * delta)
+
+
+# ---------- buffs ----------
+
+const BUFF_COLORS := {
+	"might": Color("ff8a3d"), "mend": Color("5fd68a"), "ward": Color("c9b78a"), "haste": Color("d9f2ff"),
+}
+const BUFF_NAMES := {"might": "Might", "mend": "Mending", "ward": "Stone Skin", "haste": "Haste"}
+
+
+## Starts (or refreshes) a timed buff. Its length scales with Wisdom and buff passives.
+func add_buff(kind: String, time: float, power: float, _element: String = "") -> void:
+	var length := time * float(Game.character.derived()["buff_duration_mult"])
+	buffs[kind] = {"time": length, "power": power}
+	FloatText.spawn(get_parent(), global_position + Vector2(0, -14), String(BUFF_NAMES.get(kind, kind)), BUFF_COLORS.get(kind, Color.WHITE))
+	SkillFx.ring(get_parent(), global_position, 16.0, BUFF_COLORS.get(kind, Color.WHITE), 0.45, 1.5)
+	_sync_buff_fx()
+
+
+func buff_power(kind: String) -> float:
+	return float(buffs.get(kind, {}).get("power", 0.0))
+
+
+## Outgoing damage multiplier from the Might buff.
+func damage_mult() -> float:
+	return 1.0 + buff_power("might")
+
+
+func _tick_buffs(delta: float) -> void:
+	if buffs.is_empty():
+		return
+	if buffs.has("mend"):
+		var heal := buff_power("mend") * delta
+		hp = minf(max_hp, hp + heal)
+		_mend_text += heal
+		if _mend_text >= 8.0:
+			FloatText.spawn(get_parent(), global_position + Vector2(0, -8), "+%d" % int(_mend_text), Color("5fd68a"), 9)
+			_mend_text = 0.0
+	var expired := false
+	for kind in buffs.keys():
+		buffs[kind]["time"] -= delta
+		if buffs[kind]["time"] <= 0.0:
+			buffs.erase(kind)
+			expired = true
+	if expired:
+		_sync_buff_fx()
+
+
+## One aura of particles per active buff.
+func _sync_buff_fx() -> void:
+	for kind in _buff_fx.keys():
+		if not buffs.has(kind):
+			_buff_fx[kind].queue_free()
+			_buff_fx.erase(kind)
+	for kind in buffs:
+		if not _buff_fx.has(kind):
+			_buff_fx[kind] = SkillFx.aura(self, BUFF_COLORS.get(kind, Color.WHITE))
+
+
+## While imbued, the blade throws sparks of the element (changes with the selection).
+func _sync_imbue_fx() -> void:
+	var wanted := imbued and not imbue_elements().is_empty()
+	if wanted and _imbue_fx == null:
+		_imbue_fx = SkillFx.aura(self, Elements.color_of(imbue_elements()[0]), imbue_elements()[0])
+	elif not wanted and _imbue_fx != null:
+		_imbue_fx.queue_free()
+		_imbue_fx = null
+	elif wanted:
+		_imbue_fx.color = Elements.color_of(imbue_elements()[0])
 
 
 # ---------- imbue ----------
@@ -236,7 +318,7 @@ func try_melee(dir: Vector2 = Vector2.ZERO, spin: bool = false) -> bool:
 
 	var reach := melee_reach()
 	var half_arc := deg_to_rad(float(m["arc_deg"])) * 0.5
-	var base_damage := float(m["damage"]) * float(stats["melee_damage_mult"]) * (SPIN_DAMAGE_MULT if spin else 1.0)
+	var base_damage := float(m["damage"]) * float(stats["melee_damage_mult"]) * damage_mult() * (SPIN_DAMAGE_MULT if spin else 1.0)
 	var landed := false
 	for node in get_tree().get_nodes_in_group("enemies"):
 		var enemy := node as Enemy
@@ -313,6 +395,9 @@ func _physics_process(delta: float) -> void:
 
 	_dodge_cd = maxf(0.0, _dodge_cd - delta)
 	_hurt_cd = maxf(0.0, _hurt_cd - delta)
+	_dodge_text_cd = maxf(0.0, _dodge_text_cd - delta)
+	_tick_buffs(delta)
+	_sync_imbue_fx()
 	_melee_cd = maxf(0.0, _melee_cd - delta)
 	_dodge_buffer = maxf(0.0, _dodge_buffer - delta)
 	regen_hp(delta)
@@ -346,7 +431,7 @@ func _physics_process(delta: float) -> void:
 		# Ease out: fast burst that settles, so the end of the roll is committal.
 		velocity = _dodge_dir * dodge_speed * (0.35 + 0.65 * clampf(_dodge_left / dodge_time, 0.0, 1.0))
 	else:
-		velocity = input * speed + _knock
+		velocity = input * speed * (1.0 + buff_power("haste")) + _knock
 	_knock = _knock.move_toward(Vector2.ZERO, 500.0 * delta)
 	move_and_slide()
 

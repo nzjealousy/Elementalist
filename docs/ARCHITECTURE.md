@@ -18,7 +18,7 @@ How the code is organised and how to extend it. Everything lives in `elementalis
 | `Elements` | `elements.gd` | Element colours, the ten combos, `resolve(a, b)` |
 | `SkillDB` | `skill_db.gd` | All skill definitions, per-element loadouts, melee, cost helpers |
 | `Juice` | `juice.gd` | Camera shake and hit-stop (`Juice.enabled = false` in tests) |
-| `Game` | `game.gd` | The current `CharacterData`, new-game and sandbox helpers, kill XP and loot drops, banner |
+| `Game` | `game.gd` | The current `CharacterData`, new-game and sandbox helpers, kill XP and loot drops, banner, run text, hit indicator |
 
 Autoloads are **not** instantiated by the editor's own test runner, which is why the self-tests
 run as a scene (`tests/combo_selftest.tscn`).
@@ -177,6 +177,68 @@ growth attribute +1. A level-up heals 40% of max HP (`LEVEL_UP_HEAL_FRACTION`).
 **Saving:** `to_dict()` / `from_dict()` survive a JSON round trip (JSON turns ints into
 floats; `from_dict` converts them back). There is no save file or UI yet (Phase 5).
 
+## Attributes and classes
+
+Six attributes (`Classes.ATTRIBUTES`): Strength, Agility, Intellect, Vitality, and two newer ones.
+**Wisdom** (per point above 5: +0.6 mana regen, -1% spell cooldowns, +4% buff and debuff duration)
+and **Luck** (+1.5% crit chance, +5% loot luck). At 5 each they change nothing, so the tuned
+baseline is intact. `wisdom_add` / `luck_add` passive mods add to the attribute (the Scholar trait,
+the Trickster subclass). Crits: `derived()["crit_chance"]` / `["crit_mult"]` (base x1.5); `Enemy.take_hit`
+rolls them with `Game.combat_rng`, only for discrete hits, and only when the chance is above zero.
+
+**Eight classes**, two subclasses each (sixteen in all): Channeler, Vanguard, Ranger, Mystic and the
+newer Assassin (melee, dagger, crits), Berserker (melee, axe, fury), Sage (ranged, tome, wisdom) and
+Druid (ranged, staff, regeneration). Every class has the same 31 attribute points and +1 per level in
+one attribute (a self-test checks it). New weapon types: dagger, axe, tome (starter weapons, craftable
+upgrades and a weapon-mastery passive each).
+
+## Support skills, VFX and damage indicators
+
+**Support skills (V, level 7).** Every set has a fourth skill slot, `support`, learned at
+`Classes.SUPPORT_LEVEL`: four **buffs** (kind `"buff"`: Might +25% damage, Mending heals per second,
+Stone Skin -30% damage taken, Tailwind +30% speed) and two **debuffs** (`"aoe"` skills whose `apply` is
+`vuln` or the new `weaken`, which cuts the enemy's damage; `Enemy.damage_out`). A buff is a timed entry in
+`Player.buffs` (`add_buff`, `buff_power`, `damage_mult`), its length scaled by `buff_duration_mult`.
+`SkillDB.effect_text` describes them for menus.
+
+**VFX (`SkillFx`).** Everything is built from code: per-element particle profiles (fire flickers up,
+water drips, earth throws chunks, air streaks, mineral spins shards, martial strikes sparks), an
+additive glow sprite, expanding rings and auras. Used for the cast flash (`cast_burst`), a bolt's glow and
+trail (`trail`), impacts, area bursts (lingering areas keep emitting), buff and imbue auras, and enemy
+status puffs.
+
+**Damage indicators.** Enemies show damage in their element's colour (crits larger with "!", "Resist!" and
+"Weak!" for variants); the player shows `-N` in red, "Dodge!" when a hit is avoided and `+N` while mending.
+`Game.player_hurt()` drives the HUD's red edge flash and an arrow toward the attacker (`Game.hurt_time`).
+
+## Monsters (`scripts/combat/`)
+
+`Monsters.DEFS` holds every monster; all of them are the one `slime.tscn` scene configured through
+`Enemy.configure(id, variant, hp_scale, damage_scale)`. Behaviours: `chase`, `flutter` (weaves), `ranged`
+(keeps distance and fires an `EnemyProjectile`) and `boss`. Regular monsters: slime, cave bat, skeleton
+archer, wisp, stone brute. **Elemental variants** (`Monsters.VARIANT_CHANCE_PER_FLOOR` per floor) are
+tougher, tinted, take `RESIST_MULT` from their own element and `WEAK_MULT` from the one in `WEAK_TO`, and
+usually drop their element's essence.
+
+**Bosses** (Slime King, Stone Colossus) chase, telegraph a ground circle (`Telegraph`) and slam it, and
+summon minions at the health fractions in `summon.stages`. They never roll variants. A boss drops gold,
+scrap, two items (the first at least rare) and, about half the time, an **elemental gem** for an element
+you don't have (`Loot.boss_drops`). A gem is a material (`gem_<element>`); `CharacterData.use_gem` spends one
+to attune (the Gear tab lists them). Sealed characters never get gems.
+
+## The dungeon (`scripts/world/`)
+
+`DungeonGen` (pure data) makes the layout: 3 floors of 3 rooms. Floors 1-2: two combat rooms and one
+treasure-or-forge room (never first); floor 3: combat, a special room, then the boss. A room is a dictionary
+(size, entry and exit walls, door positions, pillars, waves; see the header of `dungeon_gen.gd`). `Dungeon`
+(the main scene's world node) builds one room at a time: walls, pillars, a locked `Door`, and the room's
+contents. Combat rooms spawn their waves one after another; when the last monster dies the door unlocks;
+walking into it fades to the next room (loot lying on the floor is picked up on the way out). Special rooms
+open at once (a forge room also heals you). Beating the boss, or dying, shows a `RunEndScreen` (Enter starts a
+new dungeon with the same character). Monsters get `Monsters.floor_scale` more health and damage per floor,
+and `Game.danger` (floor and room) raises item level and loot luck. Debug keys: `[` clear the room, `]`
+jump to the boss (the F-keys clash with the Godot editor's own debugger shortcuts; F8 even stops the game). `Game.run_text` is the HUD's "Floor 1/3 Room 2/3 ..." line.
+
 ## Items, loot and crafting (`scripts/items/`)
 
 All `RefCounted` rules over plain data, so they are saved and tested without any scene.
@@ -202,10 +264,10 @@ mastery. A new character wears a worn starter weapon of their class's type; choo
 level 3 swaps a *starter* weapon for the new class's, but keeps anything better you found.
 
 **Loot** (`Loot`): kills drop gold (70%), slime gel (35%), scrap (25%), **essence of the element that
-last hit the enemy** (25%, `Enemy.last_element`) and gear (8%). Chests (every third arena wave)
+last hit the enemy** (25%, `Enemy.last_element`) and gear (8%). Chests (in the dungeon's treasure rooms)
 always hold gold, scrap and two items, the first at least uncommon. `Game.on_enemy_killed` rolls the
 drops and emits `Game.loot_dropped(drops, position)`; the arena turns each entry into a `Pickup`.
-Depth (`Game.danger`, the wave) raises item level and a luck bonus that shifts rarity weights.
+Depth (`Game.danger`) raises item level, and depth and Luck give a bonus that shifts rarity weights.
 Sealed characters are never dropped spell-only gear or spell affixes (`Items.SPELL_MODS`).
 
 **Forge** (`ForgeScreen`, opened at the `ForgeStation` with G): *Craft* (gold + materials, rarity
@@ -216,7 +278,7 @@ items to scrap + gold). Upgrading or enchanting edits the item dictionary in pla
 
 **World objects** (`scripts/world/`): `Interactable` (G within `radius`, shows a prompt) is the base
 of `Chest` and `ForgeStation`; `Pickup` drifts to the player and is collected on touch (gear waits
-while the bag is full; everything vanishes after 120 s).
+while the bag is full; everything vanishes after 120 s, or is vacuumed up when you leave a room).
 
 **UI:** the sheet's *Gear* tab (`I` opens it) lists worn gear (click to take off) and the bag
 (click to wear; hover for details). `Inventory.summary()` is the one-line wallet text.
@@ -264,8 +326,15 @@ type also needs a `Classes.WEAPON_PASSIVES` entry and a worn starter base.
 affix's `mod` must be a stat `derived()` or the caster reads. A new element's essence is
 `"essence_" + element` and needs an `ENCHANTS` entry to be droppable.
 
-**A new enemy.** Duplicate `scenes/enemies/slime.tscn`, point `sprite_id` at a new placeholder in
-`AssetDB.PLACEHOLDERS`, and set its exports (HP, speed, contact damage, `xp_reward`).
+**A new monster.** Add it to `Monsters.DEFS` (sprite id, stats, `behavior`; ranged ones need `shot`,
+`attack_range` and `keep_distance`), a placeholder sprite in `AssetDB.PLACEHOLDERS`, and a weight in
+`Monsters.WEIGHTS` so waves can roll it. A new behaviour is a case in `Enemy._desired_velocity` / `_attack`.
+
+**A new support skill.** A buff: `kind: "buff"` with `buff {kind, time, power}` (a new buff kind also
+needs a case in `Player`). A debuff: an `aoe` whose `apply` kind the enemy understands (`vuln`, `weaken`).
+Put it in a loadout's `support` slot.
+
+**A new class.** Also give it the two newer attributes (31 points in all) and a starter weapon.
 
 ## Testing
 

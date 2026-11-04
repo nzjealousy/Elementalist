@@ -31,29 +31,7 @@ func _ready() -> void:
 	add_child(sprite)
 	z_index = 5
 	body_entered.connect(_on_body_entered)
-	_add_trail()
-
-
-func _add_trail() -> void:
-	var color := Elements.color_of(String(hit.get("element", "")))
-	var trail := CPUParticles2D.new()
-	trail.local_coords = false
-	trail.amount = 16
-	trail.lifetime = 0.25
-	trail.gravity = Vector2.ZERO
-	trail.initial_velocity_min = 0.0
-	trail.initial_velocity_max = 8.0
-	trail.spread = 180.0
-	trail.scale_amount_min = 1.0
-	trail.scale_amount_max = 1.5
-	trail.emission_shape = CPUParticles2D.EMISSION_SHAPE_SPHERE
-	trail.emission_sphere_radius = 1.5
-	trail.color = color
-	var fade := Gradient.new()
-	fade.set_color(0, Color.WHITE)
-	fade.set_color(1, Color(1, 1, 1, 0))
-	trail.color_ramp = fade
-	add_child(trail)
+	SkillFx.trail(self, String(hit.get("element", "")))
 
 
 func _physics_process(delta: float) -> void:
@@ -64,6 +42,7 @@ func _physics_process(delta: float) -> void:
 
 
 func _on_body_entered(body: Node) -> void:
+	SkillFx.impact(get_parent(), global_position, String(hit.get("element", "")))
 	if body is Enemy:
 		hit["from"] = global_position - velocity.normalized() * 4.0
 		body.take_hit(hit)

@@ -23,6 +23,7 @@ func setup(hit_data: Dictionary, r: float, dur: float, tick_time: float) -> void
 
 func _ready() -> void:
 	z_index = -5
+	SkillFx.area_burst(self, String(hit.get("element", "")), radius, duration)
 
 
 func _physics_process(delta: float) -> void:

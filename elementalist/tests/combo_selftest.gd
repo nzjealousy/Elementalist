@@ -8,6 +8,7 @@ const PLAYER := preload("res://scenes/player/player.tscn")
 
 var _pass := 0
 var _fail := 0
+var _failed: Array[String] = []
 
 
 func _ready() -> void:
@@ -60,6 +61,13 @@ func _ready() -> void:
 	await _test_special_skill()
 	await _test_spin_attack()
 	_test_jack_of_all_trades()
+	_test_more_classes_and_attributes()
+	await _test_support_skills()
+	await _test_vfx_and_indicators()
+	await _test_monsters()
+	await _test_boss_and_gems()
+	_test_dungeon_gen()
+	await _test_dungeon_run()
 	_test_items()
 	_test_inventory_and_gear_stats()
 	_test_forge()
@@ -68,6 +76,8 @@ func _ready() -> void:
 	await _test_reward_cards()
 	await _test_ui_screens()
 	await _test_gear_screens()
+	if not _failed.is_empty():
+		print("FAILED: ", " | ".join(_failed))
 	print("SELFTEST %d passed, %d failed" % [_pass, _fail])
 
 
@@ -196,7 +206,7 @@ func _test_xp_and_levels() -> void:
 	_check("one big gain can level several times and keeps the remainder", c.level == 4 and c.xp == 5)
 	_check("spending a point raises the attribute", c.spend_point("vitality") and c.unspent_points == 5)
 	var points := c.unspent_points
-	_check("unknown attribute is refused", not c.spend_point("luck") and c.unspent_points == points)
+	_check("unknown attribute is refused", not c.spend_point("charisma") and c.unspent_points == points)
 	var broke := CharacterData.create_sandbox("wanderer", [], 1)
 	_check("cannot spend points you do not have", not broke.spend_point("strength"))
 	var capped := CharacterData.create_sandbox("wanderer", [], CharacterData.MAX_LEVEL)
@@ -490,7 +500,7 @@ func _test_attribute_scaling() -> void:
 
 func _test_classes() -> void:
 	var playable: Array = Classes.playable()
-	_check("there are four playable classes and a Novice starter", playable.size() == 4 and "ranger" in playable and "mystic" in playable
+	_check("there are eight playable classes and a Novice starter", playable.size() == 8 and "ranger" in playable and "mystic" in playable
 		and Classes.is_starter(Classes.NEUTRAL_CLASS) and not (Classes.NEUTRAL_CLASS in playable))
 	var totals_equal := true
 	var growth_equal := true
@@ -503,12 +513,12 @@ func _test_classes() -> void:
 		var growth := 0
 		for attr in cls["per_level"]:
 			growth += int(cls["per_level"][attr])
-		totals_equal = totals_equal and total == 21
+		totals_equal = totals_equal and total == 31
 		growth_equal = growth_equal and growth == 1
 		for sub in cls["subclasses"]:
 			refs_ok = refs_ok and Classes.SUBCLASSES.has(sub) and Classes.SUBCLASSES[sub]["passives"].all(func(p): return Classes.PASSIVES.has(p))
 		refs_ok = refs_ok and cls["passives"].all(func(p): return Classes.PASSIVES.has(p)) and Classes.WEAPON_PASSIVES.has(cls["weapon"])
-	_check("balance: every playable class starts with 21 attribute points", totals_equal)
+	_check("balance: every playable class starts with 31 attribute points", totals_equal)
 	_check("balance: every playable class gains one attribute per level", growth_equal)
 	_check("classes reference real subclasses, passives and weapons", refs_ok)
 	var ranger := CharacterData.create_sandbox("ranger", [], 1).derived()
@@ -1146,8 +1156,9 @@ func _test_ui_screens() -> void:
 	Game.character = novice
 	sheet.show_tab("stats")
 	await get_tree().process_frame
-	var class_choice_buttons := sheet.find_children("*", "Button", true, false).filter(func(b): return b.text in ["Channeler", "Vanguard", "Ranger", "Mystic"])
-	_check("a level 3 Novice is offered the four classes on the stats tab", class_choice_buttons.size() == 4)
+	var class_names: Array = Classes.playable().map(func(id): return Classes.CLASSES[id]["name"])
+	var class_choice_buttons := sheet.find_children("*", "Button", true, false).filter(func(b): return b.text in class_names)
+	_check("a level 3 Novice is offered every class on the stats tab", class_choice_buttons.size() == class_names.size())
 	sheet._choose_class("ranger")
 	_check("choosing a class from the sheet applies it", novice.class_id == "ranger")
 	Game.character = CharacterData.create_sandbox("channeler", ["fire", "water"], 5)
@@ -1170,11 +1181,11 @@ func _test_ui_screens() -> void:
 	var birth_buttons := 0
 	for button in menu.find_children("*", "Button", true, false):
 		if button.button_group != null:
-			if button.text in ["Channeler", "Vanguard", "Ranger", "Mystic"]:
+			if button.text in Classes.playable().map(func(id): return Classes.CLASSES[id]["name"]):
 				class_buttons += 1
 			elif button.text in ["Ceremony", "No element", "Sealed"]:
 				birth_buttons += 1
-	_check("new character menu offers all four classes and three births", class_buttons == 4 and birth_buttons == 3)
+	_check("new character menu offers every class and three births", class_buttons == Classes.playable().size() and birth_buttons == 3)
 	menu.free()
 	Game.character = saved
 
@@ -1220,6 +1231,7 @@ func _check(test_name: String, ok: bool) -> void:
 		print("PASS ", test_name)
 	else:
 		_fail += 1
+		_failed.append(test_name)
 		print("FAIL ", test_name)
 
 
@@ -1256,7 +1268,7 @@ func _test_data_tables() -> void:
 	var skills_ok := true
 	for id in SkillDB.DEFS:
 		var d: Dictionary = SkillDB.DEFS[id]
-		if not (d["element"] in main or d["element"] == "") or not (d["kind"] in ["projectile", "aoe"]) or d["cooldown"] <= 0.0 or SkillDB.cost_of(d) <= 0.0:
+		if not (d["element"] in main or d["element"] == "") or not (d["kind"] in ["projectile", "aoe", "buff"]) or d["cooldown"] <= 0.0 or SkillDB.cost_of(d) <= 0.0:
 			skills_ok = false
 	_check("skill definitions are valid", skills_ok)
 	var loadouts_ok := true
@@ -1530,6 +1542,16 @@ func _bare(character: CharacterData) -> CharacterData:
 	return character
 
 
+## Affix lists equal up to float noise (JSON prints floats with limited precision).
+func _same_affixes(a: Array, b: Array) -> bool:
+	if a.size() != b.size():
+		return false
+	for i in a.size():
+		if a[i]["mod"] != b[i]["mod"] or not is_equal_approx(float(a[i]["value"]), float(b[i]["value"])):
+			return false
+	return true
+
+
 func _item(base: String, rarity: String = "common", ilvl: int = 1, seed_value: int = 1) -> Dictionary:
 	return Items.make(base, rarity, ilvl, _rng(seed_value))
 
@@ -1734,7 +1756,7 @@ func _test_inventory_and_gear_stats() -> void:
 	hero.inventory.add_item(_item("silver_ring", "rare", 3, 3))
 	var back := CharacterData.from_dict(JSON.parse_string(JSON.stringify(hero.to_dict())))
 	_check("gold, materials and the bag survive a JSON save", back.inventory.gold == 321 and typeof(back.inventory.gold) == TYPE_INT and back.inventory.count("scrap") == 7 and back.inventory.bag.size() == hero.inventory.bag.size())
-	_check("equipped gear keeps its rolls, upgrades and enchant", back.inventory.equipped["body"]["plus"] == 2 and back.inventory.equipped["body"]["enchant"] == "earth" and back.inventory.equipped["body"]["affixes"] == hero.inventory.equipped["body"]["affixes"] and typeof(back.inventory.equipped["body"]["ilvl"]) == TYPE_INT)
+	_check("equipped gear keeps its rolls, upgrades and enchant", back.inventory.equipped["body"]["plus"] == 2 and back.inventory.equipped["body"]["enchant"] == "earth" and _same_affixes(back.inventory.equipped["body"]["affixes"], hero.inventory.equipped["body"]["affixes"]) and typeof(back.inventory.equipped["body"]["ilvl"]) == TYPE_INT)
 	_check("a reloaded character has identical derived stats with gear on", back.derived() == hero.derived())
 	_check("and the same weapon type", back.weapon_type == hero.weapon_type)
 	var old_save := hero.to_dict()
@@ -2075,3 +2097,853 @@ func _test_gear_screens() -> void:
 	forge.free()
 	Game.character = saved
 	await get_tree().process_frame
+
+
+# ---------- more classes, attributes, crits ----------
+
+func _test_more_classes_and_attributes() -> void:
+	var playable: Array = Classes.playable()
+	_check("there are eight playable classes, two subclasses each", playable.size() == 8 and playable.all(func(id): return Classes.CLASSES[id]["subclasses"].size() == 2))
+	_check("the new classes exist", ["assassin", "berserker", "sage", "druid"].all(func(id): return id in playable))
+	var subclass_ids := {}
+	for id in playable:
+		for sub in Classes.CLASSES[id]["subclasses"]:
+			subclass_ids[sub] = true
+	_check("all sixteen subclasses are distinct", subclass_ids.size() == 16)
+	_check("there are six attributes with a short name each", Classes.ATTRIBUTES.size() == 6 and Classes.ATTRIBUTES.all(func(a): return Classes.ATTRIBUTE_SHORT.has(a)))
+	var styles := {"assassin": "melee", "berserker": "melee", "sage": "ranged", "druid": "ranged"}
+	var style_ok := true
+	for id in styles:
+		style_ok = style_ok and Classes.style_of(id) == styles[id]
+	_check("assassin and berserker fight in melee, sage and druid at range", style_ok)
+	_check("every new class has a weapon type with a starter weapon", ["assassin", "berserker", "sage", "druid"].all(func(id): return Items.starter_for(Classes.CLASSES[id]["weapon"]) != ""))
+	_check("new weapon types have a weapon passive", ["dagger", "axe", "tome"].all(func(w): return Classes.WEAPON_PASSIVES.has(w)))
+	_check("dagger, axe and tome can all be crafted", ["steel_dagger", "battle_axe", "scribe_tome"].all(func(id): return Forge.craft_cost(id).has("gold")))
+	_check("an Assassin starts with a dagger and a Sage with a tome", CharacterData.create_sandbox("assassin", [], 1).weapon_type == "dagger" and CharacterData.create_sandbox("sage", [], 1).weapon_type == "tome")
+
+	var assassin := CharacterData.create_sandbox("assassin", ["fire"], 1)
+	var berserker := CharacterData.create_sandbox("berserker", ["fire"], 1)
+	var sage := CharacterData.create_sandbox("sage", ["fire"], 1)
+	var druid := CharacterData.create_sandbox("druid", ["fire"], 1)
+	_check("the Assassin crits far more than a Vanguard", assassin.derived()["crit_chance"] > CharacterData.create_sandbox("vanguard", [], 1).derived()["crit_chance"] + 0.05)
+	_check("the Berserker hits hard and takes extra damage", berserker.derived()["melee_damage_mult"] > 1.3 and berserker.derived()["damage_taken_mult"] > 1.0)
+	_check("the Sage out-regenerates mana and buffs for longer", sage.derived()["mana_regen"] > CharacterData.create_sandbox("channeler", ["fire"], 1).derived()["mana_regen"] and sage.derived()["buff_duration_mult"] > 1.2)
+	_check("the Druid regenerates the most health", druid.derived()["hp_regen"] > CharacterData.create_sandbox("mystic", ["fire"], 1).derived()["hp_regen"])
+	var picks_ok := true
+	for id in playable:
+		picks_ok = picks_ok and CharacterData.create_sandbox(id, [], 10).available_subclasses() == Classes.CLASSES[id]["subclasses"]
+	_check("every class offers its two subclasses at level 10", picks_ok)
+	var passives_ok := true
+	for sub in subclass_ids:
+		passives_ok = passives_ok and Classes.SUBCLASSES[sub]["passives"].all(func(p): return Classes.PASSIVES.has(p) and not Classes.PASSIVES[p]["mods"].is_empty())
+	_check("every subclass has a real passive", passives_ok)
+	var nightstalker := CharacterData.create_sandbox("assassin", [], 10)
+	nightstalker.choose_subclass("nightstalker")
+	_check("a subclass passive applies (Nightstalker: crit damage)", nightstalker.derived()["crit_mult"] > Classes.BASE_CRIT_MULT + 0.2)
+
+	# wisdom and luck
+	_neutral_character()
+	var ch := Game.character
+	var d0 := ch.derived()
+	_check("at 5 Wisdom and Luck nothing changes", d0["crit_chance"] == 0.0 and d0["crit_mult"] == Classes.BASE_CRIT_MULT and d0["buff_duration_mult"] == 1.0 and d0["loot_luck"] == 0.0)
+	var cooldown_before := ch.skill_cooldown("fireball")
+	ch.attributes["wisdom"] = 15
+	var d1 := ch.derived()
+	_check("Wisdom raises mana regen", is_equal_approx(d1["mana_regen"] - d0["mana_regen"], 10.0 * Classes.WISDOM_MANA_REGEN))
+	_check("Wisdom shortens spell cooldowns", ch.skill_cooldown("fireball") < cooldown_before and is_equal_approx(ch.skill_cooldown("fireball") / cooldown_before, 1.0 - 10.0 * Classes.WISDOM_COOLDOWN))
+	_check("Wisdom lengthens buffs and debuffs", is_equal_approx(d1["buff_duration_mult"], 1.0 + 10.0 * Classes.WISDOM_BUFF_DURATION))
+	ch.attributes["wisdom"] = 5
+	ch.attributes["luck"] = 15
+	_check("Luck raises crit chance", is_equal_approx(ch.derived()["crit_chance"], 10.0 * Classes.LUCK_CRIT))
+	_check("and loot luck", is_equal_approx(ch.derived()["loot_luck"], 10.0 * Classes.LUCK_LOOT))
+	ch.attributes["luck"] = 100
+	_check("crit chance is capped", ch.derived()["crit_chance"] <= 0.75)
+	ch.attributes["luck"] = 5
+	ch.traits.append("lucky")
+	ch.traits.append("keen_eyes")
+	_check("crit traits add chance and damage", is_equal_approx(ch.derived()["crit_chance"], 0.03) and is_equal_approx(ch.derived()["crit_mult"], Classes.BASE_CRIT_MULT + 0.15))
+	ch.traits.clear()
+	ch.traits.append("scholar")
+	_check("an attribute trait adds to the attribute (Scholar: +1 Wisdom)", is_equal_approx(ch.derived()["buff_duration_mult"], 1.0 + Classes.WISDOM_BUFF_DURATION))
+	ch.traits.clear()
+	_check("sealed characters are never rolled the Scholar trait (spell-only)", not (Classes.available_traits(false).has("scholar")))
+	var knight := CharacterData.create_sandbox("vanguard", [], 1)
+	_check("every class starts with the same 31 points and the Novice with 30", Classes.playable().all(func(id): return Classes.ATTRIBUTES.reduce(func(sum, a): return sum + int(Classes.CLASSES[id]["base"][a]), 0) == 31) and knight.attributes.size() == 6)
+	var old_save := knight.to_dict()
+	old_save["attributes"].erase("wisdom")
+	old_save["attributes"].erase("luck")
+	_check("a save from before Wisdom and Luck still loads", CharacterData.from_dict(old_save).attributes["wisdom"] == Classes.CLASSES["vanguard"]["base"]["wisdom"])
+
+	# crits in combat
+	_neutral_character()
+	Game.character.attributes["luck"] = 100  # 75 percent crit chance, capped
+	Game.combat_rng.seed = 5
+	var crits := 0
+	var plain := 0
+	var base_damage := 0.0
+	for i in 200:
+		var dummy := _dummy(Vector2(900, 900))
+		dummy.max_hp = 100000.0
+		dummy.hp = dummy.max_hp
+		dummy.take_hit({"damage": 10.0, "element": "", "from": Vector2.ZERO})
+		var dealt: float = dummy.max_hp - dummy.hp
+		if is_equal_approx(dealt, 10.0 * Classes.BASE_CRIT_MULT):
+			crits += 1
+		elif is_equal_approx(dealt, 10.0):
+			plain += 1
+		dummy.free()
+	_check("a crit hits for the crit multiplier", crits > 100 and plain > 20 and crits + plain == 200)
+	Game.character.attributes["luck"] = 5
+	var steady := _dummy(Vector2(900, 900))
+	steady.take_hit({"damage": 10.0, "element": "", "from": Vector2.ZERO})
+	_check("at Luck 5 there are no crits", is_equal_approx(steady.max_hp - steady.hp, 10.0))
+	steady.free()
+	_check("crit stats read as percentages on items", Items.format_mod("crit_chance_add", 0.03) == "+3% Crit chance" and Items.format_mod("crit_damage_add", 0.1) == "+10% Crit damage")
+	_neutral_character()
+
+
+# ---------- support skills (buffs and debuffs), VFX, damage indicators ----------
+
+func _texts_in(node: Node) -> Array:
+	return node.get_children().filter(func(n): return n is FloatText).map(func(n): return n.text)
+
+
+func _test_support_skills() -> void:
+	var every_set := true
+	var kinds_ok := true
+	for set_id in SkillDB.LOADOUTS:
+		var id: String = SkillDB.LOADOUTS[set_id]["support"]
+		every_set = every_set and SkillDB.DEFS.has(id) and SkillDB.slot_of(id) == "support" and SkillDB.set_of(id) == set_id
+		var def: Dictionary = SkillDB.DEFS[id]
+		kinds_ok = kinds_ok and (def["kind"] == "buff" and def["buff"]["kind"] in ["might", "mend", "ward", "haste"] or def["kind"] == "aoe" and def["apply"]["kind"] in ["weaken", "vuln"])
+	_check("every set has a support skill in its own set", every_set)
+	_check("support skills are buffs (might, mend, ward, haste) or debuffs (weaken, vulnerable)", kinds_ok)
+	var buffs := SkillDB.LOADOUTS.values().filter(func(l): return SkillDB.DEFS[l["support"]]["kind"] == "buff")
+	var debuffs := SkillDB.LOADOUTS.values().filter(func(l): return SkillDB.DEFS[l["support"]]["kind"] == "aoe")
+	_check("there are four buffs and two debuffs", buffs.size() == 4 and debuffs.size() == 2)
+	_check("effect text says what a buff or debuff does", SkillDB.effect_text(SkillDB.DEFS["blazing_might"]) == "+25% damage for 8s" and SkillDB.effect_text(SkillDB.DEFS["tidal_mending"]).contains("8 HP/s") and SkillDB.effect_text(SkillDB.DEFS["intimidate"]).contains("Weakens") and SkillDB.effect_text(SkillDB.DEFS["fireball"]) == "")
+	var six := CharacterData.create_sandbox("channeler", ["fire"], Classes.SUPPORT_LEVEL - 1)
+	var seven := CharacterData.create_sandbox("channeler", ["fire"], Classes.SUPPORT_LEVEL)
+	_check("the support skill is learned at level 7, for everyone", not six.can_use_skill("blazing_might") and seven.can_use_skill("blazing_might") and Classes.SUPPORT_LEVEL == 7)
+	_check("and needs the element", not CharacterData.create_sandbox("channeler", ["water"], 7).can_use_skill("blazing_might"))
+	_check("a support skill has its own unlock level", seven.skill_unlock_level("blazing_might") == 7)
+
+	# Buffs on the player.
+	var ch := _bare(CharacterData.create_sandbox(Classes.NEUTRAL_CLASS, ["fire", "water", "earth", "air"], 7))
+	var player = await _player_with(ch)
+	player.global_position = Vector2.ZERO
+	var mana_before: float = player.caster.mana
+	player.caster.cooldowns.clear()
+	_check("a buff casts", player.caster.try_cast("blazing_might") and player.buffs.has("might"))
+	_check("it costs mana", is_equal_approx(mana_before - player.caster.mana, SkillDB.DEFS["blazing_might"]["mana"]))
+	_check("Might raises outgoing damage by 25 percent", is_equal_approx(player.damage_mult(), 1.25))
+	_check("its length comes from the skill and Wisdom", is_equal_approx(player.buffs["might"]["time"], 8.0 * float(ch.derived()["buff_duration_mult"])))
+	_check("it goes on cooldown", not player.caster.can_cast("blazing_might") and player.caster.cooldown_total("blazing_might") > 10.0)
+	var dummy := _dummy(Vector2(15, 0))
+	await get_tree().process_frame
+	dummy.global_position = Vector2(15, 0)
+	player.try_melee(Vector2.RIGHT)
+	_check("Might makes slashes hit harder", is_equal_approx(dummy.max_hp - dummy.hp, float(SkillDB.MELEE["damage"]) * 1.25))
+	_check("a buff shows an aura", player._buff_fx.has("might") and is_instance_valid(player._buff_fx["might"]))
+	player._tick_buffs(1.0)
+	_check("buffs count down", player.buffs["might"]["time"] < 8.0 * float(ch.derived()["buff_duration_mult"]))
+	player._tick_buffs(100.0)
+	_check("and expire, taking the aura with them", player.buffs.is_empty() and player.damage_mult() == 1.0)
+	await get_tree().process_frame
+	_check("the aura is gone", player._buff_fx.is_empty())
+
+	player.hp = 10.0
+	player.add_buff("mend", 6.0, 8.0)
+	player._tick_buffs(1.0)
+	_check("Mending heals per second", is_equal_approx(player.hp, 18.0))
+	player._tick_buffs(100.0)
+	player.hp = player.max_hp
+	player.add_buff("ward", 8.0, 0.3)
+	player._hurt_cd = 0.0
+	var hp_before: float = player.hp
+	_check("Stone Skin cuts damage taken", player.take_damage(10.0, Vector2(40, 0)) and is_equal_approx(hp_before - player.hp, 7.0))
+	_check("being hit sets the hit indicator, pointing at the attacker", is_equal_approx(Game.hurt_time, Game.HURT_TIME) and Game.hurt_dir.x > 0.9)
+	_check("and shows the damage taken in red", _texts_in(player.get_parent()).has("-7"))
+	player._tick_buffs(100.0)
+	player.add_buff("haste", 7.0, 0.3)
+	_check("Haste is a speed buff", is_equal_approx(player.buff_power("haste"), 0.3))
+	player._tick_buffs(100.0)
+	var wise := _bare(CharacterData.create_sandbox(Classes.NEUTRAL_CLASS, ["fire"], 7))
+	wise.attributes["wisdom"] = 25
+	Game.character = wise
+	player.add_buff("might", 8.0, 0.25)
+	_check("Wisdom makes buffs last longer", is_equal_approx(player.buffs["might"]["time"], 8.0 * (1.0 + 20.0 * Classes.WISDOM_BUFF_DURATION)))
+	Game.character = ch
+	player._tick_buffs(100.0)
+
+	# Dodging avoids damage and says so.
+	player._hurt_cd = 0.0
+	player.try_dodge(Vector2.RIGHT)
+	_check("a hit during a dodge is avoided", not player.take_damage(10.0, Vector2(40, 0)))
+	_check("and says Dodge!", _texts_in(player.get_parent()).has("Dodge!"))
+	Game._process(5.0)
+	_check("the hit indicator fades out", Game.hurt_time == 0.0)
+
+	# Debuffs on enemies.
+	var weak_dummy := _dummy(Vector2(300, 300))
+	var vuln_dummy := _dummy(Vector2(300, 300))
+	await get_tree().process_frame
+	_check("an enemy deals full damage by default", weak_dummy.damage_out(10.0) == 10.0)
+	var intimidate: Dictionary = SkillDB.DEFS["intimidate"]
+	var area := AoeEffect.new()
+	area.setup({"damage": 4.0, "element": "", "apply": {"kind": "weaken", "time": 6.0, "power": 0.4}}, 44.0, 0.0, 0.5)
+	add_child(area)
+	area.global_position = Vector2(300, 300)
+	area._apply()
+	_check("Intimidate weakens enemies in the area", weak_dummy.effects.has("weaken") and is_equal_approx(weak_dummy.damage_out(10.0), 6.0))
+	var fracture := AoeEffect.new()
+	fracture.setup({"damage": 6.0, "element": "mineral", "apply": SkillDB.DEFS["fracture"]["apply"]}, 40.0, 0.0, 0.5)
+	add_child(fracture)
+	fracture.global_position = Vector2(300, 300)
+	fracture._apply()
+	_check("Fracture makes them vulnerable", vuln_dummy.effects.has("vuln"))
+	_check("a weakened slime hits the player for less", is_equal_approx(weak_dummy.damage_out(weak_dummy.contact_damage), weak_dummy.contact_damage * 0.6))
+	var away := _dummy(Vector2(900, 900))
+	await get_tree().process_frame
+	_check("enemies outside the area are untouched", not away.effects.has("weaken"))
+	_check("intimidate is a martial skill paid in stamina", SkillDB.uses_stamina(intimidate) and SkillDB.set_of("intimidate") == "martial")
+	player.queue_free()
+	for node in get_children():
+		if node is Enemy or node is AoeEffect or node is FloatText:
+			node.queue_free()
+	await get_tree().process_frame
+	_neutral_character()
+
+
+func _test_vfx_and_indicators() -> void:
+	_check("every element and the martial set have a look", Elements.MAIN.all(func(e): return SkillFx.PROFILES.has(e)) and SkillFx.PROFILES.has("martial") and SkillFx.profile("").has("colors"))
+	_check("the elements look different from each other", SkillFx.profile("fire")["gravity"] != SkillFx.profile("water")["gravity"] and SkillFx.profile("fire")["colors"] != SkillFx.profile("air")["colors"])
+	var parent := Node2D.new()
+	add_child(parent)
+	var before := parent.get_child_count()
+	SkillFx.cast_burst(parent, Vector2.ZERO, "fire", Vector2.RIGHT)
+	_check("casting flashes: particles and a glow", parent.get_child_count() == before + 2 and parent.get_children().any(func(n): return n is CPUParticles2D) and parent.get_children().any(func(n): return n is Sprite2D))
+	SkillFx.impact(parent, Vector2.ZERO, "water")
+	_check("an impact adds particles and a shock ring", parent.get_children().any(func(n): return n is SkillFx.FxRing))
+	var projectile := Projectile.new()
+	projectile.setup(Vector2(10, 0), {"damage": 1.0, "element": "air"}, 1.0)
+	parent.add_child(projectile)
+	_check("bolts fly with a glow and a trail", projectile.get_children().any(func(n): return n is CPUParticles2D) and projectile.get_children().filter(func(n): return n is Sprite2D).size() >= 2)
+	var area := AoeEffect.new()
+	area.setup({"damage": 1.0, "element": "earth"}, 30.0, 0.0, 0.5)
+	parent.add_child(area)
+	_check("areas burst with particles and a ring", area.get_children().any(func(n): return n is CPUParticles2D) and area.get_children().any(func(n): return n is SkillFx.FxRing))
+	var lingering := AoeEffect.new()
+	lingering.setup({"damage": 1.0, "element": "water"}, 30.0, 3.0, 0.5)
+	parent.add_child(lingering)
+	_check("a lingering area keeps emitting", lingering.get_children().any(func(n): return n is CPUParticles2D and not n.one_shot))
+	var aura := SkillFx.aura(parent, Color.RED, "fire")
+	_check("an aura emits until it is freed", aura.emitting and not aura.one_shot)
+	var ring_parent := Node2D.new()
+	add_child(ring_parent)
+	SkillFx.ring(ring_parent, Vector2(5, 5), 20.0, Color.WHITE, 0.05)
+	_check("a ring appears where it was asked", ring_parent.get_child_count() == 1 and ring_parent.get_child(0).global_position == Vector2(5, 5))
+	await get_tree().create_timer(0.2).timeout
+	_check("and removes itself when done", ring_parent.get_child_count() == 0)
+	parent.free()
+	ring_parent.free()
+
+	# Imbue shows on the player.
+	var ch := _bare(CharacterData.create_sandbox(Classes.NEUTRAL_CLASS, ["fire", "water"], 1))
+	var player = await _player_with(ch)
+	_check("no imbue glow before imbuing", player._imbue_fx == null)
+	player.try_imbue()
+	player._sync_imbue_fx()
+	_check("imbuing makes the blade throw sparks", player._imbue_fx != null and player._imbue_fx.emitting)
+	player.try_imbue()
+	player._sync_imbue_fx()
+	_check("and stops when it ends", player._imbue_fx == null)
+	player.queue_free()
+
+	# Damage numbers.
+	var dummy := _dummy(Vector2(500, 500))
+	dummy.take_hit({"damage": 12.0, "element": "fire", "from": Vector2.ZERO})
+	_check("an enemy shows the damage dealt", _texts_in(self).has("12"))
+	Game.character.attributes["luck"] = 100
+	Game.combat_rng.seed = 2
+	var crit_seen := false
+	for i in 20:
+		var target := _dummy(Vector2(700, 700))
+		target.take_hit({"damage": 10.0, "element": "", "from": Vector2.ZERO})
+		crit_seen = crit_seen or _texts_in(self).has("15!")
+		target.free()
+	Game.character.attributes["luck"] = 5
+	_check("a crit is shown with an exclamation mark", crit_seen)
+	for node in get_children():
+		if node is Enemy or node is FloatText:
+			node.queue_free()
+	await get_tree().process_frame
+	_neutral_character()
+
+
+# ---------- monsters, variants, bosses, gems ----------
+
+func _fresh_monster(id: String, variant: String = "", pos: Vector2 = Vector2(600, 600)) -> Enemy:
+	var enemy: Enemy = load(Monsters.ENEMY_SCENE).instantiate()
+	enemy.configure(id, variant)
+	enemy.position = pos
+	add_child(enemy)
+	return enemy
+
+
+func _test_monsters() -> void:
+	var defs_ok := true
+	for id in Monsters.DEFS:
+		var d: Dictionary = Monsters.DEFS[id]
+		defs_ok = defs_ok and AssetDB.PLACEHOLDERS.has(d["sprite"]) and d["behavior"] in ["chase", "flutter", "ranged", "boss"] and float(d["hp"]) > 0.0 and float(d["speed"]) > 0.0 and int(d["xp"]) > 0
+		if d["behavior"] == "ranged":
+			defs_ok = defs_ok and d.has("shot") and d.has("attack_range") and d.has("keep_distance") and float(d["keep_distance"]) < float(d["attack_range"])
+		if d.get("boss", false):
+			defs_ok = defs_ok and d["behavior"] == "boss" and d.has("slam") and d.has("summon") and Monsters.DEFS.has(d["summon"]["id"]) and not Monsters.is_boss(d["summon"]["id"])
+	_check("every monster has a sprite, valid stats and the parts its behaviour needs", defs_ok)
+	_check("there are five regular monsters and two bosses", Monsters.regular().size() == 5 and Monsters.bosses().size() == 2)
+	_check("wave weights only name regular monsters", Monsters.WEIGHTS.values().all(func(w): return w.keys().all(func(id): return Monsters.DEFS.has(id) and not Monsters.is_boss(id))))
+	_check("every element is weak to exactly one other", Elements.MAIN.all(func(e): return Monsters.WEAK_TO.has(e) and Monsters.WEAK_TO[e] != e and Monsters.WEAK_TO[e] in Elements.MAIN))
+	var plain_slime: Enemy = SLIME.instantiate()
+	_check("a plain slime is unchanged", plain_slime.max_hp == 40.0 and plain_slime.behavior == "chase" and plain_slime.variant == "" and not plain_slime.boss)
+	plain_slime.free()
+
+	var bat := _fresh_monster("bat")
+	var skeleton := _fresh_monster("skeleton")
+	var brute := _fresh_monster("brute")
+	await get_tree().process_frame
+	_check("configuring sets the stats", bat.max_hp == 18.0 and bat.speed == 58.0 and bat.behavior == "flutter" and bat.display_name == "Cave Bat" and bat.hp == 18.0)
+	_check("and the sprite", bat.sprite.texture == AssetDB.get_texture("enemy_bat") and brute.sprite.texture.get_size().x == 18)
+	_check("big monsters get a bigger body", (brute.get_node("CollisionShape2D").shape as CircleShape2D).radius > (bat.get_node("CollisionShape2D").shape as CircleShape2D).radius)
+	_check("bodies are not shared between monsters", brute.get_node("CollisionShape2D").shape != bat.get_node("CollisionShape2D").shape)
+	_check("a floor scales health and damage", Monsters.floor_scale(1) == Vector2.ONE and Monsters.floor_scale(3).x > 1.5 and Monsters.floor_scale(3).y > 1.2)
+	var scaled: Enemy = load(Monsters.ENEMY_SCENE).instantiate()
+	scaled.configure("skeleton", "", 2.0, 1.5)
+	_check("the scale applies to health, contact and shot damage", scaled.max_hp == 64.0 and scaled.contact_damage == 9.0 and is_equal_approx(scaled.shot["damage"], 10.5))
+	scaled.free()
+
+	# movement behaviours
+	var target := Node2D.new()
+	add_child(target)
+	target.global_position = Vector2(600, 600) + Vector2(100, 0)
+	var chase := _fresh_monster("slime")
+	await get_tree().process_frame
+	chase.global_position = Vector2(600, 600)
+	_check("a slime walks straight at you", chase._desired_velocity(target).normalized().is_equal_approx(Vector2.RIGHT))
+	bat.global_position = Vector2(600, 600)
+	bat._age = 0.0
+	var first: Vector2 = bat._desired_velocity(target)
+	bat._age = 0.25
+	var second: Vector2 = bat._desired_velocity(target)
+	_check("a bat weaves from side to side while closing in", first.x > 0.0 and second.x > 0.0 and not is_equal_approx(first.y, second.y))
+	skeleton.global_position = Vector2(600, 600)
+	_check("an archer too far away closes in", skeleton._desired_velocity(target).x > 0.0)
+	target.global_position = Vector2(600, 600) + Vector2(40, 0)
+	_check("and backs away when you get close", skeleton._desired_velocity(target).x < 0.0)
+	target.global_position = Vector2(600, 600) + Vector2(80, 0)
+	skeleton._age = 1.0
+	_check("at its preferred distance it drifts sideways", absf(skeleton._desired_velocity(target).y) > 0.0 and is_equal_approx(skeleton._desired_velocity(target).x, 0.0))
+	skeleton.effects["root"] = {"time": 1.0, "power": 1.0}
+	_check("a rooted monster does not move", skeleton._desired_velocity(target) == Vector2.ZERO)
+	skeleton.effects.clear()
+
+	# shooting
+	var player = await _player_with(_bare(CharacterData.create_sandbox(Classes.NEUTRAL_CLASS, ["fire"], 1)))
+	player.global_position = Vector2(600, 600) + Vector2(70, 0)
+	skeleton.global_position = Vector2(600, 600)
+	skeleton._attack_cd = 0.0
+	var shots_before := get_children().filter(func(n): return n is EnemyProjectile).size()
+	skeleton._attack(0.016, player)
+	var shots := get_children().filter(func(n): return n is EnemyProjectile)
+	_check("an archer in range fires", shots.size() == shots_before + 1 and skeleton._attack_cd == float(skeleton.shot["cooldown"]))
+	_check("the arrow flies toward you", (shots[-1] as EnemyProjectile).velocity.x > 0.0 and is_equal_approx((shots[-1] as EnemyProjectile).velocity.length(), float(skeleton.shot["speed"])))
+	skeleton._attack(0.016, player)
+	_check("and waits for its cooldown", get_children().filter(func(n): return n is EnemyProjectile).size() == shots.size())
+	player.global_position = Vector2(600, 600) + Vector2(300, 0)
+	skeleton._attack_cd = 0.0
+	skeleton._attack(0.016, player)
+	_check("out of range it holds fire", get_children().filter(func(n): return n is EnemyProjectile).size() == shots.size())
+	player.global_position = Vector2.ZERO
+	player._hurt_cd = 0.0
+	var arrow := EnemyProjectile.spawn(self, Vector2.ZERO, Vector2.RIGHT, 50.0, 7.0)
+	var hp_before: float = player.hp
+	arrow._on_body_entered(player)
+	_check("an arrow that reaches you hurts and vanishes", is_equal_approx(hp_before - player.hp, 7.0) and arrow.is_queued_for_deletion())
+	player._hurt_cd = 0.0
+	player.try_dodge(Vector2.RIGHT)
+	var passing := EnemyProjectile.spawn(self, Vector2.ZERO, Vector2.RIGHT, 50.0, 7.0)
+	passing._on_body_entered(player)
+	_check("a dodge lets an arrow pass through", not passing.is_queued_for_deletion() and is_equal_approx(player.hp, hp_before - 7.0))
+	var wall := StaticBody2D.new()
+	add_child(wall)
+	var blocked := EnemyProjectile.spawn(self, Vector2.ZERO, Vector2.RIGHT, 50.0, 7.0)
+	blocked._on_body_entered(wall)
+	_check("arrows stop at walls", blocked.is_queued_for_deletion())
+	skeleton.effects["weaken"] = {"time": 5.0, "power": 0.5}
+	skeleton._attack_cd = 0.0
+	player.global_position = Vector2(600, 600) + Vector2(70, 0)
+	skeleton._attack(0.016, player)
+	_check("a weakened archer shoots weaker arrows", is_equal_approx((get_children().filter(func(n): return n is EnemyProjectile)[-1] as EnemyProjectile).damage, float(skeleton.shot["damage"]) * 0.5))
+	skeleton.effects.clear()
+
+	# toughness
+	var slime := _dummy(Vector2(700, 700))
+	var heavy := _fresh_monster("brute", "", Vector2(700, 700))
+	await get_tree().process_frame
+	slime.take_hit({"damage": 1.0, "element": "", "knockback": 100.0, "from": Vector2(0, 700)})
+	heavy.take_hit({"damage": 1.0, "element": "", "knockback": 100.0, "from": Vector2(0, 700)})
+	_check("a brute is hard to push around", heavy._knock.length() < slime._knock.length() * 0.5 and heavy.max_hp > 100.0)
+
+	# elemental variants
+	var fire := _fresh_monster("slime", "fire")
+	await get_tree().process_frame
+	_check("a variant is tougher and worth more", is_equal_approx(fire.max_hp, 40.0 * Monsters.VARIANT_HP) and is_equal_approx(fire.contact_damage, 8.0 * Monsters.VARIANT_DAMAGE) and fire.xp_reward == 18)
+	_check("it is named for its element and tinted", fire.display_name == "Fire Slime" and fire.variant == "fire" and fire._base_tint != Color.WHITE)
+	fire.take_hit({"damage": 10.0, "element": "fire", "from": Vector2.ZERO})
+	_check("it resists its own element", is_equal_approx(fire.max_hp - fire.hp, 10.0 * Monsters.RESIST_MULT))
+	_check("and says so", _texts_in(self).has("Resist!"))
+	fire.hp = fire.max_hp
+	fire.aura = ""
+	fire.take_hit({"damage": 10.0, "element": "water", "from": Vector2.ZERO})
+	_check("it is weak to the element that beats it", is_equal_approx(fire.max_hp - fire.hp, 10.0 * Monsters.WEAK_MULT))
+	_check("and says so too", _texts_in(self).has("Weak!"))
+	fire.hp = fire.max_hp
+	fire.aura = ""
+	fire.take_hit({"damage": 10.0, "element": "earth", "from": Vector2.ZERO})
+	_check("other elements and physical hits do normal damage", is_equal_approx(fire.max_hp - fire.hp, 10.0))
+	fire.hp = fire.max_hp
+	fire.effects.clear()
+	fire.take_hit({"damage": 10.0, "element": "", "from": Vector2.ZERO})
+	_check("physical hits do normal damage", is_equal_approx(fire.max_hp - fire.hp, 10.0))
+	var boss_try: Enemy = load(Monsters.ENEMY_SCENE).instantiate()
+	boss_try.configure("slime_king", "fire")
+	_check("a boss is never a variant", boss_try.variant == "" and boss_try.boss)
+	boss_try.free()
+
+	# waves
+	var all_ok := true
+	var floor_one_clean := true
+	var floor_three_variants := 0
+	var floor_one_variants := 0
+	for seed_value in 200:
+		for floor_number in [1, 2, 3]:
+			var wave := Monsters.roll_wave(_rng(seed_value), floor_number, 5)
+			all_ok = all_ok and wave.size() == 5 and wave.all(func(e): return Monsters.DEFS.has(e["id"]) and not Monsters.is_boss(e["id"]) and (e["variant"] == "" or e["variant"] in Elements.MAIN))
+			if floor_number == 1:
+				floor_one_clean = floor_one_clean and wave.all(func(e): return e["id"] in ["slime", "bat", "skeleton"])
+				floor_one_variants += wave.filter(func(e): return e["variant"] != "").size()
+			if floor_number == 3:
+				floor_three_variants += wave.filter(func(e): return e["variant"] != "").size()
+	_check("waves hold valid regular monsters", all_ok)
+	_check("floor 1 only has the easy monsters", floor_one_clean)
+	_check("deeper floors have more elemental variants", floor_three_variants > floor_one_variants * 2 and floor_one_variants > 50)
+	_check("a wave is reproducible from a seed", Monsters.roll_wave(_rng(5), 2, 6) == Monsters.roll_wave(_rng(5), 2, 6))
+
+	for node in get_children():
+		if node is Enemy or node is EnemyProjectile or node is FloatText or node is StaticBody2D or node.get_class() == "Node2D":
+			node.queue_free()
+	player.queue_free()
+	await get_tree().process_frame
+	_neutral_character()
+
+
+func _test_boss_and_gems() -> void:
+	var player = await _player_with(_bare(CharacterData.create_sandbox(Classes.NEUTRAL_CLASS, ["fire"], 1)))
+	player.global_position = Vector2(400, 400)
+	var boss := _fresh_monster("slime_king", "", Vector2(400, 400))
+	await get_tree().process_frame
+	_check("a boss is big, tough and nearly unmovable", boss.boss and boss.max_hp == 520.0 and boss.knock_resist >= 0.9 and boss.sprite.texture.get_size().x >= 30)
+	boss._attack_cd = 0.0
+	boss._attack(0.016, player)
+	_check("in reach, a boss starts a slam and warns with a circle", boss._telegraph != null and boss._telegraph.radius == 40.0 and is_equal_approx(boss._telegraph.time, 0.8))
+	_check("while winding up it stands still", boss._desired_velocity(player) == Vector2.ZERO)
+	boss._attack_cd = 0.0
+	boss._attack(0.016, player)
+	_check("it only winds up one slam at a time", get_children().filter(func(n): return n is Telegraph).size() == 1)
+	player._hurt_cd = 0.0
+	var hp_before: float = player.hp
+	boss._telegraph._physics_process(10.0)
+	_check("the slam hurts whoever stays in the circle", is_equal_approx(hp_before - player.hp, 22.0))
+	_check("and the boss is free to move again", boss._telegraph == null)
+	player._hurt_cd = 0.0
+	player.global_position = Vector2(400, 400)
+	boss._attack_cd = 0.0
+	boss._attack(0.016, player)
+	player.global_position = Vector2(400, 400) + Vector2(150, 0)
+	hp_before = player.hp
+	boss._telegraph._physics_process(10.0)
+	_check("stepping out of the circle avoids it", player.hp == hp_before)
+	var far := Node2D.new()
+	add_child(far)
+	far.global_position = Vector2(400, 400) + Vector2(400, 0)
+	boss._attack_cd = 0.0
+	boss._attack(0.016, far)
+	_check("a boss out of reach doesn't slam", boss._telegraph == null)
+	far.free()
+
+	# summons
+	var before := get_tree().get_nodes_in_group("enemies").size()
+	boss.hp = boss.max_hp * 0.6
+	boss._boss_summons()
+	await get_tree().process_frame
+	_check("at 66 percent health the boss calls three slimes", get_tree().get_nodes_in_group("enemies").size() == before + 3)
+	boss._boss_summons()
+	await get_tree().process_frame
+	_check("only once per stage", get_tree().get_nodes_in_group("enemies").size() == before + 3)
+	boss.hp = boss.max_hp * 0.3
+	boss._boss_summons()
+	await get_tree().process_frame
+	_check("and again at 33 percent", get_tree().get_nodes_in_group("enemies").size() == before + 6)
+	boss._boss_summons()
+	await get_tree().process_frame
+	_check("then no more", get_tree().get_nodes_in_group("enemies").size() == before + 6)
+	var colossus := _fresh_monster("stone_colossus", "", Vector2(900, 900))
+	await get_tree().process_frame
+	colossus.hp = colossus.max_hp * 0.4
+	var bats_before := get_tree().get_nodes_in_group("enemies").size()
+	colossus._boss_summons()
+	await get_tree().process_frame
+	_check("the Stone Colossus calls four bats at half health", get_tree().get_nodes_in_group("enemies").size() == bats_before + 4)
+
+	# boss loot
+	var ch := Game.character
+	var drops_seen: Array = []
+	var listener := func(drops: Array, _pos: Vector2): drops_seen.append(drops)
+	Game.loot_dropped.connect(listener)
+	boss.hp = 1.0
+	boss.last_element = ""
+	Game.loot_rng.seed = 4
+	boss.take_hit({"damage": 100.0, "element": "", "from": Vector2.ZERO})
+	Game.loot_dropped.disconnect(listener)
+	var boss_drop: Array = drops_seen[0] if not drops_seen.is_empty() else []
+	_check("a boss drops lots of gold, scrap and two items", boss_drop.any(func(e): return e["kind"] == "gold" and e["amount"] >= 60) and boss_drop.filter(func(e): return e["kind"] == "item").size() == 2)
+	_check("the first item is at least rare", Items.RARITIES.find(boss_drop.filter(func(e): return e["kind"] == "item")[0]["item"]["rarity"]) >= 2)
+
+	var gem_count := 0
+	var wrong_gem := false
+	for i in 400:
+		for entry in Loot.boss_drops(_rng(i), 5, 0.0, ["fire", "air"]):
+			if entry["kind"] == "material" and String(entry["id"]).begins_with("gem_"):
+				gem_count += 1
+				wrong_gem = wrong_gem or not (entry["id"] in ["gem_fire", "gem_air"])
+	_check("about half of bosses drop a gem", absf(float(gem_count) / 400.0 - Loot.GEM_CHANCE) < 0.08)
+	_check("and only for elements you are missing", not wrong_gem)
+	var none_missing := Loot.boss_drops(_rng(1), 5, 0.0, [])
+	_check("with nothing left to attune to, a boss drops essence instead", not none_missing.any(func(e): return e["kind"] == "material" and String(e["id"]).begins_with("gem_")) and none_missing.any(func(e): return e["kind"] == "material" and String(e["id"]).begins_with("essence_") and e["amount"] == 3))
+	var sealed := CharacterData.create("S", Classes.NEUTRAL_CLASS, CharacterData.SEALED, _rng(1))
+	_check("a sealed character has nothing to attune to", sealed.missing_elements().is_empty())
+	var fire_only := CharacterData.create_sandbox(Classes.NEUTRAL_CLASS, ["fire"], 1)
+	_check("everyone else is missing the other elements", fire_only.missing_elements().size() == 4 and not ("fire" in fire_only.missing_elements()) and Elements.MAIN.all(func(e): return e == "fire" or e in fire_only.missing_elements()))
+
+	# gems
+	var gem_char := CharacterData.create_sandbox(Classes.NEUTRAL_CLASS, ["fire"], 1)
+	gem_char.inventory.add_material("gem_water", 1)
+	gem_char.inventory.add_material("gem_fire", 1)
+	_check("a gem you have no use for can't be used", not gem_char.use_gem("fire") and gem_char.inventory.count("gem_fire") == 1)
+	_check("you can't use a gem you don't have", not gem_char.use_gem("earth"))
+	_check("a gem attunes you to its element", gem_char.use_gem("water") and "water" in gem_char.elements and gem_char.inventory.count("gem_water") == 0)
+	_check("and the new element has a mastery to grow", gem_char.element_level("water") == 1)
+	var sealed_gem := CharacterData.create("S", Classes.NEUTRAL_CLASS, CharacterData.SEALED, _rng(2))
+	sealed_gem.inventory.add_material("gem_fire", 1)
+	_check("a sealed character can't use a gem", not sealed_gem.use_gem("fire") and sealed_gem.elements.is_empty())
+	var attunable := CharacterData.create("A", Classes.NEUTRAL_CLASS, CharacterData.ATTUNABLE, _rng(3))
+	attunable.inventory.add_material("gem_air", 1)
+	_check("a character born without elements is attuned by a gem", attunable.use_gem("air") and attunable.elements == ["air"] and attunable.uses_mana() and attunable.has_martial())
+	var rich := CharacterData.create_sandbox(Classes.NEUTRAL_CLASS, [], 1)
+	rich.inventory.add_material("gem_fire", 2)
+	_check("gems appear in the wallet line", rich.inventory.summary().contains("Gems F2"))
+	_check("every element has a gem material", Elements.MAIN.all(func(e): return Items.MATERIALS.has(Items.gem_of(e))))
+	var variant_drops := 0
+	var rng := _rng(8)
+	for i in 1000:
+		for entry in Loot.enemy_drops(rng, 3, 0.0, "", true, "earth"):
+			if entry["kind"] == "material" and entry["id"] == "essence_earth":
+				variant_drops += 1
+	_check("an elemental variant usually drops its own essence", absf(float(variant_drops) / 1000.0 - Loot.VARIANT_ESSENCE_CHANCE) < 0.06)
+
+	# the HUD survives a slain (freed) boss: it once crashed casting the freed object
+	var hud: CanvasLayer = load("res://scripts/ui/hud.gd").new()
+	add_child(hud)
+	await get_tree().process_frame
+	var doomed := _fresh_monster("slime_king", "", Vector2(900, 900))
+	Game.boss = doomed
+	doomed.free()
+	hud._draw_boss_bar(ThemeDB.fallback_font)
+	_check("the HUD copes with a boss that has been freed", not is_instance_valid(Game.boss))
+	Game.boss = null
+	hud.free()
+
+	# the Gear tab offers gems
+	var sheet_char := CharacterData.create_sandbox(Classes.NEUTRAL_CLASS, ["fire"], 1)
+	sheet_char.inventory.add_material("gem_water", 1)
+	sheet_char.inventory.add_material("gem_fire", 1)
+	Game.character = sheet_char
+	var sheet := CharacterSheet.new()
+	add_child(sheet)
+	await get_tree().process_frame
+	sheet.show_tab("gear")
+	await get_tree().process_frame
+	var gem_buttons := sheet.find_children("*", "Button", true, false).filter(func(b): return b.text.begins_with("Use "))
+	_check("the gear tab lists each gem you carry", gem_buttons.size() == 2)
+	_check("a gem for an element you have is greyed out", gem_buttons.filter(func(b): return b.disabled).size() == 1)
+	sheet._use_gem("water")
+	_check("using it from the sheet attunes you", "water" in sheet_char.elements)
+	await get_tree().process_frame
+	sheet.free()
+	for node in get_children():
+		if node is Enemy or node is Telegraph or node is FloatText or node is Pickup or node.get_class() == "Node2D":
+			node.queue_free()
+	player.queue_free()
+	await get_tree().process_frame
+	_neutral_character()
+
+
+# ---------- the dungeon ----------
+
+func _test_dungeon_gen() -> void:
+	var layout := DungeonGen.generate(_rng(1))
+	_check("a dungeon has three floors of three rooms", layout.size() == 3 and layout.all(func(f): return f.size() == 3))
+	var shapes_ok := true
+	var boss_rooms := 0
+	var entries_ok := true
+	var doors_ok := true
+	var obstacles_ok := true
+	var waves_ok := true
+	var specials_ok := true
+	var sizes_ok := true
+	for seed_value in 60:
+		var dungeon := DungeonGen.generate(_rng(seed_value))
+		for f in dungeon.size():
+			var rooms: Array = dungeon[f]
+			var last_floor := f == dungeon.size() - 1
+			shapes_ok = shapes_ok and rooms[0]["kind"] == "combat" and (rooms[-1]["kind"] == "boss") == last_floor
+			var specials := rooms.filter(func(r): return r["kind"] in ["treasure", "forge"])
+			specials_ok = specials_ok and specials.size() == 1 and rooms[0]["kind"] == "combat"
+			for i in rooms.size():
+				var r: Dictionary = rooms[i]
+				boss_rooms += 1 if r["kind"] == "boss" else 0
+				entries_ok = entries_ok and r["floor"] == f + 1 and r["index"] == i
+				if i == 0:
+					entries_ok = entries_ok and r["entry"] == ""
+				else:
+					entries_ok = entries_ok and r["entry"] == DungeonGen.OPPOSITE[rooms[i - 1]["exit"]]
+				if r["kind"] == "boss":
+					entries_ok = entries_ok and r["exit"] == "" and Monsters.is_boss(r["boss"]) and r["waves"].is_empty()
+				else:
+					entries_ok = entries_ok and r["exit"] != "" and r["exit"] != r["entry"] and r["boss"] == ""
+				var cols: int = r["cols"]
+				var rows: int = r["rows"]
+				match r["kind"]:
+					"combat": sizes_ok = sizes_ok and cols >= 20 and cols <= 28 and rows >= 12 and rows <= 15
+					"boss": sizes_ok = sizes_ok and cols == 26 and rows == 16
+					_: sizes_ok = sizes_ok and cols >= 14 and cols <= 18 and rows >= 10 and rows <= 12
+				var whiches: Array = []
+				if r["entry"] != "":
+					whiches.append("entry")
+				if r["exit"] != "":
+					whiches.append("exit")
+				for which in whiches:
+					var rect := DungeonGen.door_rect(r, which)
+					var on_wall: bool = (rect.position.x == 0 or rect.end.x == cols or rect.position.y == 0 or rect.end.y == rows)
+					var inside: bool = rect.position.x >= 0 and rect.position.y >= 0 and rect.end.x <= cols and rect.end.y <= rows
+					var corner_clear: bool = (rect.position.x >= 3 and rect.end.x <= cols - 3) if rect.size.x == DungeonGen.DOOR_WIDTH else (rect.position.y >= 3 and rect.end.y <= rows - 3)
+					doors_ok = doors_ok and on_wall and inside and corner_clear and rect.size.x * rect.size.y == DungeonGen.DOOR_WIDTH
+				var keep := DungeonGen.keep_clear(r)
+				var placed: Array = r["obstacles"]
+				for a in placed.size():
+					var rect: Rect2i = placed[a]
+					obstacles_ok = obstacles_ok and rect.position.x >= DungeonGen.WALL_MARGIN and rect.position.y >= DungeonGen.WALL_MARGIN and rect.end.x <= cols - DungeonGen.WALL_MARGIN and rect.end.y <= rows - DungeonGen.WALL_MARGIN
+					for zone in keep:
+						obstacles_ok = obstacles_ok and not zone.intersects(rect)
+					for b in range(a + 1, placed.size()):
+						obstacles_ok = obstacles_ok and not (placed[b] as Rect2i).grow(1).intersects(rect)
+				if r["kind"] == "combat":
+					waves_ok = waves_ok and r["waves"].size() >= 1 and r["waves"].size() <= 2 and (f < 2 or r["waves"].size() == 2)
+					var sizes: Array = r["waves"].map(func(w): return w.size())
+					var lo := 2 + (f + 1)
+					var hi := 3 + (f + 1) + (1 if f > 0 else 0)
+					waves_ok = waves_ok and sizes.all(func(s): return s >= lo and s <= hi)
+				else:
+					waves_ok = waves_ok and r["waves"].is_empty()
+	_check("every floor starts with combat and only the last ends in the boss", shapes_ok)
+	_check("every dungeon has exactly one boss room", boss_rooms == 60)
+	_check("each floor has one treasure or forge room, never first", specials_ok)
+	_check("rooms connect: you enter on the wall opposite the last exit", entries_ok)
+	_check("room sizes follow their kind", sizes_ok)
+	_check("doors are a two-tile gap in a wall, clear of the corners", doors_ok)
+	_check("pillars stay off the walls, the doors and the entry point, and apart from each other", obstacles_ok)
+	_check("combat rooms have one or two waves (always two on the last floor) that grow with depth", waves_ok)
+	_check("the same seed makes the same dungeon", DungeonGen.generate(_rng(9)) == DungeonGen.generate(_rng(9)))
+	_check("different seeds make different dungeons", DungeonGen.generate(_rng(9)) != DungeonGen.generate(_rng(10)))
+	var kinds := {}
+	for seed_value in 60:
+		for room in DungeonGen.generate(_rng(seed_value))[0]:
+			kinds[room["kind"]] = true
+	_check("treasure rooms and forges both turn up", kinds.has("treasure") and kinds.has("forge") and kinds.has("combat"))
+	var first: Dictionary = DungeonGen.generate(_rng(3))[0][0]
+	_check("the first room starts you in the middle", DungeonGen.spawn_tile(first) == Vector2i(floori(first["cols"] / 2.0), floori(first["rows"] / 2.0)))
+	var second: Dictionary = DungeonGen.generate(_rng(3))[0][1]
+	var spawn := DungeonGen.spawn_tile(second)
+	var entry_rect := DungeonGen.door_rect(second, "entry")
+	_check("later rooms start you just inside the entry door", absi(spawn.x - entry_rect.position.x) <= 2 and absi(spawn.y - entry_rect.position.y) <= 2 and spawn.x > 0 and spawn.y > 0 and spawn.x < second["cols"] - 1 and spawn.y < second["rows"] - 1)
+	_check("rooms describe themselves", DungeonGen.describe(first).begins_with("Floor 1") and DungeonGen.describe(layout[2][2]).contains("Boss"))
+	_check("the layout has the three floors the roadmap asks for", DungeonGen.FLOORS == 3)
+
+
+func _dungeon_world(seed_value: int, character: CharacterData) -> Dictionary:
+	Game.character = character
+	var world := Node2D.new()
+	add_child(world)
+	var player = PLAYER.instantiate()
+	world.add_child(player)
+	var dungeon := Dungeon.new()
+	dungeon.with_ui = false
+	dungeon.layout = DungeonGen.generate(_rng(seed_value))
+	world.add_child(dungeon)
+	world.move_child(dungeon, 0)
+	await get_tree().process_frame
+	return {"world": world, "player": player, "dungeon": dungeon}
+
+
+func _test_dungeon_run() -> void:
+	var ch := _bare(CharacterData.create_sandbox("vanguard", ["fire"], 3))
+	var parts: Dictionary = await _dungeon_world(7, ch)
+	var world: Node2D = parts["world"]
+	var player = parts["player"]
+	var dungeon: Dungeon = parts["dungeon"]
+	var first: Dictionary = dungeon.layout[0][0]
+	_check("a run starts in the first room, fighting", dungeon.floor_index == 0 and dungeon.room_index == 0 and dungeon.state == "fighting")
+	_check("the player starts in the middle of it", player.global_position.is_equal_approx((Vector2(DungeonGen.spawn_tile(first)) + Vector2(0.5, 0.5)) * 16.0))
+	var door: Door = dungeon._exit_door
+	_check("the exit is a locked door", door != null and not door.open and not door.get_node("CollisionShape2D").disabled)
+	_check("the camera is limited to the room", player.get_node("Camera2D").limit_right == int(first["cols"]) * 16 and player.get_node("Camera2D").limit_bottom == int(first["rows"]) * 16)
+	var solid_tiles := dungeon._room_node.get_children().filter(func(n): return n is StaticBody2D).size()
+	var perimeter: int = 2 * (int(first["cols"]) + int(first["rows"])) - 4 - 2  # the door's two tiles are not wall
+	var pillar_tiles := 0
+	for rect in first["obstacles"]:
+		pillar_tiles += rect.size.x * rect.size.y
+	_check("the room has walls all round, a gap for the door and its pillars", solid_tiles == perimeter + pillar_tiles + 1)  # +1: the door itself is a body
+	_check("nothing is spawned before the first wave's delay", dungeon.enemies_alive() == 0 and dungeon.wave == 0)
+	dungeon._physics_process(Dungeon.WAVE_DELAY + 0.1)
+	var expected: int = first["waves"][0].size()
+	_check("then the first wave appears", dungeon.enemies_alive() == expected and dungeon.wave == 1)
+	_check("monsters appear away from the player", get_tree().get_nodes_in_group("enemies").all(func(e): return e.global_position.distance_to(player.global_position) >= Dungeon.MIN_SPAWN_DISTANCE - 1.0))
+	_check("the HUD line says where you are", Game.run_text.begins_with("Floor 1/3  Room 1/3") and Game.run_text.contains("Enemies %d" % expected))
+	dungeon._physics_process(0.1)
+	_check("the door stays locked while monsters live", not door.open and dungeon.state == "fighting")
+	player.global_position = door.global_position
+	dungeon._physics_process(0.1)
+	_check("a locked door can't be walked through", dungeon.room_index == 0)
+	_check("the exit door contains the player standing in it, and not otherwise", door.contains(door.global_position) and not door.contains(door.global_position + Vector2(100, 100)))
+
+	# finish the room (the dungeon also runs on its own between frames, so stand clear of the door)
+	player.global_position = Vector2(float(first["cols"]), float(first["rows"])) * 8.0  # the room's centre
+	dungeon.debug_clear_room()
+	await get_tree().process_frame
+	await get_tree().process_frame
+	dungeon._physics_process(0.1)
+	_check("when the last monster dies the room is cleared", dungeon.state == "clear" and dungeon.enemies_alive() == 0)
+	await get_tree().process_frame
+	_check("and the door opens", door.open and door.get_node("CollisionShape2D").disabled)
+	var drops_waiting := get_tree().get_nodes_in_group("pickups").size()
+	player.global_position = door.global_position
+	dungeon._physics_process(0.1)
+	await get_tree().process_frame
+	_check("walking through moves you to the next room", dungeon.room_index == 1 and dungeon.floor_index == 0)
+	_check("the loot left behind was picked up on the way out (or never dropped)", drops_waiting >= 0 and get_tree().get_nodes_in_group("pickups").is_empty())
+	_check("the player is put just inside the new room's entry", dungeon.room["entry"] == DungeonGen.OPPOSITE[first["exit"]])
+	_check("danger grows with each room", Game.danger == 1)
+	_check("only the new room's walls exist", dungeon._room_node.get_child_count() > 100)
+
+	# the kinds of room
+	dungeon.debug_goto(0, 1)
+	var second: Dictionary = dungeon.layout[0][1]
+	if second["kind"] == "combat":
+		dungeon.debug_goto(0, 2)
+		second = dungeon.layout[0][2]
+	_check("a special room is cleared at once with its door open", second["kind"] in ["treasure", "forge"] and dungeon.state == "clear" and dungeon._exit_door.open)
+	var special_node_ok: bool = dungeon._room_node.get_children().any(func(n): return n is Chest if second["kind"] == "treasure" else n is ForgeStation)
+	_check("a treasure room holds a chest and a forge room the forge", special_node_ok)
+	var forge_layout: Array = []
+	var forge_at := Vector2i(-1, -1)
+	for s in 40:
+		var candidate := DungeonGen.generate(_rng(s))
+		for f in candidate.size():
+			for i in candidate[f].size():
+				if candidate[f][i]["kind"] == "forge" and forge_at.x < 0:
+					forge_layout = candidate
+					forge_at = Vector2i(f, i)
+		if forge_at.x >= 0:
+			break
+	dungeon.layout = forge_layout
+	player.hp = 5.0
+	player.stamina = 1.0
+	dungeon.debug_goto(forge_at.x, forge_at.y)
+	_check("a forge room heals you fully", is_equal_approx(player.hp, player.max_hp) and is_equal_approx(player.stamina, player.max_stamina))
+	_check("and spawns the forge station", dungeon._room_node.get_children().any(func(n): return n is ForgeStation))
+
+	# floors and the boss
+	dungeon.layout = DungeonGen.generate(_rng(7))
+	dungeon.debug_goto(0, 2)
+	dungeon._advance()
+	_check("after the last room of a floor comes the next floor", dungeon.floor_index == 1 and dungeon.room_index == 0 and Game.danger == 3)
+	dungeon._physics_process(Dungeon.WAVE_DELAY + 0.1)
+	var floor_scale := Monsters.floor_scale(2)
+	var scaled_ok: bool = get_tree().get_nodes_in_group("enemies").all(func(e): return e.max_hp >= float(Monsters.DEFS[e.monster_id]["hp"]) * floor_scale.x - 0.01)
+	_check("deeper monsters are tougher", scaled_ok and dungeon.enemies_alive() > 0)
+	dungeon.debug_goto(2, 2)
+	var boss_room: Dictionary = dungeon.layout[2][2]
+	_check("the last room is the boss room with no exit", boss_room["kind"] == "boss" and dungeon._exit_door == null and dungeon.state == "fighting")
+	_check("the boss isn't there until the room has had a moment", Game.boss == null and dungeon.enemies_alive() == 0)
+	dungeon._physics_process(Dungeon.WAVE_DELAY + 0.1)
+	_check("then the boss appears and the HUD tracks it", Game.boss != null and Game.boss.monster_id == boss_room["boss"] and Game.boss.boss)
+	await get_tree().process_frame
+	dungeon._physics_process(0.1)
+	_check("the room isn't won while the boss lives", dungeon.state == "fighting")
+	var boss: Enemy = Game.boss
+	boss.take_hit({"damage": 100000.0, "element": "", "from": Vector2.ZERO})
+	await get_tree().process_frame
+	await get_tree().process_frame
+	dungeon._physics_process(0.1)
+	_check("killing the boss wins the run", dungeon.state == "won")
+	_check("the run summary lists the result", dungeon.summary_lines(true)[0].contains("Cleared all 3 floors") and dungeon.summary_lines(true).any(func(l): return l.begins_with("Monsters slain")) and dungeon.summary_lines(false)[0].begins_with("Fell on floor"))
+	_check("the boss's loot dropped", Game.run_kills >= 1)
+
+	# dying ends the run
+	world.queue_free()
+	Game.boss = null
+	await get_tree().process_frame
+	var parts2: Dictionary = await _dungeon_world(11, _bare(CharacterData.create_sandbox("vanguard", ["fire"], 1)))
+	var player2 = parts2["player"]
+	var dungeon2: Dungeon = parts2["dungeon"]
+	player2.hp = 1.0
+	player2._hurt_cd = 0.0
+	player2.take_damage(50.0, Vector2(40, 0))
+	_check("dying ends the run", dungeon2.state == "dead")
+	_check("and says where you fell", dungeon2.summary_lines(false)[0] == "Fell on floor 1, room 1")
+	dungeon2.debug_clear_room()
+	_check("debug clearing does nothing outside a fight", dungeon2.state == "dead")
+
+	# the end screen
+	var screen := RunEndScreen.new()
+	add_child(screen)
+	await get_tree().process_frame
+	screen.show_result(true, ["Cleared all 3 floors", "Monsters slain: 4"])
+	await get_tree().process_frame
+	var text := " ".join(screen.find_children("*", "Label", true, false).map(func(l): return l.text))
+	_check("the victory screen shows the title and the summary", text.contains("Dungeon cleared!") and text.contains("Monsters slain: 4") and screen.is_open() and get_tree().paused)
+	screen._open = false
+	get_tree().paused = false
+	screen.show_result(false, ["Fell on floor 1"])
+	await get_tree().process_frame
+	text = " ".join(screen.find_children("*", "Label", true, false).map(func(l): return l.text))
+	_check("the defeat screen says you fell", text.contains("You fell"))
+	screen._open = false
+	get_tree().paused = false
+	screen.free()
+
+	parts2["world"].queue_free()
+	Game.boss = null
+	Game.run_text = ""
+	await get_tree().process_frame
+	_neutral_character()

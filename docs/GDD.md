@@ -133,6 +133,24 @@ Coming-of-age ceremony · 1 village hub · 1 dungeon with 3–4 room types · 3 
   speed, knockback or cooldown from an attribute.
 - **Level-ups heal 40% of max HP**, not all of it.
 
+## 14. Design updates (Phase 4.1: content and the dungeon)
+
+- **Six attributes:** the four old ones plus **Wisdom** (mana regen, shorter cooldowns, longer buffs) and
+  **Luck** (crit chance, better loot).
+- **Eight classes, sixteen subclasses.** New: Assassin (melee, dagger, crits), Berserker (melee, axe,
+  fury), Sage (ranged, tome, wisdom), Druid (ranged, staff, regeneration).
+- **Support skills (V, level 7):** buffs on yourself (Might, Mending, Stone Skin, Tailwind) and debuffs on
+  enemies (Fracture makes them vulnerable, Intimidate weakens them).
+- **Feedback:** per-element skill effects, red damage numbers and a hit indicator, "Dodge!", crits, and
+  Resist/Weak labels on elemental monsters.
+- **Monsters:** slime, cave bat (weaves), skeleton archer and wisp (ranged), stone brute (tank). Any may
+  appear as an **elemental variant**: resistant to its own element, weak to the one that beats it
+  (water > fire > earth > water, mineral > air > mineral), and a source of that element's essence.
+- **Bosses** (Slime King, Stone Colossus): telegraphed slams and summoned minions. They **sometimes drop
+  an elemental gem** that attunes you to an element you don't have.
+- **The dungeon:** three randomly generated floors; each room is a wave fight (or a chest, or a forge
+  and rest). The exit door stays locked until the wave is cleared. The last floor ends in the boss.
+
 ## 13. Design updates (Phase 4: items, loot, crafting)
 
 - **Six gear slots:** weapon, head, body, feet, ring, amulet. Gear stats are the same stats

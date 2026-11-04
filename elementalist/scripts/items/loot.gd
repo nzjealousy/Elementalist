@@ -16,6 +16,8 @@ const GEL_CHANCE := 0.35
 const SCRAP_CHANCE := 0.25
 const ESSENCE_CHANCE := 0.25  # of the element that last hit the enemy
 const GEAR_CHANCE := 0.08
+const VARIANT_ESSENCE_CHANCE := 0.6  # elemental variants usually drop their own element's essence
+const GEM_CHANCE := 0.5              # a boss drops an elemental gem about half the time
 
 
 ## Picks a key of `weights` (key -> weight) at random.
@@ -59,7 +61,7 @@ static func roll_item(rng: RandomNumberGenerator, ilvl: int, bonus: float = 0.0,
 
 ## What a slain enemy drops. `last_element` is the element that last hit it ("" = physical).
 static func enemy_drops(rng: RandomNumberGenerator, ilvl: int, bonus: float = 0.0, last_element: String = "",
-		allow_spell: bool = true) -> Array[Dictionary]:
+		allow_spell: bool = true, variant: String = "") -> Array[Dictionary]:
 	var out: Array[Dictionary] = []
 	if rng.randf() < GOLD_CHANCE:
 		out.append({"kind": "gold", "amount": rng.randi_range(2, 6) + ilvl})
@@ -69,10 +71,34 @@ static func enemy_drops(rng: RandomNumberGenerator, ilvl: int, bonus: float = 0.
 		out.append({"kind": "material", "id": "scrap", "amount": rng.randi_range(1, 2)})
 	if last_element != "" and Items.ENCHANTS.has(last_element) and rng.randf() < ESSENCE_CHANCE:
 		out.append({"kind": "material", "id": Items.essence_of(last_element), "amount": 1})
+	if variant != "" and Items.ENCHANTS.has(variant) and rng.randf() < VARIANT_ESSENCE_CHANCE:
+		out.append({"kind": "material", "id": Items.essence_of(variant), "amount": 1})
 	if rng.randf() < GEAR_CHANCE:
 		var item := roll_item(rng, ilvl, bonus, "", "common", allow_spell)
 		if not item.is_empty():
 			out.append({"kind": "item", "item": item})
+	return out
+
+
+## A boss: a lot of gold and scrap, two pieces of gear (the first at least rare) and, about half
+## the time, an elemental gem for an element the character doesn't have yet (`missing` lists
+## those; it is empty for sealed characters and anyone who has them all, who get extra essence).
+static func boss_drops(rng: RandomNumberGenerator, ilvl: int, bonus: float = 0.0, missing: Array = [],
+		allow_spell: bool = true) -> Array[Dictionary]:
+	var out: Array[Dictionary] = []
+	out.append({"kind": "gold", "amount": rng.randi_range(60, 90) + ilvl * 4})
+	out.append({"kind": "material", "id": "scrap", "amount": rng.randi_range(8, 12)})
+	var first := roll_item(rng, ilvl, bonus + 0.5, "", "rare", allow_spell)
+	if not first.is_empty():
+		out.append({"kind": "item", "item": first})
+	var second := roll_item(rng, ilvl, bonus + 0.5, "", "uncommon", allow_spell)
+	if not second.is_empty():
+		out.append({"kind": "item", "item": second})
+	if not missing.is_empty():
+		if rng.randf() < GEM_CHANCE:
+			out.append({"kind": "material", "id": Items.gem_of(String(missing[rng.randi_range(0, missing.size() - 1)])), "amount": 1})
+	else:
+		out.append({"kind": "material", "id": Items.essence_of(Items.ENCHANTS.keys()[rng.randi_range(0, Items.ENCHANTS.size() - 1)]), "amount": 3})
 	return out
 
 

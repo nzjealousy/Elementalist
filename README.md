@@ -7,10 +7,10 @@ people *elements*; skills are something else entirely, learned from others.
 Inspirations: The Mageseeker (action magic), Witchbrook (a cozy, lived-in hub), Lies of P
 (weighty bosses). Single player, PC.
 
-> **Status:** early development. Phases 0-4 of [the roadmap](docs/ROADMAP.md) are done: a playable
-> combat arena with the element/combo system, four classes, a ceremony, leveling and
-> mastery, and now gear, loot and a forge. There is no story or world yet. All art is generated
-> placeholder.
+> **Status:** early development. Phases 0-4 of [the roadmap](docs/ROADMAP.md) are done: a randomly
+> generated three-floor dungeon with a boss, the element/combo system, eight classes, a ceremony,
+> leveling and mastery, gear, loot and a forge. There is no story, hub or save file yet. All art is
+> generated placeholder.
 
 ## Run it
 
@@ -35,7 +35,10 @@ Inspirations: The Mageseeker (action magic), Witchbrook (a cozy, lived-in hub), 
 | `I` | Gear: open the character sheet on the Gear tab (click a bag item to wear it, a worn item to take it off) |
 | `TAB` | Character sheet (tabs: Stats, Gear, Skills, Elements, Passives, Combos, Rewards) |
 | `N` | New character: pick how they are born |
+| `V` | Support skill (unlocks at level 7): a buff on yourself or a debuff on enemies |
 | `Esc` | Close a menu |
+
+**Debug keys (dungeon):** `[` clear the room, `]` jump to the boss.
 
 **Debug keys (arena only):** `F5` sandbox (all elements, level 10, some gold, materials and gear) -
 `F6` open the forge from anywhere - `F10` stand-in for an attunement item: gain a random element.
@@ -69,6 +72,23 @@ Inspirations: The Mageseeker (action magic), Witchbrook (a cozy, lived-in hub), 
 - **Passives** come in four kinds: class, character traits (rolled at creation or chosen as
   rewards), rare element passives (mastery level 5) and rare skill passives (many uses of one
   skill).
+
+## The dungeon
+
+Each run is a random dungeon of **three floors**: rooms of monster waves, a treasure room or a forge
+(which also heals you) on every floor, and a boss at the end of the last. A room's exit door is **locked
+until you defeat its wave(s)**; walking through it fades to the next room (loot on the floor is picked up
+as you leave). Beat the boss, or die, and Enter starts a new dungeon with the same character.
+
+- **Monsters:** slimes, cave bats, skeleton archers, wisps and stone brutes get tougher (and more
+  elemental) each floor. An **elemental variant** shrugs off its own element and is weak to the one that
+  beats it (water beats fire, earth beats water, fire beats earth, mineral beats air, air beats mineral).
+- **Bosses** (Slime King, Stone Colossus) slam where a red circle warns you, and summon minions. They drop
+  great loot and sometimes an **elemental gem**: use it on the Gear tab to attune to a new element.
+- **Attributes:** Strength, Agility, Intellect, Vitality, **Wisdom** (mana regen, cooldowns, buff length)
+  and **Luck** (crits, loot). **Eight classes**, each with two subclasses.
+- **Support skills (`V`, level 7):** Blazing Might, Tidal Mending, Stone Skin, Tailwind (buffs),
+  Fracture and Intimidate (debuffs).
 
 ## Gear, loot and the forge
 
@@ -107,10 +127,10 @@ elementalist/             the Godot project
     core/                 autoloads: Game, Elements, SkillDB, AssetDB, Juice
     character/            CharacterData, Classes (tables), Ceremony
     items/                Items (tables), Inventory, Forge, Loot
-    combat/               Enemy, Projectile, AoeEffect, health bar, hit effects
+    combat/               Enemy, Monsters, SkillFx, Projectile, AoeEffect, Telegraph, hit effects
     player/               Player, SkillCaster, AimMarker
     ui/                   HUD, CharacterSheet, ForgeScreen, RewardCards, NewCharacterMenu, UiTheme
-    world/                the test arena, Pickup, Chest, ForgeStation
+    world/                Dungeon, DungeonGen, Door, Pickup, Chest, ForgeStation
   tests/                  in-game self-tests
   addons/godot_ai/        development tooling (MIT, see its LICENSE)
 ```

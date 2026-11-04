@@ -28,6 +28,7 @@ static func spawn(parent: Node, pos: Vector2, entry: Dictionary) -> Pickup:
 
 
 func _ready() -> void:
+	add_to_group("pickups")
 	_sprite = Sprite2D.new()
 	match drop["kind"]:
 		"gold":
@@ -59,6 +60,13 @@ func _physics_process(delta: float) -> void:
 		_collect(player)
 	elif distance <= MAGNET_RANGE and _can_collect():
 		global_position = global_position.move_toward(player.global_position, MAGNET_SPEED * delta)
+
+
+## Picks this up wherever it lies (used on leaving a room). Gear stays if the bag is full.
+func vacuum(player: Node2D) -> void:
+	if is_queued_for_deletion():
+		return
+	_collect(player)
 
 
 func _can_collect() -> bool:

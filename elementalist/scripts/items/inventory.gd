@@ -77,6 +77,12 @@ func summary() -> String:
 			essences.append("%s%d" % [String(element)[0].to_upper(), count(Items.essence_of(element))])
 	if not essences.is_empty():
 		parts.append("Ess " + " ".join(essences))
+	var gems: Array[String] = []
+	for element in Elements.MAIN:
+		if count(Items.gem_of(element)) > 0:
+			gems.append("%s%d" % [String(element)[0].to_upper(), count(Items.gem_of(element))])
+	if not gems.is_empty():
+		parts.append("Gems " + " ".join(gems))
 	return "  ".join(parts)
 
 

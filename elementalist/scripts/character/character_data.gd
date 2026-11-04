@@ -156,6 +156,26 @@ func add_element(id: String) -> bool:
 	return true
 
 
+## Main elements this character does not have yet (none for a sealed character, who never can).
+func missing_elements() -> Array[String]:
+	var out: Array[String] = []
+	if affinity == SEALED:
+		return out
+	for element in Elements.MAIN:
+		if not (element in elements):
+			out.append(element)
+	return out
+
+
+## Uses up an elemental gem (from a boss) to attune to its element. False if there is no such
+## gem, the element is already owned, or the character is sealed.
+func use_gem(element: String) -> bool:
+	if not (element in missing_elements()) or inventory.count(Items.gem_of(element)) <= 0:
+		return false
+	inventory.pay({Items.gem_of(element): 1})
+	return add_element(element)
+
+
 ## True for anyone not born an elementalist: they learn the martial skill set.
 func has_martial() -> bool:
 	return affinity != ELEMENTALIST
@@ -357,11 +377,13 @@ func derived() -> Dictionary:
 	var agi := float(attributes["agility"])
 	var str_ := float(attributes["strength"])
 	var weapon_bonus := 1.0 + 0.03 * (weapon_level() - 1)
+	var wis := float(attributes["wisdom"]) + _mod(m, "wisdom_add")
+	var luck := float(attributes["luck"]) + _mod(m, "luck_add")
 	return {
 		"max_hp": 60.0 + vit * 8.0 + _mod(m, "max_hp_add"),
 		"hp_regen": 0.3 + vit * 0.06 + _mod(m, "hp_regen_add"),
 		"max_mana": (50.0 + intel * 10.0 + _mod(m, "max_mana_add")) if uses_mana() else 0.0,
-		"mana_regen": (5.0 + intel * 0.8 + _mod(m, "mana_regen_add")) if uses_mana() else 0.0,
+		"mana_regen": (5.0 + intel * 0.8 + Classes.WISDOM_MANA_REGEN * (wis - 5.0) + _mod(m, "mana_regen_add")) if uses_mana() else 0.0,
 		"max_stamina": 70.0 + agi * 6.0 + _mod(m, "max_stamina_add"),
 		"stamina_regen": 20.0 + agi * 2.0 + _mod(m, "stamina_regen_add"),
 		"move_speed": (70.0 + agi * 2.0) * _mod(m, "move_speed_mult"),
@@ -372,6 +394,10 @@ func derived() -> Dictionary:
 		"burn_time_mult": _mod(m, "burn_time_mult"),
 		"projectile_speed_mult": _mod(m, "projectile_speed_mult"),
 		"fusion_damage_mult": _mod(m, "fusion_damage_mult"),
+		"crit_chance": clampf(Classes.LUCK_CRIT * (luck - 5.0) + _mod(m, "crit_chance_add"), 0.0, 0.75),
+		"crit_mult": Classes.BASE_CRIT_MULT + _mod(m, "crit_damage_add"),
+		"buff_duration_mult": (1.0 + Classes.WISDOM_BUFF_DURATION * (wis - 5.0)) * _mod(m, "buff_duration_mult"),
+		"loot_luck": Classes.LUCK_LOOT * (luck - 5.0),
 	}
 
 
@@ -421,7 +447,8 @@ func skill_cooldown(skill_id: String) -> float:
 	var m := stat_mods()
 	var cooldown := float(def["cooldown"]) * skill_scale(skill_id, "cooldown") * _mod(m, skill_id + "_cooldown_mult")
 	if String(def.get("element", "")) != "":
-		cooldown *= _mod(m, "spell_cooldown_mult")
+		var wis := float(attributes["wisdom"]) + _mod(m, "wisdom_add")
+		cooldown *= _mod(m, "spell_cooldown_mult") * clampf(1.0 - Classes.WISDOM_COOLDOWN * (wis - 5.0), 0.6, 1.3)
 	return cooldown
 
 
@@ -455,7 +482,7 @@ func skill_unlock_level(skill_id: String) -> int:
 func known_skills() -> Array[String]:
 	var out: Array[String] = []
 	for set_id in castable_sets():
-		for slot in ["primary", "area"]:
+		for slot in ["primary", "area", "support"]:
 			var skill_id: String = SkillDB.LOADOUTS[set_id][slot]
 			if level >= skill_unlock_level(skill_id):
 				out.append(skill_id)

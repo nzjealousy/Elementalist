@@ -22,6 +22,7 @@ Each phase ends with something **playable** and a short review with you before t
 | 1 Core prototype | Done, except pause menu | Pixel-perfect 320x180 view, WASD, dodge, camera limits. Test room uses sprites, not a TileMap. |
 | 2 Combat and elements | Done | LMB element bolt, Q area skill, 1-5 / wheel to switch element, RMB stamina slash, all 10 combos, auras, status effects, hit-stop/shake/particles. Only the slime enemy so far (no ranged enemy). |
 | 3 Character systems | Done | `CharacterData` (attributes, XP, element + weapon mastery, subclass, traits, save/load dict), ceremony with a no-element outcome and martial skills for non-elementalists, skills-vs-elements gating, attribute scaling of skills and elements, four passive types, four classes (Channeler, Vanguard, Ranger, Mystic), tabbed character sheet (TAB) with combo list and rewards, new-character menu (N), class chosen at level 3, Q at level 5, subclass at level 10, milestone rewards (special skills and passives), class melee reach, melee imbue (E), element locking and fusion (Q), melee vs ranged class styles, resonance and martial combos, dodge spin, reward cards. 344 in-game self-tests (`tests/combo_selftest.tscn`). |
+| 4.1 Content and dungeon | Done | Six attributes (new Wisdom and Luck, crits), eight classes with sixteen subclasses, buff and debuff support skills (V, level 7), skill VFX and damage indicators, five monsters plus elemental variants, two bosses that drop elemental gems (attune to a new element), and a randomly generated 3-floor dungeon whose last floor is the boss, with doors that unlock when the wave is cleared. 683 in-game self-tests. |
 | 4 Items, loot, crafting | Done | Six gear slots, five rarities (0-4 random affixes), item level and +0 to +10 upgrades; the wielded weapon sets the weapon type and which mastery grows; drops from enemies (gold, scrap, slime gel, essence of the killing element, gear) and chests (every third wave); one forge station (craft, upgrade, enchant with essence, salvage); Gear tab (`I`), forge screen, gold on the HUD. 480 in-game self-tests. |
 
 **Phase 3 decisions to revisit:** all balance numbers (attribute formulas, XP curve, mastery bonuses, ceremony odds, trait pool, rare-passive thresholds) are first guesses. Light and Dark roll but have no skills yet (passive only). The N menu stands in for the full character creation of Phase 6. F10 stands in for an attunement item until items exist (Phase 4). Debug keys in the arena: F5 sandbox, F10 attune. Combat still uses only the slime enemy.
@@ -33,6 +34,11 @@ forgiving, in line with the tone question below. Light and Dark have no essence 
 Enchants are stat bonuses, not free elemental hits (so a sealed character cannot fake elements
 with gear). There is no shop, and no stash that survives death: both belong to Phase 5. Only the
 slime exists, so all drops are slime-themed. Debug key `F6` opens the forge from anywhere.
+
+**Phase 4.1 decisions to revisit:** gems are *attunement* items (one gem = one new element for good,
+the first real way to gain elements after birth). The dungeon is linear (3 rooms a floor) rather than a
+branching map, and dying just ends the run with the same character: both belong to Phase 5 (save/load,
+meta-progress, a hub). Only one boss exists per run (random of two). Balance is a first guess everywhere.
 
 ## Working agreements
 

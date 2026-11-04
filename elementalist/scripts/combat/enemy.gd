@@ -1,7 +1,8 @@
 class_name Enemy
 extends CharacterBody2D
-## Chasing enemy. Holds health, an elemental aura (the last element that hit it) and
-## timed status effects. Skills call take_hit() with a hit dictionary:
+## A monster. Holds health, an elemental aura (the last element that hit it) and timed status
+## effects. Which monster it is comes from Monsters.DEFS through configure(); with no
+## configuration it is a plain slime. Behaviours: chase, flutter, ranged and boss (see Monsters). Skills call take_hit() with a hit dictionary:
 ## {damage, element, apply: {kind, time, power}, from: Vector2, knockback: float}
 ##
 ## Combo rule: hitting an enemy whose aura is a *different* element triggers the
@@ -20,6 +21,18 @@ const CONTACT_MARGIN := 1.0  # px; bodies this close count as touching
 @export var sprite_id := "enemy_slime"
 @export var xp_reward := 12
 
+var monster_id := "slime"
+var display_name := "Slime"
+var behavior := "chase"
+var variant := ""            # elemental variant: "" or a main element (see Monsters)
+var boss := false
+var knock_resist := 0.0      # share of knockback ignored
+var attack_range := 0.0      # ranged: shoots from this far
+var keep_distance := 0.0     # ranged: tries to stay about this far away
+var shot: Dictionary = {}    # ranged: {damage, speed, cooldown}
+var slam: Dictionary = {}    # boss: {radius, damage, cooldown, telegraph}
+var summon: Dictionary = {}  # boss: {id, count, stages}
+
 var hp := 0.0
 var aura := ""
 var aura_time := 0.0
@@ -34,14 +47,60 @@ var _knock := Vector2.ZERO
 var _flash := 0.0
 var _contact_cd := 0.0
 var _dot_accum := 0.0
+var _fx_timer := 0.0
+var _age := 0.0
+var _phase := 0.0
+var _attack_cd := 1.0
+var _summon_stage := 0
+var _base_tint := Color.WHITE
+var _telegraph: Telegraph
 
 @onready var sprite: Sprite2D = $Sprite2D
 
 
+## Turns this enemy into monster `id` (call before adding it to the tree). `hp_scale` and
+## `damage_scale` are the dungeon floor's multipliers; a `variant_element` makes it an
+## elemental variant: tougher, tinted, resistant to its element and weak to another.
+func configure(id: String, variant_element: String = "", hp_scale: float = 1.0, damage_scale: float = 1.0) -> void:
+	var def: Dictionary = Monsters.DEFS[id]
+	monster_id = id
+	display_name = String(def["name"])
+	sprite_id = String(def["sprite"])
+	behavior = String(def["behavior"])
+	boss = def.get("boss", false)
+	knock_resist = float(def.get("knock_resist", 0.0))
+	attack_range = float(def.get("attack_range", 0.0))
+	keep_distance = float(def.get("keep_distance", 0.0))
+	max_hp = float(def["hp"]) * hp_scale
+	speed = float(def["speed"])
+	contact_damage = float(def["contact"]) * damage_scale
+	xp_reward = int(def["xp"])
+	shot = def.get("shot", {}).duplicate()
+	if not shot.is_empty():
+		shot["damage"] = float(shot["damage"]) * damage_scale
+	slam = def.get("slam", {}).duplicate()
+	if not slam.is_empty():
+		slam["damage"] = float(slam["damage"]) * damage_scale
+	summon = def.get("summon", {}).duplicate()
+	if variant_element != "" and not boss:
+		variant = variant_element
+		max_hp *= Monsters.VARIANT_HP
+		contact_damage *= Monsters.VARIANT_DAMAGE
+		xp_reward = int(round(xp_reward * Monsters.VARIANT_XP))
+		display_name = "%s %s" % [variant_element.capitalize(), display_name]
+
+
 func _ready() -> void:
 	hp = max_hp
+	_phase = randf() * TAU
+	_attack_cd = randf_range(0.6, 1.6)
 	add_to_group("enemies")
 	sprite.texture = AssetDB.get_texture(sprite_id)
+	if variant != "":
+		_base_tint = Color.WHITE.lerp(Elements.color_of(variant), 0.5)
+	var circle := CircleShape2D.new()  # sized to the sprite (the scene's shape is shared, so not edited)
+	circle.radius = clampf(minf(sprite.texture.get_size().x, sprite.texture.get_size().y) * 0.45, 4.0, 16.0)
+	$CollisionShape2D.shape = circle
 	var bar := EnemyHealthBar.new()
 	bar.enemy = self
 	add_child(bar)
@@ -61,10 +120,24 @@ func take_hit(hit: Dictionary) -> void:
 	var juicy: bool = hit.get("juice", true)
 	if effects.has("vuln"):
 		dmg *= VULN_MULT
+	if variant != "" and element != "":
+		if element == variant:
+			dmg *= Monsters.RESIST_MULT
+			label = "Resist"
+			text_color = Color(0.75, 0.75, 0.8)
+		elif Monsters.WEAK_TO.get(variant, "") == element:
+			dmg *= Monsters.WEAK_MULT
+			label = "Weak"
 	if element == "" and is_rooted():
 		dmg *= SHATTER_MULT
 		label = "Shatter"
 		text_color = Color("bfe3ff")
+	var crit := false
+	if juicy:  # lingering ticks never crit
+		var chance := float(Game.character.derived()["crit_chance"])  # 0 at Luck 5, so tests stay deterministic
+		if chance > 0.0 and Game.combat_rng.randf() < chance:
+			crit = true
+			dmg *= float(Game.character.derived()["crit_mult"])
 
 	# Which combo (if any) this hit completes:
 	#   different element on an aura -> the pair combo     (consumes the aura)
@@ -105,7 +178,7 @@ func take_hit(hit: Dictionary) -> void:
 
 	var from: Vector2 = hit.get("from", global_position + Vector2.UP)
 	var push: float = hit.get("knockback", 50.0)
-	_knock = (global_position - from).normalized() * push
+	_knock = (global_position - from).normalized() * push * (1.0 - knock_resist)
 	_flash = 0.12
 
 	if juicy:
@@ -119,7 +192,7 @@ func take_hit(hit: Dictionary) -> void:
 		else:
 			Juice.shake(0.5, 0.08)
 
-	_damage(dmg, text_color)
+	_damage(dmg, text_color, crit)
 	if label != "" and hp > 0.0:
 		FloatText.spawn(get_parent(), global_position + Vector2(0, -8) + _text_offset, label + "!", text_color)
 
@@ -153,6 +226,11 @@ func _martial_chain() -> Dictionary:
 	return {}
 
 
+## Damage this enemy deals to the player after debuffs (Weaken).
+func damage_out(base: float) -> float:
+	return base * (1.0 - float(effects["weaken"]["power"])) if effects.has("weaken") else base
+
+
 func is_stunned() -> bool:
 	return effects.has("stun")
 
@@ -169,9 +247,12 @@ func _add_effect(kind: String, time: float, power: float) -> void:
 	}
 
 
-func _damage(amount: float, color: Color) -> void:
+func _damage(amount: float, color: Color, crit: bool = false) -> void:
 	hp -= amount
-	FloatText.spawn(get_parent(), global_position + _text_offset, str(int(round(amount))), color)
+	if crit:
+		FloatText.spawn(get_parent(), global_position + _text_offset, "%d!" % int(round(amount)), color.lightened(0.4), 12)
+	else:
+		FloatText.spawn(get_parent(), global_position + _text_offset, str(int(round(amount))), color)
 	if hp <= 0.0:
 		HitFx.burst(get_parent(), global_position, Color("9be88a"), 14, 80.0)
 		Juice.hit_stop(0.05)
@@ -184,15 +265,11 @@ func _physics_process(delta: float) -> void:
 	_tick_status(delta)
 	if hp <= 0.0:
 		return
+	_status_fx(delta)
 
+	_age += delta
 	var target := get_tree().get_first_node_in_group("player") as Node2D
-	var move := Vector2.ZERO
-	if target and not is_rooted():
-		var mult := 1.0
-		if effects.has("slow"):
-			mult = 1.0 - float(effects["slow"]["power"])
-		move = (target.global_position - global_position).normalized() * speed * mult
-	velocity = move + _knock
+	velocity = _desired_velocity(target) + _knock
 	_knock = _knock.move_toward(Vector2.ZERO, 300.0 * delta)
 	move_and_slide()
 
@@ -200,10 +277,101 @@ func _physics_process(delta: float) -> void:
 	if target and not is_stunned() and _contact_cd == 0.0:
 		if touches(target) and target.has_method("take_damage"):
 			# Only start the cooldown if the hit connected; i-frames shouldn't waste it.
-			if target.take_damage(contact_damage, global_position):
+			if target.take_damage(damage_out(contact_damage), global_position):
 				_contact_cd = 0.9
 
+	_attack(delta, target)
 	_update_tint(delta)
+
+
+## Where this monster wants to go this frame, by behaviour (zero while rooted or stunned).
+func _desired_velocity(target: Node2D) -> Vector2:
+	if target == null or is_rooted() or _telegraph != null:
+		return Vector2.ZERO
+	var mult := 1.0
+	if effects.has("slow"):
+		mult = 1.0 - float(effects["slow"]["power"])
+	var to := target.global_position - global_position
+	var distance := to.length()
+	var dir := to / maxf(distance, 0.001)
+	match behavior:
+		"flutter":  # weave across the line of approach
+			return (dir * speed + dir.orthogonal() * sin(_age * 6.0 + _phase) * speed * 0.9) * mult
+		"ranged":  # hold the preferred distance, drift sideways when there
+			if distance > keep_distance + 12.0:
+				return dir * speed * mult
+			if distance < keep_distance - 14.0:
+				return -dir * speed * mult
+			return dir.orthogonal() * speed * 0.5 * signf(sin(_age * 0.7 + _phase)) * mult
+	return dir * speed * mult
+
+
+## Ranged shots, boss slams and boss summons.
+func _attack(delta: float, target: Node2D) -> void:
+	if boss:
+		_boss_summons()
+	if target == null or is_stunned():
+		return
+	_attack_cd -= delta
+	if _attack_cd > 0.0:
+		return
+	var distance := target.global_position.distance_to(global_position)
+	if behavior == "ranged" and distance <= attack_range:
+		_attack_cd = float(shot["cooldown"])
+		EnemyProjectile.spawn(get_parent(), global_position, target.global_position - global_position,
+			float(shot["speed"]), damage_out(float(shot["damage"])), variant)
+	elif behavior == "boss" and _telegraph == null and distance <= float(slam["radius"]) * 1.7:
+		_attack_cd = float(slam["cooldown"])
+		_telegraph = Telegraph.start(get_parent(), global_position, float(slam["radius"]), float(slam["telegraph"]), _land_slam)
+
+
+## The slam hits whoever is still standing in the circle.
+func _land_slam() -> void:
+	var circle_centre := _telegraph.global_position if is_instance_valid(_telegraph) else global_position
+	_telegraph = null
+	SkillFx.ring(get_parent(), circle_centre, float(slam["radius"]), Color("ff6a4a"), 0.4, 2.0)
+	HitFx.burst(get_parent(), circle_centre, Color("ff6a4a"), 16, 90.0)
+	Juice.shake(3.0, 0.3)
+	var target := get_tree().get_first_node_in_group("player") as Node2D
+	if target and target.global_position.distance_to(circle_centre) <= float(slam["radius"]) and target.has_method("take_damage"):
+		target.take_damage(damage_out(float(slam["damage"])), circle_centre)
+
+
+## At each health fraction in summon.stages the boss calls minions around itself (once each).
+func _boss_summons() -> void:
+	var stages: Array = summon.get("stages", [])
+	if _summon_stage < stages.size() and hp / max_hp <= float(stages[_summon_stage]):
+		_summon_stage += 1
+		_spawn_minions.call_deferred()
+
+
+func _spawn_minions() -> void:
+	if not is_inside_tree() or hp <= 0.0:
+		return
+	var count := int(summon["count"])
+	for i in count:
+		var angle := TAU * float(i) / float(count)
+		Monsters.spawn(get_parent(), String(summon["id"]), global_position + Vector2.from_angle(angle) * 26.0)
+	FloatText.spawn(get_parent(), global_position + Vector2(0, -14), "Summons!", Color("ff9a6a"), 10)
+
+
+func _exit_tree() -> void:
+	if is_instance_valid(_telegraph):
+		_telegraph.queue_free()
+
+
+## Little puffs while a status is on: embers when burning, drips when slowed, and so on.
+func _status_fx(delta: float) -> void:
+	_fx_timer -= delta
+	if _fx_timer > 0.0 or effects.is_empty():
+		return
+	_fx_timer = 0.3
+	var looks := {"dot": "fire", "slow": "water", "root": "earth", "stun": "mineral", "vuln": "mineral", "weaken": ""}
+	for kind in effects:
+		if looks.has(kind):
+			var element: String = looks[kind]
+			SkillFx.burst(get_parent(), global_position + Vector2(0, -3), element, 0.25)
+			return
 
 
 func _tick_status(delta: float) -> void:
@@ -232,6 +400,6 @@ func _update_tint(delta: float) -> void:
 	if _flash > 0.0:
 		sprite.modulate = Color(2.5, 2.5, 2.5)
 	elif aura != "":
-		sprite.modulate = Color.WHITE.lerp(Elements.color_of(aura), 0.55)
+		sprite.modulate = _base_tint.lerp(Elements.color_of(aura), 0.55)
 	else:
-		sprite.modulate = Color.WHITE
+		sprite.modulate = _base_tint

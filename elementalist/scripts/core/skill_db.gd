@@ -1,10 +1,13 @@
 extends Node
 ## Skill definitions (data only).
 ##
-## Each "set" (an element, or "martial") has a "primary" (LMB), "area" (Q) and "special" (R) skill,
-## see LOADOUTS. Primary unlocks at level 1 and area at level 5 (Classes.SKILL_LEVELS); a special
-## is only learned by choosing it as a level reward.
+## Each "set" (an element, or "martial") has a "primary", "area" (F), "support" (V) and "special"
+## (R) skill, see LOADOUTS. Primary unlocks at level 1, area at level 5 and support at level 7
+## (Classes.SKILL_LEVELS); a special is only learned by choosing it as a level reward.
+## Support skills are buffs (on yourself) or debuffs (an area that weakens enemies).
 ##   kind "projectile": speed, range
+##   kind "buff": buff {kind, time, power}: a timed effect on the caster (see Player.add_buff):
+##               might (+damage), mend (heal per second), ward (less damage taken), haste (speed)
 ##   kind "aoe": radius, range (max cast distance, 0 = centred on the caster), optional
 ##               duration + tick (lingering)
 ##   mana / stamina: the resource spent. Elemental skills cost mana, martial skills stamina.
@@ -112,6 +115,39 @@ const DEFS := {
 		"apply": {}, "knockback": 100.0,
 		"scales": {"speed": "agility"},
 	},
+	# support (V): buffs on yourself, debuffs on enemies. Level 7.
+	"blazing_might": {
+		"name": "Blazing Might", "element": "fire", "kind": "buff",
+		"damage": 0.0, "mana": 22.0, "cooldown": 16.0,
+		"buff": {"kind": "might", "time": 8.0, "power": 0.25},
+	},
+	"tidal_mending": {
+		"name": "Tidal Mending", "element": "water", "kind": "buff",
+		"damage": 0.0, "mana": 24.0, "cooldown": 18.0,
+		"buff": {"kind": "mend", "time": 6.0, "power": 8.0},
+	},
+	"stone_skin": {
+		"name": "Stone Skin", "element": "earth", "kind": "buff",
+		"damage": 0.0, "mana": 20.0, "cooldown": 16.0,
+		"buff": {"kind": "ward", "time": 8.0, "power": 0.3},
+	},
+	"tailwind": {
+		"name": "Tailwind", "element": "air", "kind": "buff",
+		"damage": 0.0, "mana": 18.0, "cooldown": 14.0,
+		"buff": {"kind": "haste", "time": 7.0, "power": 0.3},
+	},
+	"fracture": {
+		"name": "Fracture", "element": "mineral", "kind": "aoe",
+		"damage": 6.0, "mana": 24.0, "cooldown": 12.0, "radius": 40.0, "range": 110.0,
+		"apply": {"kind": "vuln", "time": 6.0, "power": 1.0}, "knockback": 0.0,
+		"scales": {"radius": "intellect"},
+	},
+	"intimidate": {
+		"name": "Intimidate", "element": "", "kind": "aoe",
+		"damage": 4.0, "stamina": 24.0, "cooldown": 12.0, "radius": 44.0, "range": 0.0,
+		"apply": {"kind": "weaken", "time": 6.0, "power": 0.4}, "knockback": 30.0,
+		"scales": {"radius": "strength"},
+	},
 	# martial (no element): learned by non-elementalists, paid for with stamina
 	"knife_throw": {
 		"name": "Knife Throw", "element": "", "kind": "projectile",
@@ -128,12 +164,12 @@ const DEFS := {
 }
 
 const LOADOUTS := {
-	"fire": {"primary": "fireball", "area": "flame_burst", "special": "inferno_ring"},
-	"water": {"primary": "water_jet", "area": "rain_pool", "special": "deluge"},
-	"earth": {"primary": "thorn_shot", "area": "root_snare", "special": "bramble_burst"},
-	"air": {"primary": "gust", "area": "cyclone", "special": "tempest"},
-	"mineral": {"primary": "shard_shot", "area": "stone_quake", "special": "crystal_lance"},
-	"martial": {"primary": "knife_throw", "area": "whirlwind", "special": "rending_throw"},
+	"fire": {"primary": "fireball", "area": "flame_burst", "support": "blazing_might", "special": "inferno_ring"},
+	"water": {"primary": "water_jet", "area": "rain_pool", "support": "tidal_mending", "special": "deluge"},
+	"earth": {"primary": "thorn_shot", "area": "root_snare", "support": "stone_skin", "special": "bramble_burst"},
+	"air": {"primary": "gust", "area": "cyclone", "support": "tailwind", "special": "tempest"},
+	"mineral": {"primary": "shard_shot", "area": "stone_quake", "support": "fracture", "special": "crystal_lance"},
+	"martial": {"primary": "knife_throw", "area": "whirlwind", "support": "intimidate", "special": "rending_throw"},
 }
 
 ## Physical attack (RMB). Costs stamina, not mana, and never touches an enemy's aura.
@@ -144,7 +180,7 @@ const MELEE := {
 }
 
 
-## "primary" or "area" for a skill id ("" if unknown).
+## "primary", "area", "support" or "special" for a skill id ("" if unknown).
 func slot_of(skill_id: String) -> String:
 	for set_id in LOADOUTS:
 		for slot in LOADOUTS[set_id]:
@@ -157,6 +193,23 @@ func slot_of(skill_id: String) -> String:
 func set_of(skill_id: String) -> String:
 	var element: String = DEFS[skill_id].get("element", "")
 	return element if element != "" else "martial"
+
+
+## One line on what a skill does beyond damage, for menus: "+25% damage for 8s", "Weakens enemies".
+func effect_text(def: Dictionary) -> String:
+	if def["kind"] == "buff":
+		var buff: Dictionary = def["buff"]
+		var what: String = {
+			"might": "+%d%% damage", "mend": "heals %d HP/s", "ward": "-%d%% damage taken", "haste": "+%d%% speed",
+		}[buff["kind"]]
+		var power := float(buff["power"])
+		var amount: int = roundi(power * 100.0) if power < 1.0 else roundi(power)
+		return (what % amount) + " for %ds" % roundi(float(buff["time"]))
+	var apply: Dictionary = def.get("apply", {})
+	match String(apply.get("kind", "")):
+		"weaken": return "Weakens enemies (-%d%% damage)" % roundi(float(apply["power"]) * 100.0)
+		"vuln": return "Enemies take +25% damage"
+	return ""
 
 
 func uses_stamina(def: Dictionary) -> bool:

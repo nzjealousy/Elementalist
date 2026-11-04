@@ -3,10 +3,10 @@ extends Label
 ## Short-lived rising text for damage numbers and combo names.
 
 
-static func spawn(parent: Node, pos: Vector2, text: String, color: Color) -> void:
+static func spawn(parent: Node, pos: Vector2, text: String, color: Color, font_size: int = 8) -> void:
 	var label := FloatText.new()
 	label.text = text
-	label.add_theme_font_size_override("font_size", 8)
+	label.add_theme_font_size_override("font_size", font_size)
 	label.add_theme_color_override("font_color", color)
 	label.add_theme_color_override("font_outline_color", Color.BLACK)
 	label.add_theme_constant_override("outline_size", 3)

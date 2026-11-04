@@ -1,13 +1,13 @@
 [gd_scene format=3 uid="uid://cigrmftunidgk"]
 
-[ext_resource type="Script" uid="uid://bve2xjeyhqdik" path="res://scripts/world/test_room.gd" id="1_0wfyh"]
+[ext_resource type="Script" path="res://scripts/world/dungeon.gd" id="1_0wfyh"]
 [ext_resource type="PackedScene" uid="uid://der47xkee848i" path="res://scenes/player/player.tscn" id="2_sugp2"]
 [ext_resource type="Script" uid="uid://b5ha3di2b8ddv" path="res://scripts/ui/hud.gd" id="3_sugp2"]
 [ext_resource type="Script" uid="uid://dmp3bug28jv7e" path="res://scripts/ui/character_sheet.gd" id="4_jyhfs"]
 
 [node name="Main" type="Node2D" unique_id=1421184170]
 
-[node name="TestRoom" type="Node2D" parent="." unique_id=713296547]
+[node name="Dungeon" type="Node2D" parent="." unique_id=713296547]
 script = ExtResource("1_0wfyh")
 
 [node name="Player" parent="." unique_id=1117870108 instance=ExtResource("2_sugp2")]

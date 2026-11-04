@@ -15,6 +15,8 @@ extends Node
 ##                       selected element for mana. Dodge + RMB is the spin (see Player).
 ##   Q                   lock the selected element (up to 3). Needs 2+ elements, no level.
 ##   F                   the selected set's area skill (level 5)
+##   V                   the selected set's support skill (level 7): a buff on yourself or a
+##                       debuff on enemies
 ##   R                   the selected set's special skill (a level reward)
 ##   E (Player)          imbue toggle: arms slashes with elements; lets ranged classes shoot
 ## Every number that scales with the character (damage, radius, knockback, speed, cooldown,
@@ -206,6 +208,8 @@ func _process(delta: float) -> void:
 		toggle_lock()
 	if Input.is_action_just_pressed("skill_area"):
 		try_cast(skill_for("area"))
+	if Input.is_action_just_pressed("skill_support"):
+		try_cast(skill_for("support"))
 	if Input.is_action_just_pressed("skill_special"):
 		try_cast(skill_for("special"))
 
@@ -285,6 +289,11 @@ func area_target(id: String) -> Vector2:
 	return origin + (body.get_global_mouse_position() - origin).limit_length(float(SkillDB.DEFS[id]["range"]))
 
 
+## Damage multiplier from the caster's "might" buff (1.0 without one).
+func _might() -> float:
+	return float(body.damage_mult()) if body.has_method("damage_mult") else 1.0
+
+
 ## The status a skill applies on hit, scaled by the character: the element's potency (its
 ## governing attribute) and, for burns, burn passives. Also used by imbued slashes.
 func status_for(def: Dictionary) -> Dictionary:
@@ -323,12 +332,16 @@ func _spawn(id: String, def: Dictionary) -> void:
 	var parent := body.get_parent()
 
 	var hit := {
-		"damage": character.skill_damage(id),
+		"damage": character.skill_damage(id) * _might(),
 		"element": String(def["element"]),
 		"apply": status_for(def),
 		"knockback": float(def.get("knockback", 50.0)) * character.skill_scale(id, "knockback"),
 	}
+	SkillFx.cast_burst(parent, origin + dir * 8.0, String(def["element"]), dir)
 	match def["kind"]:
+		"buff":
+			var buff: Dictionary = def["buff"]
+			body.add_buff(String(buff["kind"]), float(buff["time"]), float(buff["power"]), String(def["element"]))
 		"projectile":
 			var speed := float(def["speed"]) * character.skill_scale(id, "speed") * float(stats["projectile_speed_mult"])
 			var p := Projectile.new()
@@ -355,12 +368,13 @@ func _spawn_fusion(skill_ids: Array[String]) -> void:
 		var id := skill_ids[i]
 		var def: Dictionary = SkillDB.DEFS[id]
 		hits.append({
-			"damage": character.skill_damage(id) * FUSION_DAMAGE * float(stats["fusion_damage_mult"]),
+			"damage": character.skill_damage(id) * FUSION_DAMAGE * float(stats["fusion_damage_mult"]) * _might(),
 			"element": String(def["element"]),
 			"apply": status_for(def),
 			"knockback": float(def.get("knockback", 50.0)) * character.skill_scale(id, "knockback"),
 			"text_offset": Vector2((i - (skill_ids.size() - 1) * 0.5) * 12.0, 0.0),  # keep numbers readable
 		})
+		SkillFx.cast_burst(body.get_parent(), origin + dir * 8.0, String(def["element"]), dir)
 		speed = minf(speed, float(def["speed"]) * character.skill_scale(id, "speed"))
 		reach = minf(reach, float(def["range"]))
 	speed *= float(stats["projectile_speed_mult"])

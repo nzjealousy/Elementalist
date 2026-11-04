@@ -52,7 +52,7 @@ func _build() -> void:
 		child.queue_free()
 	var panel := PanelContainer.new()
 	panel.theme = _theme
-	panel.position = Vector2(30, 14)
+	panel.position = Vector2(30, 6)
 	panel.custom_minimum_size = Vector2(260, 150)
 	add_child(panel)
 	var root := VBoxContainer.new()
@@ -61,10 +61,11 @@ func _build() -> void:
 
 	root.add_child(_label("New character   (Esc to cancel)", Color("ffd84a")))
 	root.add_child(_label("Class  (everyone normally starts as a Novice; pick one to skip ahead for testing)"))
-	var class_row := HBoxContainer.new()
+	var class_row := GridContainer.new()
+	class_row.columns = 5
 	root.add_child(class_row)
 	var class_group := ButtonGroup.new()
-	class_row.add_child(_choice("Novice (class at Lv %d)" % Classes.CLASS_LEVEL, class_group, _class_id == Classes.NEUTRAL_CLASS, _pick_class.bind(Classes.NEUTRAL_CLASS)))
+	class_row.add_child(_choice("Novice", class_group, _class_id == Classes.NEUTRAL_CLASS, _pick_class.bind(Classes.NEUTRAL_CLASS)))
 	for id in Classes.playable():
 		class_row.add_child(_choice(String(Classes.CLASSES[id]["name"]), class_group, id == _class_id, _pick_class.bind(id)))
 
@@ -115,9 +116,10 @@ func _refresh_description() -> void:
 		if birth["id"] == _birth:
 			birth_desc = birth["desc"]
 	var base: Dictionary = cls["base"]
-	_description.text = "%s\nSTR %d  AGI %d  INT %d  VIT %d\n%s" % [
-		cls["desc"], base["strength"], base["agility"], base["intellect"], base["vitality"], birth_desc,
-	]
+	var stats: Array[String] = []
+	for attr in Classes.ATTRIBUTES:
+		stats.append("%s %d" % [Classes.ATTRIBUTE_SHORT[attr], base[attr]])
+	_description.text = "%s\n%s\n%s" % [cls["desc"], "  ".join(stats), birth_desc]
 
 
 func _begin() -> void:

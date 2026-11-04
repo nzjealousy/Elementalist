@@ -46,13 +46,17 @@ const MOD_NAMES := {
 	"damage_taken_mult": "Damage taken", "spell_cooldown_mult": "Spell cooldowns", "melee_range_mult": "Melee reach",
 	"melee_stamina_cost_mult": "Slash stamina cost", "projectile_speed_mult": "Bolt speed",
 	"fusion_damage_mult": "Fused damage", "burn_time_mult": "Burn time",
+	"crit_chance_add": "Crit chance", "crit_damage_add": "Crit damage", "buff_duration_mult": "Buff duration",
 }
+
+## *_add stats that are fractions, shown as percentages.
+const PERCENT_ADD := ["crit_chance_add", "crit_damage_add"]
 
 ## Mods that only matter to characters with elements (mana and spells). Characters who can never
 ## hold elements (sealed) are not given items that are nothing but these.
 const SPELL_MODS := [
 	"max_mana_add", "mana_regen_add", "spell_damage_mult", "spell_cooldown_mult",
-	"fusion_damage_mult", "projectile_speed_mult", "burn_time_mult",
+	"fusion_damage_mult", "projectile_speed_mult", "burn_time_mult", "buff_duration_mult",
 ]
 
 ## Random bonuses. "min"/"max" are the roll range at item level 1; prefix/suffix build the name.
@@ -72,6 +76,8 @@ const AFFIXES := [
 	{"mod": "melee_stamina_cost_mult", "min": -0.08, "max": -0.03, "prefix": "Light", "suffix": "of Ease"},
 	{"mod": "projectile_speed_mult", "min": 0.04, "max": 0.10, "prefix": "Flying", "suffix": "of Arrows"},
 	{"mod": "fusion_damage_mult", "min": 0.04, "max": 0.10, "prefix": "Blending", "suffix": "of Fusion"},
+	{"mod": "crit_chance_add", "min": 0.01, "max": 0.03, "prefix": "Deadly", "suffix": "of Precision"},
+	{"mod": "crit_damage_add", "min": 0.05, "max": 0.15, "prefix": "Brutal", "suffix": "of Ruin"},
 ]
 
 ## Gear. "mods" are amounts at item level 1, common rarity. "weapon" (weapons only) is the weapon
@@ -84,11 +90,17 @@ const BASES := {
 	"worn_staff": {"name": "Worn Staff", "slot": "weapon", "weapon": "staff", "starter": true, "mods": {"spell_damage_mult": 0.08, "max_mana_add": 5.0}},
 	"worn_bow": {"name": "Worn Bow", "slot": "weapon", "weapon": "bow", "starter": true, "mods": {"melee_damage_mult": 0.04, "projectile_speed_mult": 0.06}},
 	"worn_rod": {"name": "Worn Rod", "slot": "weapon", "weapon": "rod", "starter": true, "mods": {"max_mana_add": 8.0}},
+	"worn_dagger": {"name": "Worn Dagger", "slot": "weapon", "weapon": "dagger", "starter": true, "mods": {"melee_damage_mult": 0.04, "crit_chance_add": 0.01}},
+	"worn_axe": {"name": "Worn Axe", "slot": "weapon", "weapon": "axe", "starter": true, "mods": {"melee_damage_mult": 0.1}},
+	"worn_tome": {"name": "Worn Tome", "slot": "weapon", "weapon": "tome", "starter": true, "mods": {"spell_damage_mult": 0.06, "mana_regen_add": 0.5}},
 	# weapons
 	"iron_sword": {"name": "Iron Sword", "slot": "weapon", "weapon": "sword", "min_ilvl": 2, "craft": {"scrap": 8, "gold": 30}, "mods": {"melee_damage_mult": 0.18, "melee_range_mult": 0.05}},
 	"hunter_bow": {"name": "Hunter's Bow", "slot": "weapon", "weapon": "bow", "min_ilvl": 2, "craft": {"scrap": 8, "slime_gel": 3, "gold": 30}, "mods": {"melee_damage_mult": 0.08, "projectile_speed_mult": 0.12}},
 	"oak_staff": {"name": "Oak Staff", "slot": "weapon", "weapon": "staff", "min_ilvl": 2, "craft": {"scrap": 8, "gold": 30}, "mods": {"spell_damage_mult": 0.15, "max_mana_add": 10.0}},
 	"bone_rod": {"name": "Bone Rod", "slot": "weapon", "weapon": "rod", "min_ilvl": 2, "craft": {"scrap": 8, "slime_gel": 2, "gold": 30}, "mods": {"max_mana_add": 14.0, "spell_cooldown_mult": -0.05}},
+	"steel_dagger": {"name": "Steel Dagger", "slot": "weapon", "weapon": "dagger", "min_ilvl": 2, "craft": {"scrap": 8, "gold": 30}, "mods": {"melee_damage_mult": 0.1, "crit_chance_add": 0.03}},
+	"battle_axe": {"name": "Battle Axe", "slot": "weapon", "weapon": "axe", "min_ilvl": 2, "craft": {"scrap": 9, "gold": 35}, "mods": {"melee_damage_mult": 0.22, "melee_range_mult": 0.04}},
+	"scribe_tome": {"name": "Scribe's Tome", "slot": "weapon", "weapon": "tome", "min_ilvl": 2, "craft": {"scrap": 8, "slime_gel": 2, "gold": 30}, "mods": {"spell_damage_mult": 0.12, "mana_regen_add": 1.2}},
 	# armour and trinkets
 	"leather_cap": {"name": "Leather Cap", "slot": "head", "craft": {"scrap": 4, "slime_gel": 2, "gold": 15}, "mods": {"max_hp_add": 6.0}},
 	"iron_helm": {"name": "Iron Helm", "slot": "head", "min_ilvl": 3, "craft": {"scrap": 7, "gold": 25}, "mods": {"max_hp_add": 8.0, "damage_taken_mult": -0.02}},
@@ -121,6 +133,12 @@ const MATERIALS := {
 	"essence_earth": {"name": "Earth Essence", "color": Color("5fbf4a")},
 	"essence_air": {"name": "Air Essence", "color": Color("d9f2ff")},
 	"essence_mineral": {"name": "Mineral Essence", "color": Color("b5a58a")},
+	# Elemental gems: dropped by bosses. Using one attunes you to its element (CharacterData.use_gem).
+	"gem_fire": {"name": "Fire Gem", "color": Color("ff6a2b")},
+	"gem_water": {"name": "Water Gem", "color": Color("3fa7ff")},
+	"gem_earth": {"name": "Earth Gem", "color": Color("5fbf4a")},
+	"gem_air": {"name": "Air Gem", "color": Color("d9f2ff")},
+	"gem_mineral": {"name": "Mineral Gem", "color": Color("b5a58a")},
 }
 
 
@@ -153,6 +171,10 @@ static func material_name(id: String) -> String:
 
 static func essence_of(element: String) -> String:
 	return "essence_" + element
+
+
+static func gem_of(element: String) -> String:
+	return "gem_" + element
 
 
 ## The worn weapon a new character holds for a weapon type.
@@ -238,7 +260,7 @@ static func mods_of(item: Dictionary) -> Dictionary:
 ## "+12 Max HP", "+8% Melee damage", "-3% Damage taken".
 static func format_mod(key: String, amount: float) -> String:
 	var label := String(MOD_NAMES.get(key, key))
-	if key.ends_with("_mult"):
+	if key.ends_with("_mult") or key in PERCENT_ADD:
 		return "%+d%% %s" % [roundi(amount * 100.0), label]
 	if absf(amount - roundf(amount)) > 0.05:
 		return "%+.1f %s" % [amount, label]

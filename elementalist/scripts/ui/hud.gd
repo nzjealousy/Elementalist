@@ -39,16 +39,21 @@ func _draw_hud() -> void:
 	var xp_frac := float(character.xp) / float(CharacterData.xp_to_next(character.level))
 	_bar(Vector2(4, 24), Vector2(80, 3), xp_frac, Color("ffd84a"))
 	_draw_status(font, caster, character)
+	_draw_buffs(font)
+	if Game.run_text != "":
+		_ctrl.draw_string(font, Vector2(0, 16), Game.run_text, HORIZONTAL_ALIGNMENT_RIGHT, 316.0, 6, Color("ffd84a"))
+	_draw_boss_bar(font)
+	_draw_hurt()
 	var inv := character.inventory
 	_ctrl.draw_string(font, Vector2(4, 34), "%d gold   %d scrap" % [inv.gold, inv.count("scrap")], HORIZONTAL_ALIGNMENT_LEFT, -1, 6, Color("ffd84a"))
 	if Game.banner_time > 0.0:
 		var alpha := clampf(Game.banner_time, 0.0, 1.0)
 		_ctrl.draw_multiline_string(font, Vector2(0, 62), Game.banner_text, HORIZONTAL_ALIGNMENT_CENTER, 320.0, 8, -1, Color(1, 0.95, 0.7, alpha))
-	_ctrl.draw_string(font, Vector2(0, 8), "TAB sheet  I gear  G use  E imbue  Q lock  LMB fuse  RMB attack  F area  R special", HORIZONTAL_ALIGNMENT_RIGHT, 316.0, 5, Color(1, 1, 1, 0.45))
+	_ctrl.draw_string(font, Vector2(0, 8), "TAB sheet  I gear  G use  E imbue  Q lock  LMB fuse  RMB attack  F area  V buff  R special", HORIZONTAL_ALIGNMENT_RIGHT, 316.0, 5, Color(1, 1, 1, 0.45))
 
 	# Layout: [1..5] element tabs, gap, LMB, RMB, Q, F, R (just RMB if no castable set)
 	var count := caster.elements.size()
-	var slots := (count + 5) if count > 0 else 1
+	var slots := (count + 6) if count > 0 else 1
 	var width := slots * (SLOT + GAP) + (GAP * 2.0 if count > 0 else 0.0)
 	var x := (320.0 - width) * 0.5
 	var y := 154.0
@@ -78,7 +83,49 @@ func _draw_hud() -> void:
 	x += SLOT + GAP
 	_skill_slot(Vector2(x, y), caster, caster.skill_for("area"), "F")
 	x += SLOT + GAP
+	_skill_slot(Vector2(x, y), caster, caster.skill_for("support"), "V")
+	x += SLOT + GAP
 	_skill_slot(Vector2(x, y), caster, caster.skill_for("special"), "R")
+
+
+## The boss's name and health along the bottom, above the skill slots.
+func _draw_boss_bar(font: Font) -> void:
+	if not is_instance_valid(Game.boss):  # checked before any cast: a slain boss is freed
+		return
+	var boss := Game.boss as Enemy
+	if boss == null or boss.hp <= 0.0:
+		return
+	var pos := Vector2(70, 143)
+	_ctrl.draw_string(font, Vector2(0, 140), boss.display_name, HORIZONTAL_ALIGNMENT_CENTER, 320.0, 7, Color("ff9a6a"))
+	_bar(pos, Vector2(180, 5), boss.hp / boss.max_hp, Color("c0392b"))
+
+
+## Active buffs under the gold line: name and seconds left.
+func _draw_buffs(font: Font) -> void:
+	var y := 42.0
+	for kind in _player.buffs:
+		var buff: Dictionary = _player.buffs[kind]
+		var color: Color = _player.BUFF_COLORS.get(kind, Color.WHITE)
+		_ctrl.draw_rect(Rect2(Vector2(4, y - 5), Vector2(4, 5)), color)
+		_ctrl.draw_string(font, Vector2(10, y), "%s %.0fs" % [_player.BUFF_NAMES.get(kind, kind), buff["time"]], HORIZONTAL_ALIGNMENT_LEFT, -1, 6, color)
+		y += 8.0
+
+
+## The hit indicator: the screen edges flash red and an arrow points at where the hit came from.
+func _draw_hurt() -> void:
+	if Game.hurt_time <= 0.0:
+		return
+	var strength := Game.hurt_time / Game.HURT_TIME
+	var edge := Color(0.9, 0.1, 0.1, 0.35 * strength)
+	_ctrl.draw_rect(Rect2(0, 0, 320, 8), edge)
+	_ctrl.draw_rect(Rect2(0, 172, 320, 8), edge)
+	_ctrl.draw_rect(Rect2(0, 0, 8, 180), edge)
+	_ctrl.draw_rect(Rect2(312, 0, 8, 180), edge)
+	if Game.hurt_dir != Vector2.ZERO:
+		var centre := Vector2(160, 90) + Game.hurt_dir * 38.0
+		var side := Game.hurt_dir.orthogonal()
+		var tip := centre + Game.hurt_dir * 7.0
+		_ctrl.draw_colored_polygon(PackedVector2Array([tip, centre + side * 5.0, centre - side * 5.0]), Color(1.0, 0.25, 0.25, 0.85 * strength))
 
 
 ## Points to spend, pending choices, and how the character is fighting right now.

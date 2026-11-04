@@ -20,6 +20,16 @@ const PLACEHOLDERS := {
 	"pickup_gold": [Color("ffd84a"), Color("8a6a10"), Vector2i(5, 5)],
 	"pickup_material": [Color("ffffff"), Color("303038"), Vector2i(5, 5)],  # tinted per material
 	"pickup_item": [Color("ffffff"), Color("202028"), Vector2i(7, 7)],      # tinted per rarity
+	"enemy_bat": [Color("8b5fbf"), Color("2c1a45"), Vector2i(10, 7)],
+	"enemy_skeleton": [Color("e8e4d0"), Color("5a5646"), Vector2i(10, 14)],
+	"enemy_wisp": [Color("7fe8ff"), Color("2a6a7a"), Vector2i(8, 8)],
+	"enemy_brute": [Color("8a8f9c"), Color("33363f"), Vector2i(18, 18)],
+	"boss_slime_king": [Color("4fbf4f"), Color("1d5a1d"), Vector2i(32, 26)],
+	"boss_colossus": [Color("a1a6b4"), Color("3a3e4a"), Vector2i(30, 32)],
+	"door_locked": [Color("8a2e2e"), Color("2f0f0f"), Vector2i(16, 16)],
+	"door_open": [Color("15171c"), Color("7fe88a"), Vector2i(16, 16)],
+	"door_sealed": [Color("4a4036"), Color("1f1a14"), Vector2i(16, 16)],
+	"proj_enemy": [Color("ffffff"), Color("202028"), Vector2i(5, 5)],  # tinted by the shooter
 	"chest": [Color("a8742c"), Color("3b2610"), Vector2i(14, 12)],
 	"chest_open": [Color("6b4a1c"), Color("3b2610"), Vector2i(14, 12)],
 	"forge": [Color("5b5f6e"), Color("e86a2b"), Vector2i(18, 14)],

@@ -150,6 +150,7 @@ func _fill_stats() -> void:
 	var d := ch.derived()
 	left.add_child(_label("HP %d   Mana %d   Stamina %d" % [d["max_hp"], d["max_mana"], d["max_stamina"]]))
 	left.add_child(_label("Move %d   Melee x%.2f   Reach x%.2f" % [d["move_speed"], d["melee_damage_mult"], d["melee_range_mult"]]))
+	left.add_child(_label("Crit %d%% (x%.2f)   Buffs x%.2f" % [roundi(float(d["crit_chance"]) * 100.0), d["crit_mult"], d["buff_duration_mult"]]))
 
 	right.add_child(_label(String(cls["desc"]), Color(0.8, 0.85, 1.0)))
 	right.add_child(_label(_affinity_text(ch), Color(0.7, 0.9, 1.0)))
@@ -213,6 +214,17 @@ func _fill_gear() -> void:
 	left.add_child(_spacer())
 	left.add_child(_label(wallet, GOLD))
 
+	var gems := Elements.MAIN.filter(func(e): return inv.count(Items.gem_of(e)) > 0)
+	if not gems.is_empty():
+		right.add_child(_label("Elemental gems (bosses drop them): use one to attune", GOLD))
+		for element in gems:
+			var button := _button("Use %s gem x%d" % [String(element).capitalize(), inv.count(Items.gem_of(element))])
+			button.alignment = HORIZONTAL_ALIGNMENT_LEFT
+			button.add_theme_color_override("font_color", Elements.color_of(element).lightened(0.3))
+			button.disabled = not (element in ch.missing_elements())
+			button.tooltip_text = "Already attuned" if element in ch.elements else ("Sealed" if ch.affinity == CharacterData.SEALED else "")
+			button.pressed.connect(_use_gem.bind(element))
+			right.add_child(button)
 	right.add_child(_label("Bag  %d/%d" % [inv.bag.size(), Inventory.BAG_SIZE], GOLD))
 	if inv.bag.is_empty():
 		right.add_child(_label("Empty. Enemies and chests drop gear; the forge (G) makes more.", DIM))
@@ -241,26 +253,28 @@ func _fill_skills() -> void:
 		sets.append("martial")
 	var columns := [_column(136), _column(136)]
 	columns[0].add_child(_label("Skills (numbers include your stats)", GOLD))
-	columns[1].add_child(_label("RMB: bolt while imbued (ranged classes)   F area (Lv %d)   R special (reward)   LMB fuses 2-3 elements locked with Q" % Classes.AREA_LEVEL, DIM))
+	columns[1].add_child(_label("RMB: bolt while imbued (ranged classes)   F area (Lv %d)   V buff/debuff (Lv %d)   R special (reward)   LMB fuses 2-3 elements locked with Q" % [Classes.AREA_LEVEL, Classes.SUPPORT_LEVEL], DIM))
 	if sets.is_empty():
 		columns[0].add_child(_label("No skills: no elements and no martial training.", DIM))
 	for i in sets.size():
 		var col: VBoxContainer = columns[i % 2] if sets.size() > 3 else columns[0 if i < 2 else 1]
 		var set_id: String = sets[i]
 		col.add_child(_label(String(set_id).capitalize() if set_id != "martial" else "Martial (stamina)", Elements.color_of(set_id).lightened(0.3)))
-		for slot in ["primary", "area", "special"]:
+		for slot in ["primary", "area", "support", "special"]:
 			col.add_child(_skill_line(ch, SkillDB.LOADOUTS[set_id][slot], slot))
 
 
 ## One compact line for a skill: key, name, cost, cooldown, damage; dim if not yet learned.
 func _skill_line(ch: CharacterData, id: String, slot: String) -> Label:
 	var def: Dictionary = SkillDB.DEFS[id]
-	var key: String = {"primary": "RMB" if SkillDB.set_of(id) != "martial" else "LMB", "area": "F", "special": "R"}[slot]
+	var key: String = {"primary": "RMB" if SkillDB.set_of(id) != "martial" else "LMB", "area": "F", "support": "V", "special": "R"}[slot]
 	if not ch.can_use_skill(id):
 		var how := "reward" if slot == "special" else "Lv %d" % ch.skill_unlock_level(id)
 		return _label("  %s %s  (%s)" % [key, def["name"], how], DIM)
 	var cost := "%d%s" % [SkillDB.cost_of(def), "st" if SkillDB.uses_stamina(def) else "mp"]
 	var text := "  %s %s  %s  %.1fs  dmg %.0f" % [key, def["name"], cost, ch.skill_cooldown(id), ch.skill_damage(id)]
+	if SkillDB.effect_text(def) != "":
+		text = "  %s %s  %s  %.1fs  %s" % [key, def["name"], cost, ch.skill_cooldown(id), SkillDB.effect_text(def)]
 	for prop in def.get("scales", {}):
 		text += "  %s x%.2f" % [String(prop).substr(0, 3), ch.skill_scale(id, prop)]
 	return _label(text)
@@ -393,6 +407,11 @@ func _choose_class(id: String) -> void:
 
 func _choose_subclass(id: String) -> void:
 	Game.character.choose_subclass(id)
+	show_tab.call_deferred(_tab)
+
+
+func _use_gem(element: String) -> void:
+	Game.use_gem(element)
 	show_tab.call_deferred(_tab)
 
 

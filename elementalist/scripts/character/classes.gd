@@ -24,7 +24,20 @@ extends RefCounted
 ##   *_mult  multiplied      (e.g. melee_damage_mult, damage_taken_mult)
 ## Per-skill mods are named "<skill_id>_damage_mult" / "<skill_id>_cooldown_mult".
 
-const ATTRIBUTES := ["strength", "agility", "intellect", "vitality"]
+const ATTRIBUTES := ["strength", "agility", "intellect", "vitality", "wisdom", "luck"]
+const ATTRIBUTE_SHORT := {
+	"strength": "STR", "agility": "AGI", "intellect": "INT", "vitality": "VIT", "wisdom": "WIS", "luck": "LCK",
+}
+## What the two newer attributes do (the other four are described in CharacterData), per point
+## above 5:
+##   wisdom  +0.6 mana regen, -1% spell cooldowns, +4% buff and debuff duration
+##   luck    +1.5% crit chance, +5% loot luck
+const WISDOM_MANA_REGEN := 0.6
+const WISDOM_COOLDOWN := 0.01
+const WISDOM_BUFF_DURATION := 0.04
+const LUCK_CRIT := 0.015
+const LUCK_LOOT := 0.05
+const BASE_CRIT_MULT := 1.5
 const MAX_LOCKED := 3  # elements that can be locked together (Q) to fuse into one cast
 const CLASS_LEVEL := 3     # level at which a Novice chooses a class
 const AREA_LEVEL := 5      # level at which area skills (Q) unlock, for everyone
@@ -36,19 +49,20 @@ const RARE_PASSIVE_LEVEL := 5  # element / weapon mastery level that unlocks its
 const NEUTRAL_CLASS := "wanderer"
 
 ## Level at which each skill slot is learned. "special" (R) skills are learned from rewards.
-const SKILL_LEVELS := {"primary": 1, "area": AREA_LEVEL}
+const SUPPORT_LEVEL := 7  # level at which the support skill (V: a buff or debuff) is learned
+const SKILL_LEVELS := {"primary": 1, "area": AREA_LEVEL, "support": SUPPORT_LEVEL}
 
 ## The attribute that governs each element's potency (status duration and strength).
 const ELEMENT_ATTRIBUTE := {
 	"fire": "strength", "water": "agility", "earth": "vitality", "air": "agility",
-	"mineral": "strength", "light": "vitality", "dark": "intellect",
+	"mineral": "strength", "light": "wisdom", "dark": "intellect",
 }
 const POTENCY_PER_POINT := 0.03  # per attribute point above/below 5
 
 ## How much one attribute point above/below 5 changes a skill property (see SkillDB "scales").
 const SCALE_RATE := {"radius": 0.03, "knockback": 0.05, "speed": 0.03, "cooldown": -0.02}
 
-# Balance: every playable class has the same 21 attribute points when chosen and +1 per level in
+# Balance: every playable class has the same 31 attribute points when chosen and +1 per level in
 # its favoured attribute, so classes differ in shape, reach and passives, not raw power.
 # "melee_range" multiplies the slash's reach: fighters reach far, casters barely at all.
 const CLASSES := {
@@ -56,7 +70,7 @@ const CLASSES := {
 		"name": "Channeler",
 		"desc": "Ranged caster: shoots while imbued, slashes (short reach) when not. Huge mana, fragile.",
 		"style": "ranged",
-		"base": {"strength": 3, "agility": 5, "intellect": 9, "vitality": 4},
+		"base": {"strength": 3, "agility": 5, "intellect": 9, "vitality": 4, "wisdom": 6, "luck": 4},
 		"per_level": {"intellect": 1},
 		"melee_range": 0.75,
 		"weapon": "staff",
@@ -67,7 +81,7 @@ const CLASSES := {
 		"name": "Vanguard",
 		"desc": "Melee fighter: RMB always slashes. Elements come from imbuing the blade, fused casts and abilities. Longest reach. With no elements, LMB slashes too.",
 		"style": "melee",
-		"base": {"strength": 8, "agility": 4, "intellect": 3, "vitality": 6},
+		"base": {"strength": 8, "agility": 4, "intellect": 3, "vitality": 6, "wisdom": 4, "luck": 6},
 		"per_level": {"strength": 1},
 		"melee_range": 1.4,
 		"weapon": "sword",
@@ -78,7 +92,7 @@ const CLASSES := {
 		"name": "Ranger",
 		"desc": "Ranged skirmisher: shoots while imbued, short blade otherwise. Fast, quick bolts, modest health.",
 		"style": "ranged",
-		"base": {"strength": 5, "agility": 8, "intellect": 4, "vitality": 4},
+		"base": {"strength": 5, "agility": 8, "intellect": 4, "vitality": 4, "wisdom": 4, "luck": 6},
 		"per_level": {"agility": 1},
 		"melee_range": 0.9,
 		"weapon": "bow",
@@ -89,18 +103,62 @@ const CLASSES := {
 		"name": "Mystic",
 		"desc": "Ranged hybrid: shoots while imbued, average reach otherwise. Faster spell cooldowns, sturdy.",
 		"style": "ranged",
-		"base": {"strength": 3, "agility": 4, "intellect": 7, "vitality": 7},
+		"base": {"strength": 3, "agility": 4, "intellect": 7, "vitality": 7, "wisdom": 6, "luck": 4},
 		"per_level": {"vitality": 1},
 		"melee_range": 1.0,
 		"weapon": "rod",
 		"passives": ["attuned"],
 		"subclasses": ["oracle", "spiritblade"],
 	},
+	"assassin": {
+		"name": "Assassin",
+		"desc": "Melee skirmisher: dagger in hand, crits often and hits hard when it lands. Fast and fragile.",
+		"style": "melee",
+		"base": {"strength": 5, "agility": 8, "intellect": 3, "vitality": 3, "wisdom": 3, "luck": 9},
+		"per_level": {"agility": 1},
+		"melee_range": 0.95,
+		"weapon": "dagger",
+		"passives": ["assassin_edge"],
+		"subclasses": ["nightstalker", "trickster"],
+	},
+	"berserker": {
+		"name": "Berserker",
+		"desc": "Melee bruiser: axe, long swings and fury. Hits hard, shrugs off pain, takes a little extra.",
+		"style": "melee",
+		"base": {"strength": 8, "agility": 4, "intellect": 2, "vitality": 7, "wisdom": 4, "luck": 6},
+		"per_level": {"vitality": 1},
+		"melee_range": 1.25,
+		"weapon": "axe",
+		"passives": ["bloodrage"],
+		"subclasses": ["warlord", "reaver"],
+	},
+	"sage": {
+		"name": "Sage",
+		"desc": "Ranged scholar: a tome and a deep, fast-refilling mana pool. Buffs and debuffs last longer.",
+		"style": "ranged",
+		"base": {"strength": 2, "agility": 4, "intellect": 9, "vitality": 3, "wisdom": 8, "luck": 5},
+		"per_level": {"intellect": 1},
+		"melee_range": 0.8,
+		"weapon": "tome",
+		"passives": ["scholars_calm"],
+		"subclasses": ["archmage", "lorekeeper"],
+	},
+	"druid": {
+		"name": "Druid",
+		"desc": "Ranged warden of growth: a staff, steady health regeneration and wisdom over raw power.",
+		"style": "ranged",
+		"base": {"strength": 3, "agility": 4, "intellect": 5, "vitality": 7, "wisdom": 8, "luck": 4},
+		"per_level": {"wisdom": 1},
+		"melee_range": 0.9,
+		"weapon": "staff",
+		"passives": ["wild_growth"],
+		"subclasses": ["grovekeeper", "stormcaller"],
+	},
 	"wanderer": {
 		"name": "Novice",
 		"desc": "No class yet. Choose one at level %d. Imbue (E) to shoot with RMB." % CLASS_LEVEL,
 		"style": "ranged",
-		"base": {"strength": 5, "agility": 5, "intellect": 5, "vitality": 5},
+		"base": {"strength": 5, "agility": 5, "intellect": 5, "vitality": 5, "wisdom": 5, "luck": 5},
 		"per_level": {},
 		"melee_range": 1.0,
 		"weapon": "sword",
@@ -119,6 +177,14 @@ const SUBCLASSES := {
 	"pathfinder": {"name": "Pathfinder", "desc": "Tireless: +8 stamina regen, +4% speed.", "passives": ["pathfinder_stride"]},
 	"oracle": {"name": "Oracle", "desc": "+2 mana regen, +20 max mana.", "passives": ["oracle_insight"]},
 	"spiritblade": {"name": "Spiritblade", "desc": "+15% melee damage, +15% reach, slashes cost 10% less.", "passives": ["spiritblade_focus"]},
+	"nightstalker": {"name": "Nightstalker", "desc": "Crits hit much harder, +4% move speed.", "passives": ["nightstalker_veil"]},
+	"trickster": {"name": "Trickster", "desc": "+5% crit chance and +1 Luck.", "passives": ["trickster_luck"]},
+	"warlord": {"name": "Warlord", "desc": "+10% melee damage, +12 max HP.", "passives": ["warlord_banner"]},
+	"reaver": {"name": "Reaver", "desc": "Slashes cost 12% less stamina, +0.4 HP regen.", "passives": ["reaver_thirst"]},
+	"archmage": {"name": "Archmage", "desc": "+10% spell damage, +10% fused damage.", "passives": ["archmage_power"]},
+	"lorekeeper": {"name": "Lorekeeper", "desc": "-8% spell cooldowns, buffs and debuffs last 25% longer.", "passives": ["lorekeeper_notes"]},
+	"grovekeeper": {"name": "Grovekeeper", "desc": "+0.5 HP regen, -7% damage taken.", "passives": ["grovekeeper_roots"]},
+	"stormcaller": {"name": "Stormcaller", "desc": "+15% bolt speed, +6% spell damage.", "passives": ["stormcaller_gale"]},
 }
 
 const PASSIVES := {
@@ -136,6 +202,18 @@ const PASSIVES := {
 	"pathfinder_stride": {"name": "Long Stride", "desc": "+8 stamina regen, +4% move speed", "mods": {"stamina_regen_add": 8.0, "move_speed_mult": 1.04}},
 	"oracle_insight": {"name": "Insight", "desc": "+2 mana regen, +20 max mana", "mods": {"mana_regen_add": 2.0, "max_mana_add": 20.0}},
 	"spiritblade_focus": {"name": "Spirit Edge", "desc": "+15% melee damage, +15% reach, -10% slash stamina cost", "mods": {"melee_damage_mult": 1.15, "melee_range_mult": 1.15, "melee_stamina_cost_mult": 0.9}},
+	"assassin_edge": {"name": "Assassin's Edge", "desc": "+4% crit chance, +4% move speed", "mods": {"crit_chance_add": 0.04, "move_speed_mult": 1.04}},
+	"bloodrage": {"name": "Bloodrage", "desc": "+15% melee damage, +0.3 HP regen, +6% damage taken", "mods": {"melee_damage_mult": 1.15, "hp_regen_add": 0.3, "damage_taken_mult": 1.06}},
+	"scholars_calm": {"name": "Scholar's Calm", "desc": "+2.5 mana regen, buffs and debuffs last 15% longer", "mods": {"mana_regen_add": 2.5, "buff_duration_mult": 1.15}},
+	"wild_growth": {"name": "Wild Growth", "desc": "+0.5 HP regen, +8 max HP", "mods": {"hp_regen_add": 0.5, "max_hp_add": 8.0}},
+	"nightstalker_veil": {"name": "Veil", "desc": "+25% crit damage, +4% move speed", "mods": {"crit_damage_add": 0.25, "move_speed_mult": 1.04}},
+	"trickster_luck": {"name": "Fortune", "desc": "+5% crit chance, +1 Luck", "mods": {"crit_chance_add": 0.05, "luck_add": 1.0}},
+	"warlord_banner": {"name": "Banner", "desc": "+10% melee damage, +12 max HP", "mods": {"melee_damage_mult": 1.1, "max_hp_add": 12.0}},
+	"reaver_thirst": {"name": "Thirst", "desc": "-12% slash stamina cost, +0.4 HP regen", "mods": {"melee_stamina_cost_mult": 0.88, "hp_regen_add": 0.4}},
+	"archmage_power": {"name": "Archmage Power", "desc": "+10% spell damage, +10% fused damage", "mods": {"spell_damage_mult": 1.1, "fusion_damage_mult": 1.1}},
+	"lorekeeper_notes": {"name": "Notes", "desc": "-8% spell cooldowns, buffs and debuffs last 25% longer", "mods": {"spell_cooldown_mult": 0.92, "buff_duration_mult": 1.25}},
+	"grovekeeper_roots": {"name": "Roots", "desc": "+0.5 HP regen, -7% damage taken", "mods": {"hp_regen_add": 0.5, "damage_taken_mult": 0.93}},
+	"stormcaller_gale": {"name": "Gale", "desc": "+15% bolt speed, +6% spell damage", "mods": {"projectile_speed_mult": 1.15, "spell_damage_mult": 1.06}},
 	# element mastery (rare)
 	"ember_kindle": {"name": "Kindle", "desc": "Burns last 30% longer", "mods": {"burn_time_mult": 1.3}},
 	"flow": {"name": "Flow", "desc": "+8 stamina regen", "mods": {"stamina_regen_add": 8.0}},
@@ -149,6 +227,9 @@ const PASSIVES := {
 	"staff_training": {"name": "Staff Training", "desc": "+1 mana regen", "mods": {"mana_regen_add": 1.0}},
 	"bow_training": {"name": "Bow Training", "desc": "+5% bolt speed", "mods": {"projectile_speed_mult": 1.05}},
 	"rod_training": {"name": "Rod Training", "desc": "+10 max mana", "mods": {"max_mana_add": 10.0}},
+	"dagger_training": {"name": "Dagger Training", "desc": "+3% crit chance", "mods": {"crit_chance_add": 0.03}},
+	"axe_training": {"name": "Axe Training", "desc": "+5% melee damage", "mods": {"melee_damage_mult": 1.05}},
+	"tome_training": {"name": "Tome Training", "desc": "Buffs and debuffs last 10% longer", "mods": {"buff_duration_mult": 1.1}},
 	# traits (tied to the character: rolled at creation, or chosen as level rewards)
 	"sturdy": {"name": "Sturdy", "desc": "+12 max HP", "mods": {"max_hp_add": 12.0}},
 	"tireless": {"name": "Tireless", "desc": "+6 stamina regen", "mods": {"stamina_regen_add": 6.0}},
@@ -164,6 +245,9 @@ const PASSIVES := {
 	"calm_mind": {"name": "Calm Mind", "desc": "+1.5 mana regen", "mods": {"mana_regen_add": 1.5}},
 	"stout": {"name": "Stout", "desc": "+8 max HP, +0.15 HP regen", "mods": {"max_hp_add": 8.0, "hp_regen_add": 0.15}},
 	"arcane_surge": {"name": "Arcane Surge", "desc": "+4% spell damage, -3% spell cooldowns", "mods": {"spell_damage_mult": 1.04, "spell_cooldown_mult": 0.97}},
+	"lucky": {"name": "Lucky", "desc": "+3% crit chance", "mods": {"crit_chance_add": 0.03}},
+	"keen_eyes": {"name": "Keen Eyes", "desc": "+15% crit damage", "mods": {"crit_damage_add": 0.15}},
+	"scholar": {"name": "Scholar", "desc": "+1 Wisdom", "mods": {"wisdom_add": 1.0}},
 	# multi-element (automatic: more elements, more bonus; see CharacterData.passive_sources)
 	"elemental_harmony": {
 		"name": "Elemental Harmony",
@@ -182,11 +266,11 @@ const PASSIVES := {
 const TRAITS := [
 	"sturdy", "tireless", "sharp_mind", "fleet", "thick_hide", "iron_will", "keen_edge",
 	"focused", "hardy_lungs", "quick_hands", "far_reach", "calm_mind", "stout", "arcane_surge",
-	"jack_of_all_trades",
+	"jack_of_all_trades", "lucky", "keen_eyes", "scholar",
 ]
 
 ## Traits that only help spellcasting. Sealed characters (no elements, no mana, ever) never get them.
-const SPELL_TRAITS := ["sharp_mind", "calm_mind", "focused", "quick_hands", "arcane_surge"]
+const SPELL_TRAITS := ["sharp_mind", "calm_mind", "focused", "quick_hands", "arcane_surge", "scholar"]
 
 const ELEMENT_PASSIVES := {
 	"fire": "ember_kindle", "water": "flow", "earth": "thick_skin", "air": "swift",
@@ -195,6 +279,7 @@ const ELEMENT_PASSIVES := {
 
 const WEAPON_PASSIVES := {
 	"sword": "blade_training", "staff": "staff_training", "bow": "bow_training", "rod": "rod_training",
+	"dagger": "dagger_training", "axe": "axe_training", "tome": "tome_training",
 }
 
 const SKILL_MASTERY_PREFIX := "mastery_"
