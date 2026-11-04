@@ -1,10 +1,16 @@
 class_name Dungeon
 extends Node2D
+## The world scene's builder, in two modes (Game.mode):
+##   camp      one safe room: the forge, the notice board (leaderboard) and the gate to the dungeons
+##   dungeon   a randomly generated set of floors (DungeonGen), played one room at a time; the run
+##             is rebuilt from its seed and saved at every room, so Continue resumes it
+##
 ## The dungeon run: a randomly generated set of floors (DungeonGen), played one room at a time.
 ## Combat rooms spawn their waves one after another; when the last monster dies the exit door
 ## unlocks and walking through it fades to the next room. Treasure rooms hold a chest, forge rooms
 ## the forge and a free heal; both open at once. The last room of the last floor is the boss.
-## Beating the boss (or dying) ends the run on a RunEndScreen; Enter starts a fresh dungeon.
+## Every third floor ends with a mini boss. Beating the last boss (or dying) ends the run on a
+## RunEndScreen, records it on the leaderboard and sends the hero back to camp.
 ##
 ## This node is the main scene's world. Its siblings are the Player and the HUD.
 
@@ -22,6 +28,10 @@ var state := "idle"      # fighting, clear, transition, won or dead
 var wave := 0            # waves of this room already spawned
 var run_time := 0.0
 var death: Dictionary = {}  # what dying cost: {"final": bool, "lost": [elements]}
+var tier := 1            # which dungeon (Game.TIERS) this run is in
+var rank := 0            # leaderboard place earned by the finished run (0: none)
+var run_bonus := 0       # gold for clearing the dungeon
+var gold_lost := 0       # gold a fall cost
 var with_ui := true      # the menus and the fade layer (tests turn it off)
 var rng := RandomNumberGenerator.new()
 
@@ -35,10 +45,11 @@ var _text_timer := 0.0
 
 
 func _ready() -> void:
+	var start := Vector2i.ZERO  # floor, room to begin in (a resumed run starts where it was saved)
 	if layout.is_empty():
-		rng.randomize()
-		layout = DungeonGen.generate(rng)
-	Game.run_kills = 0
+		start = _make_layout()
+	else:
+		Game.run_kills = 0
 	Game.boss = null
 	Game.loot_dropped.connect(_on_loot_dropped)
 	var player := _player()
@@ -52,6 +63,9 @@ func _ready() -> void:
 			Game.open_creation = false
 			creation.toggle.call_deferred()
 		parent.add_child.call_deferred(RewardCards.new())
+		parent.add_child.call_deferred(DungeonSelect.new())
+		parent.add_child.call_deferred(LeaderboardScreen.new())
+		parent.add_child.call_deferred(PauseMenu.new())
 		parent.add_child.call_deferred(ClassCards.new())
 		parent.add_child.call_deferred(ForgeScreen.new())
 		_end_screen = RunEndScreen.new()
@@ -64,7 +78,22 @@ func _ready() -> void:
 		_fade.set_anchors_preset(Control.PRESET_FULL_RECT)
 		fade_layer.add_child(_fade)
 		add_child(fade_layer)
-	_load_room(0, 0)
+	_load_room(start.x, start.y)
+
+
+## Builds the layout for the current Game.mode. Returns the (floor, room) to start in.
+func _make_layout() -> Vector2i:
+	if Game.mode == "camp" or Game.run.is_empty():
+		layout = [[DungeonGen.camp_room()]]
+		Game.run_kills = 0
+		return Vector2i.ZERO
+	var spec: Dictionary = Game.TIERS[int(Game.run["tier"])]
+	tier = int(Game.run["tier"])
+	rng.seed = int(Game.run["seed"])
+	layout = DungeonGen.generate(rng, int(spec["floors"]), tier, int(spec["depth"]))
+	run_time = float(Game.run.get("time", 0.0))
+	Game.run_kills = int(Game.run.get("kills", 0))
+	return Vector2i(clampi(int(Game.run.get("floor", 0)), 0, layout.size() - 1), maxi(int(Game.run.get("room", 0)), 0))
 
 
 func _player() -> Node2D:
@@ -124,7 +153,7 @@ func _load_room(floor_number: int, room_number: int) -> void:
 	wave = 0
 	_boss_spawned = false
 	Game.boss = null
-	Game.danger = floor_number * 3 + room_number
+	Game.danger = (int(room.get("depth", floor_number + 1)) - 1) * 3 + room_number
 	_build_room()
 
 	var player := _player()
@@ -138,7 +167,9 @@ func _load_room(floor_number: int, room_number: int) -> void:
 			camera.reset_smoothing()
 
 	match String(room["kind"]):
-		"combat", "boss":
+		"camp":
+			_build_camp()
+		"combat", "boss", "miniboss":
 			state = "fighting"
 			_wave_timer = WAVE_DELAY
 		"treasure":
@@ -152,9 +183,46 @@ func _load_room(floor_number: int, room_number: int) -> void:
 			_room_node.add_child(forge)
 			_heal_player()
 			_clear_room("A place to rest: the forge (G). Half your health, all your stamina and mana.")
-	if String(room["kind"]) in ["combat", "boss"]:
-		Game.say("%s\n%s" % [DungeonGen.describe(room), "Defeat the boss!" if room["kind"] == "boss" else "Clear the room to open the door"])
+	if String(room["kind"]) in ["combat", "boss", "miniboss"]:
+		var goal := "Clear the room to open the door"
+		if room["kind"] == "boss":
+			goal = "Defeat the boss!"
+		elif room["kind"] == "miniboss":
+			goal = "A guardian blocks the way. Defeat it to open the door"
+		Game.say("%s\n%s" % [DungeonGen.describe(room), goal])
 	_update_run_text()
+	_autosave()
+
+
+## The camp: heal up, stand the forge, the notice board and the gate in the room.
+func _build_camp() -> void:
+	var middle := _centre()
+	var forge := ForgeStation.new()
+	forge.position = middle + Vector2(-56, 0)
+	_room_node.add_child(forge)
+	var board := CampBoard.new()
+	board.position = middle + Vector2(56, 0)
+	_room_node.add_child(board)
+	var gate := CampGate.new()
+	gate.position = middle + Vector2(0, -float(room["rows"]) * TILE * 0.5 + TILE * 1.5)
+	_room_node.add_child(gate)
+	_heal_player(1.0)
+	state = "camp"
+	Game.say("The camp. The gate (north) leads to the dungeons.\nYour progress is saved here.")
+
+
+## Saves the run (not in camp, tests or the sandbox): where we are and how much health is left.
+func _autosave() -> void:
+	if not with_ui or Game.slot < 0 or Game.mode != "dungeon":
+		return
+	var player := _player()
+	Game.run["floor"] = floor_index
+	Game.run["room"] = room_index
+	Game.run["kills"] = Game.run_kills
+	Game.run["time"] = run_time
+	if player and "hp" in player:
+		Game.run["hp"] = clampf(float(player.hp) / maxf(float(player.max_hp), 1.0), 0.05, 1.0)
+	Game.save_game()
 
 
 func _centre() -> Vector2:
@@ -215,7 +283,7 @@ func _add_tile(texture: Texture2D, tile: Vector2i, solid: bool) -> void:
 # ---------- fighting ----------
 
 func _physics_process(delta: float) -> void:
-	if state in ["fighting", "clear"]:
+	if state in ["fighting", "clear"] and room.get("kind", "") != "camp":
 		run_time += delta
 	match state:
 		"fighting":
@@ -233,6 +301,9 @@ func enemies_alive() -> int:
 
 
 func _tick_fight(delta: float) -> void:
+	if room["kind"] == "miniboss":
+		_tick_miniboss(delta)
+		return
 	if _wave_timer > 0.0:
 		_wave_timer -= delta
 		if _wave_timer <= 0.0:
@@ -252,13 +323,24 @@ func _tick_fight(delta: float) -> void:
 		_clear_room("Room cleared! The door is open.")
 
 
+## A mini boss room: the guardian appears, and when it falls the door opens.
+func _tick_miniboss(delta: float) -> void:
+	if _wave_timer > 0.0:
+		_wave_timer -= delta
+		if _wave_timer <= 0.0:
+			_spawn_boss()
+		return
+	if _boss_spawned and enemies_alive() == 0:
+		_clear_room("The guardian falls! The door is open.")
+
+
 func _spawn_wave() -> void:
 	var entries: Array = room["waves"][wave]
 	wave += 1
-	var floor_scale := Monsters.floor_scale(int(room["floor"]))
+	var floor_scale := _monster_scale()
 	for entry in entries:
 		var pos := _spawn_point()
-		var enemy := Monsters.spawn(_room_node, String(entry["id"]), pos, String(entry["variant"]), floor_scale, int(room["floor"]))
+		var enemy := Monsters.spawn(_room_node, String(entry["id"]), pos, String(entry["variant"]), floor_scale, _depth())
 		SkillFx.ring(_room_node, pos, 12.0, Elements.color_of(String(entry["variant"])) if entry["variant"] != "" else Color("c8c8d0"), 0.5, 1.0)
 		enemy.name = "%s%d" % [String(entry["id"]).capitalize(), enemy.get_instance_id()]
 	if room["waves"].size() > 1:
@@ -268,10 +350,20 @@ func _spawn_wave() -> void:
 func _spawn_boss() -> void:
 	_boss_spawned = true
 	var pos := _centre() + Vector2(0, -float(room["rows"]) * TILE * 0.25)
-	var boss := Monsters.spawn(_room_node, String(room["boss"]), pos, "", Monsters.floor_scale(int(room["floor"])), int(room["floor"]))
+	var boss := Monsters.spawn(_room_node, String(room["boss"]), pos, "", _monster_scale(), _depth())
 	Game.boss = boss
 	SkillFx.ring(_room_node, pos, 30.0, Color("ff6a4a"), 0.8, 2.0)
 	Game.say("%s awakens!" % boss.display_name)
+
+
+## How deep this room is overall (the second dungeon starts where the first ends).
+func _depth() -> int:
+	return int(room.get("depth", room.get("floor", 1)))
+
+
+## Monster (health, damage) multipliers: depth, times the chosen difficulty.
+func _monster_scale() -> Vector2:
+	return Monsters.floor_scale(_depth()) * Game.hardness_mult()
 
 
 ## A free spot in the room, away from the player and from pillars.
@@ -296,10 +388,10 @@ func _clear_room(message: String) -> void:
 	Game.say(message)
 
 
-func _heal_player() -> void:
+func _heal_player(share: float = FORGE_HEAL) -> void:
 	var player := _player()
 	if player and "hp" in player:
-		player.hp = minf(player.max_hp, player.hp + player.max_hp * FORGE_HEAL)  # half your health, not all of it
+		player.hp = minf(player.max_hp, player.hp + player.max_hp * share)  # a forge: half your health, not all of it
 		player.stamina = player.max_stamina
 		if player.caster:
 			player.caster.mana = player.caster.max_mana
@@ -358,6 +450,8 @@ func _win() -> void:
 		return
 	state = "won"
 	_vacuum_loot()
+	if with_ui and Game.slot >= 0 and Game.mode == "dungeon":
+		_finish_run(true)
 	Game.say("The dungeon is cleared!")
 	get_tree().create_timer(2.0).timeout.connect(_end.bind(true))  # tied to this node, so freeing it cancels the screen
 
@@ -367,7 +461,37 @@ func _on_player_died() -> void:
 		return
 	state = "dead"
 	death = Game.character.die()
+	if with_ui and Game.slot >= 0 and Game.mode == "dungeon":
+		_finish_run(false)
 	_end(false)
+
+
+## Books the finished run: the hero's record (dungeons cleared, runs), the leaderboard, gold lost on
+## a fall, and the save (a hero who died for good loses their save).
+func _finish_run(won: bool) -> void:
+	var meta: Dictionary = Game.meta
+	var inventory := Game.character.inventory
+	meta["runs"] = int(meta.get("runs", 0)) + 1
+	if won:
+		meta["tier_cleared"] = maxi(int(meta.get("tier_cleared", 0)), tier)
+		var bonus := roundi(150.0 * tier * Game.reward_mult())
+		inventory.gold += bonus
+		run_bonus = bonus
+	else:
+		var lost := floori(inventory.gold * Game.DEATH_GOLD_LOSS)
+		inventory.gold -= lost
+		gold_lost = lost
+	rank = Leaderboard.record({
+		"name": Game.character.display_name, "class": String(Classes.CLASSES[Game.character.class_id]["name"]),
+		"level": Game.character.level, "floors": _depth(), "kills": Game.run_kills, "gold": inventory.gold,
+		"cleared": won, "tier": tier, "time": run_time, "reward_mult": Game.reward_mult(),
+		"difficulty": String(meta.get("difficulty", "knight")),
+		"outcome": "cleared" if won else ("died" if bool(death.get("final", false)) else "fell")})
+	Game.run = {}
+	if not won and bool(death.get("final", false)):
+		SaveStore.delete_slot(Game.slot)  # permadeath: the hero is gone
+	else:
+		Game.save_game()
 
 
 func _end(won: bool) -> void:
@@ -381,6 +505,12 @@ func summary_lines(won: bool) -> Array:
 	var seconds := int(run_time) % 60
 	var lines: Array = []
 	lines.append(("Cleared all %d floors" % layout.size()) if won else ("Fell on floor %d, room %d" % [floor_index + 1, room_index + 1]))
+	if won and run_bonus > 0:
+		lines.append("Clear bonus: %d gold" % run_bonus)
+	if not won and gold_lost > 0:
+		lines.append("The fall cost %d gold" % gold_lost)
+	if rank > 0:
+		lines.append("Leaderboard: rank %d" % rank)
 	lines.append("Monsters slain: %d" % Game.run_kills)
 	lines.append("Time: %d:%02d" % [minutes, seconds])
 	lines.append("Level %d    Gold %d" % [Game.character.level, Game.character.inventory.gold])
@@ -395,11 +525,14 @@ func summary_lines(won: bool) -> Array:
 
 
 func _update_run_text() -> void:
+	if room.get("kind", "") == "camp":
+		Game.run_text = "Camp"
+		return
 	var text := "Floor %d/%d  Room %d/%d" % [floor_index + 1, layout.size(), room_index + 1, layout[floor_index].size()]
 	if room.get("kind", "") == "combat" and state == "fighting":
 		text += "  Wave %d/%d" % [maxi(wave, 1), room["waves"].size()]
 	if state == "fighting":
 		text += "  Enemies %d" % enemies_alive()
-	elif state == "clear" and room.get("kind", "") in ["combat", "boss"]:
+	elif state == "clear" and room.get("kind", "") in ["combat", "boss", "miniboss"]:
 		text += "  Door open"
 	Game.run_text = text

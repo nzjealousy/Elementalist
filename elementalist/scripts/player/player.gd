@@ -399,7 +399,7 @@ func _process(_delta: float) -> void:
 
 
 func _physics_process(delta: float) -> void:
-	aim_direction = (get_global_mouse_position() - global_position).normalized()
+	aim_direction = (Controls.aim_point(self, global_position) - global_position).normalized()
 	sprite.flip_h = aim_direction.x < 0.0
 
 	_dodge_cd = maxf(0.0, _dodge_cd - delta)

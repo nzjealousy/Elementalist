@@ -10,8 +10,10 @@ var _stopping := false
 
 
 func shake(strength: float, duration: float) -> void:
-	if not enabled:
+	var scale := float(Settings.get_value("screen_shake"))
+	if not enabled or scale <= 0.0:
 		return
+	strength *= scale
 	_strength = maxf(_strength * (_time / _total), strength)
 	_total = maxf(duration, 0.01)
 	_time = _total

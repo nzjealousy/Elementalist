@@ -32,6 +32,11 @@ func _exit_tree() -> void:
 
 
 func _unhandled_input(event: InputEvent) -> void:
+	if event.is_action_pressed("new_character") and Game.slot >= 0 and not Game.creation_required:
+		return  # a saved hero cannot be rerolled; N is for the sandbox and tests
+	if _open and event.is_action_pressed("pause") and Game.creation_required:
+		get_viewport().set_input_as_handled()  # a new hero must be made before anything else
+		return
 	if event.is_action_pressed("new_character") or (_open and event.is_action_pressed("pause")):
 		toggle()
 		get_viewport().set_input_as_handled()
@@ -124,6 +129,8 @@ func _refresh_description() -> void:
 
 func _begin() -> void:
 	Game.start_new(_class_id, _birth)
+	Game.creation_required = false
+	Game.save_game()  # (does nothing without a save slot)
 	_open = false
 	get_tree().paused = false
 	get_tree().reload_current_scene()

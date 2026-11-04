@@ -1,7 +1,7 @@
 class_name RunEndScreen
 extends CanvasLayer
 ## Shown when a dungeon run ends: a victory after the boss, or a defeat. Pauses the game; Enter
-## (or the button) starts a new dungeon with the same character.
+## (or the button) returns to camp, or to the main menu if the hero died for good.
 
 var _open := false
 var _final := false  # the character is gone for good: the button starts a new character instead
@@ -53,7 +53,7 @@ func show_result(won: bool, lines: Array, final: bool = false) -> void:
 		row.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		column.add_child(row)
 	var button := Button.new()
-	button.text = "New character (Enter)" if final else "New dungeon (Enter)"
+	button.text = "Main menu (Enter)" if final else ("Return to camp (Enter)" if Game.slot >= 0 else "New dungeon (Enter)")
 	button.focus_mode = Control.FOCUS_NONE
 	button.pressed.connect(restart)
 	column.add_child(button)
@@ -69,9 +69,11 @@ func restart() -> void:
 	_open = false
 	get_tree().paused = false
 	if _final:
-		Game.start_new(Classes.NEUTRAL_CLASS)  # a stand-in until the creation menu (opened next) replaces it
-		Game.open_creation = true
-	get_tree().reload_current_scene()
+		Game.go_to_menu()          # the hero is gone (the save is already deleted); start another from the menu
+	elif Game.slot >= 0:
+		Game.return_to_camp()      # saves, then rebuilds the scene as the camp
+	else:
+		get_tree().reload_current_scene()  # sandbox and tests: a fresh dungeon
 
 
 func _label(text: String, color: Color, size: int) -> Label:

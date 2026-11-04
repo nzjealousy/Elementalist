@@ -102,6 +102,23 @@ static func boss_drops(rng: RandomNumberGenerator, ilvl: int, bonus: float = 0.0
 	return out
 
 
+## A mini boss: a purse, scrap, a rare, often an uncommon, and now and then an elemental essence.
+static func mini_boss_drops(rng: RandomNumberGenerator, ilvl: int, bonus: float = 0.0, allow_spell: bool = true) -> Array[Dictionary]:
+	var out: Array[Dictionary] = []
+	out.append({"kind": "gold", "amount": rng.randi_range(30, 50) + ilvl * 3})
+	out.append({"kind": "material", "id": "scrap", "amount": rng.randi_range(4, 7)})
+	var first := roll_item(rng, ilvl, bonus + 0.4, "", "rare", allow_spell)
+	if not first.is_empty():
+		out.append({"kind": "item", "item": first})
+	if rng.randf() < 0.5:
+		var second := roll_item(rng, ilvl, bonus + 0.3, "", "uncommon", allow_spell)
+		if not second.is_empty():
+			out.append({"kind": "item", "item": second})
+	if rng.randf() < 0.35:
+		out.append({"kind": "material", "id": Items.essence_of(Items.ENCHANTS.keys()[rng.randi_range(0, Items.ENCHANTS.size() - 1)]), "amount": 2})
+	return out
+
+
 ## A chest: gold, scrap and two pieces of gear, the first at least uncommon.
 static func chest_drops(rng: RandomNumberGenerator, ilvl: int, bonus: float = 0.0, allow_spell: bool = true) -> Array[Dictionary]:
 	var out: Array[Dictionary] = []

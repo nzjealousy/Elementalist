@@ -322,7 +322,7 @@ func area_radius(id: String) -> float:
 ## Where an area skill lands: under the mouse, clamped to the skill's cast range.
 func area_target(id: String) -> Vector2:
 	var origin := body.global_position
-	return origin + (body.get_global_mouse_position() - origin).limit_length(float(SkillDB.DEFS[id]["range"]))
+	return origin + (Controls.aim_point(body, origin) - origin).limit_length(float(SkillDB.DEFS[id]["range"]))
 
 
 ## Damage multiplier from the caster's "might" buff (1.0 without one).
@@ -369,7 +369,7 @@ func _spawn(id: String, def: Dictionary) -> void:
 	var character := Game.character
 	var stats: Dictionary = character.derived()
 	var origin := body.global_position
-	var mouse := body.get_global_mouse_position()
+	var mouse := Controls.aim_point(body, origin)
 	var dir := (mouse - origin).normalized()
 	var parent := body.get_parent()
 
@@ -402,7 +402,7 @@ func _spawn_fusion(skill_ids: Array[String]) -> void:
 	var character := Game.character
 	var stats: Dictionary = character.derived()
 	var origin := body.global_position
-	var dir := (body.get_global_mouse_position() - origin).normalized()
+	var dir := (Controls.aim_point(body, origin) - origin).normalized()
 	var hits: Array = []
 	var speed := INF
 	var reach := INF

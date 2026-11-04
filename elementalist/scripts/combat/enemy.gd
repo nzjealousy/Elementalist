@@ -13,6 +13,7 @@ signal died(enemy: Enemy)
 const AURA_TIME := 4.0
 const VULN_MULT := 1.25
 const SHATTER_MULT := 1.5  # physical hit on a rooted or stunned enemy
+const ENRAGE_AT := 0.3   # a boss below this share of its health enrages
 const CONTACT_MARGIN := 1.0  # px; bodies this close count as touching
 
 @export var max_hp := 40.0
@@ -30,6 +31,8 @@ var display_name := "Slime"
 var behavior := "chase"
 var variant := ""            # elemental variant: "" or a main element (see Monsters)
 var boss := false
+var mini := false     # a mini boss: a boss-style fight at the end of every third floor
+var enraged := false
 var knock_resist := 0.0      # share of knockback ignored
 var attack_range := 0.0      # ranged: shoots from this far
 var keep_distance := 0.0     # ranged: tries to stay about this far away
@@ -79,6 +82,7 @@ func configure(id: String, variant_element: String = "", hp_scale: float = 1.0, 
 	attack_type = String(def.get("attack", "melee"))
 	level = monster_level
 	boss = def.get("boss", false)
+	mini = def.get("mini", false)
 	knock_resist = float(def.get("knock_resist", 0.0))
 	attack_range = float(def.get("attack_range", 0.0))
 	keep_distance = float(def.get("keep_distance", 0.0))
@@ -358,6 +362,7 @@ func _desired_velocity(target: Node2D) -> Vector2:
 func _attack(delta: float, target: Node2D) -> void:
 	if boss:
 		_boss_summons()
+		_check_enrage()
 	if target == null or is_stunned() or is_rooted():
 		_dash_state = ""
 		if target == null or is_stunned():
@@ -367,13 +372,14 @@ func _attack(delta: float, target: Node2D) -> void:
 	if _attack_cd > 0.0:
 		return
 	var distance := target.global_position.distance_to(global_position)
-	if not shot.is_empty() and attack_type in ["ranged", "both"] and distance <= attack_range:
-		_attack_cd = float(shot["cooldown"])
+	var slam_ready := behavior == "boss" and not slam.is_empty() and _telegraph == null and distance <= float(slam["radius"]) * 1.7
+	if slam_ready:  # up close a boss slams; farther away it shoots (when it has a shot)
+		_attack_cd = float(slam["cooldown"]) * _enrage_cooldown()
+		_telegraph = Telegraph.start(get_parent(), global_position, float(slam["radius"]), float(slam["telegraph"]), _land_slam)
+	elif not shot.is_empty() and attack_type in ["ranged", "both"] and distance <= attack_range:
+		_attack_cd = float(shot["cooldown"]) * _enrage_cooldown()
 		EnemyProjectile.spawn(get_parent(), global_position, target.global_position - global_position,
 			float(shot["speed"]), damage_out(float(shot["damage"])), variant)
-	elif behavior == "boss" and _telegraph == null and distance <= float(slam["radius"]) * 1.7:
-		_attack_cd = float(slam["cooldown"])
-		_telegraph = Telegraph.start(get_parent(), global_position, float(slam["radius"]), float(slam["telegraph"]), _land_slam)
 
 
 ## Imp / duelist dash: warn, then lunge at where you are.
@@ -412,6 +418,19 @@ func _land_slam() -> void:
 	var target := get_tree().get_first_node_in_group("player") as Node2D
 	if target and target.global_position.distance_to(circle_centre) <= float(slam["radius"]) and target.has_method("take_damage"):
 		target.take_damage(damage_out(float(slam["damage"])), circle_centre)
+
+
+## Below ENRAGE_AT of its health a boss (not a mini boss) moves faster and attacks more often.
+func _check_enrage() -> void:
+	if not enraged and not mini and hp / max_hp <= ENRAGE_AT:
+		enraged = true
+		speed *= 1.25
+		FloatText.spawn(get_parent(), global_position + Vector2(0, -16), "Enraged!", Color("ff5a4a"), 11)
+		Juice.shake(3.0, 0.4)
+
+
+func _enrage_cooldown() -> float:
+	return 0.65 if enraged else 1.0
 
 
 ## At each health fraction in summon.stages the boss calls minions around itself (once each).

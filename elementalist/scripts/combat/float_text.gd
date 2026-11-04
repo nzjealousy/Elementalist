@@ -4,6 +4,8 @@ extends Label
 
 
 static func spawn(parent: Node, pos: Vector2, text: String, color: Color, font_size: int = 8) -> void:
+	if not Settings.get_value("damage_numbers") and font_size <= 8:
+		return  # big banners (combo names, "Dodge!") still show; plain numbers do not
 	var label := FloatText.new()
 	label.text = text
 	label.add_theme_font_size_override("font_size", font_size)

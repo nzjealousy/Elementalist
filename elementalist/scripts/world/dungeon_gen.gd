@@ -26,19 +26,35 @@ const OPPOSITE := {"north": "south", "east": "west", "south": "north", "west": "
 const SIDES := ["north", "east", "south", "west"]
 
 
-## All floors: an Array (one per floor) of Arrays of rooms.
-static func generate(rng: RandomNumberGenerator, floors: int = FLOORS) -> Array:
+## Every MINI_BOSS_EVERY-th floor (that is not the last) ends in a mini boss instead of a third room.
+const MINI_BOSS_EVERY := 3
+
+
+## All floors: an Array (one per floor) of Arrays of rooms. `tier` is the dungeon (it picks the final
+## boss) and `depth_offset` how many floors lie above its first one in the whole game: monsters and
+## loot follow the depth (offset + floor), so the second dungeon starts where the first ends.
+static func generate(rng: RandomNumberGenerator, floors: int = FLOORS, tier: int = 1, depth_offset: int = 0) -> Array:
 	var out: Array = []
 	for floor_number in range(1, floors + 1):
-		out.append(_make_floor(rng, floor_number, floor_number == floors))
+		out.append(_make_floor(rng, floor_number, floor_number == floors, tier, depth_offset))
 	return out
 
 
-static func _make_floor(rng: RandomNumberGenerator, floor_number: int, last: bool) -> Array:
+## The camp: one safe room with the forge and the gate to the dungeons (no monsters, no door).
+static func camp_room() -> Dictionary:
+	var room := {"floor": 0, "index": 0, "kind": "camp", "entry": "", "exit": "", "door_entry": 0, "door_exit": 0,
+		"obstacles": [Rect2i(5, 3, 1, 1), Rect2i(18, 3, 1, 1), Rect2i(5, 9, 1, 1), Rect2i(18, 9, 1, 1)],
+		"waves": [], "boss": "", "cols": 24, "rows": 13, "depth": 0}
+	return room
+
+
+static func _make_floor(rng: RandomNumberGenerator, floor_number: int, last: bool, tier: int = 1, depth_offset: int = 0) -> Array:
 	var special := "treasure" if rng.randf() < 0.5 else "forge"
 	var kinds: Array[String]
 	if last:
 		kinds = ["combat", special, "boss"]
+	elif floor_number % MINI_BOSS_EVERY == 0:
+		kinds = ["combat", special, "miniboss"]
 	elif rng.randf() < 0.5:
 		kinds = ["combat", special, "combat"]
 	else:
@@ -46,15 +62,16 @@ static func _make_floor(rng: RandomNumberGenerator, floor_number: int, last: boo
 	var rooms: Array = []
 	var entry := ""
 	for i in kinds.size():
-		var room := _make_room(rng, floor_number, i, kinds[i], entry)
+		var room := _make_room(rng, floor_number, i, kinds[i], entry, tier, depth_offset)
 		rooms.append(room)
 		entry = OPPOSITE[room["exit"]] if room["exit"] != "" else ""
 	return rooms
 
 
-static func _make_room(rng: RandomNumberGenerator, floor_number: int, index: int, kind: String, entry: String) -> Dictionary:
+static func _make_room(rng: RandomNumberGenerator, floor_number: int, index: int, kind: String, entry: String, tier: int = 1, depth_offset: int = 0) -> Dictionary:
+	var depth := depth_offset + floor_number
 	var room := {"floor": floor_number, "index": index, "kind": kind, "entry": entry, "exit": "",
-		"door_entry": 0, "door_exit": 0, "obstacles": [], "waves": [], "boss": ""}
+		"door_entry": 0, "door_exit": 0, "obstacles": [], "waves": [], "boss": "", "depth": depth}
 	match kind:
 		"combat":
 			room["cols"] = rng.randi_range(20, 28)
@@ -62,10 +79,13 @@ static func _make_room(rng: RandomNumberGenerator, floor_number: int, index: int
 		"boss":
 			room["cols"] = 26
 			room["rows"] = 16
+		"miniboss":
+			room["cols"] = 22
+			room["rows"] = 14
 		_:
 			room["cols"] = rng.randi_range(14, 18)
 			room["rows"] = rng.randi_range(10, 12)
-	if kind != "boss":
+	if kind != "boss":  # (a mini boss room has a door: it opens when the guardian falls)
 		var exits: Array = SIDES.filter(func(s): return s != entry)
 		room["exit"] = exits[rng.randi_range(0, exits.size() - 1)]
 		room["door_exit"] = _door_position(rng, room, String(room["exit"]))
@@ -74,13 +94,18 @@ static func _make_room(rng: RandomNumberGenerator, floor_number: int, index: int
 
 	match kind:
 		"combat":
-			room["obstacles"] = _place_obstacles(rng, room, rng.randi_range(0, 1 + floor_number))
+			room["obstacles"] = _place_obstacles(rng, room, rng.randi_range(0, 1 + mini(floor_number, 4)))
 			var wave_count := rng.randi_range(1, 2) if floor_number < 3 else 2
-			var size_range := Vector2i(2 + floor_number, 3 + floor_number + (1 if floor_number > 1 else 0))
+			var size_range := Vector2i(2 + mini(floor_number, 5), 3 + mini(floor_number, 5) + (1 if floor_number > 1 else 0))
 			for w in wave_count:
-				room["waves"].append(Monsters.roll_wave(rng, floor_number, rng.randi_range(size_range.x, size_range.y)))
+				room["waves"].append(Monsters.roll_wave(rng, depth, rng.randi_range(size_range.x, size_range.y)))
+		"miniboss":
+			var minis := Monsters.mini_bosses()
+			room["boss"] = minis[rng.randi_range(0, minis.size() - 1)]
+			room["obstacles"] = _place_obstacles(rng, room, 3)
 		"boss":
-			room["boss"] = Monsters.bosses()[rng.randi_range(0, Monsters.bosses().size() - 1)]
+			var finals := Monsters.bosses(tier)
+			room["boss"] = finals[rng.randi_range(0, finals.size() - 1)]
 			room["obstacles"] = _place_obstacles(rng, room, 4)
 	return room
 

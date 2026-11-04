@@ -76,6 +76,7 @@ func _ready() -> void:
 	await _test_class_mastery_and_cards()
 	await _test_enemy_abilities()
 	_test_traits_and_gear_rework()
+	await _test_phase5()
 	_test_items()
 	_test_inventory_and_gear_stats()
 	_test_forge()
@@ -2416,7 +2417,7 @@ func _test_monsters() -> void:
 		if d.get("boss", false):
 			defs_ok = defs_ok and d["behavior"] == "boss" and d.has("slam") and d.has("summon") and Monsters.DEFS.has(d["summon"]["id"]) and not Monsters.is_boss(d["summon"]["id"])
 	_check("every monster has a sprite, valid stats and the parts its behaviour needs", defs_ok)
-	_check("there are nine regular monsters and two bosses", Monsters.regular().size() == 9 and Monsters.bosses().size() == 2)
+	_check("there are nine regular monsters, three mini bosses and four bosses", Monsters.regular().size() == 9 and Monsters.mini_bosses().size() == 3 and Monsters.bosses().size() == 4)
 	_check("wave weights only name regular monsters", Monsters.WEIGHTS.values().all(func(w): return w.keys().all(func(id): return Monsters.DEFS.has(id) and not Monsters.is_boss(id))))
 	_check("every element is weak to exactly one other", Elements.MAIN.all(func(e): return Monsters.WEAK_TO.has(e) and Monsters.WEAK_TO[e] != e and Monsters.WEAK_TO[e] in Elements.MAIN))
 	var plain_slime: Enemy = SLIME.instantiate()
@@ -3188,7 +3189,7 @@ func _test_death() -> void:
 	await get_tree().process_frame
 	var screen_text := " ".join(screen.find_children("*", "Label", true, false).map(func(l): return l.text))
 	var buttons := screen.find_children("*", "Button", true, false)
-	_check("the end screen says you died and offers a new character", screen_text.contains("You died") and buttons.size() == 1 and buttons[0].text.begins_with("New character"))
+	_check("the end screen says you died and leads back to the menu", screen_text.contains("You died") and buttons.size() == 1 and buttons[0].text.begins_with("Main menu"))
 	screen._open = false
 	get_tree().paused = false
 	screen.free()
@@ -3501,3 +3502,342 @@ func _test_traits_and_gear_rework() -> void:
 	var loaded := CharacterData.from_dict(old_save)
 	_check("a save from before the rework still loads", loaded.deaths == 0 and loaded.attributes["dexterity"] == 4 and loaded.class_mastery["sage"]["level"] == 1)
 	_neutral_character()
+
+
+# ---------- Phase 5: settings, controls, saves, leaderboard, flow, tiers, menus ----------
+
+func _test_phase5() -> void:
+	await _p5_settings_and_controls()
+	_p5_saves()
+	_p5_leaderboard()
+	_p5_flow_and_dungeons()
+	await _p5_bosses()
+	await _p5_menus()
+	await _p5_camp_and_runs()
+	_neutral_character()
+
+
+func _p5_settings_and_controls() -> void:
+	var real_path: String = Settings.path
+	Settings.path = "user://test_settings.cfg"
+	Settings.reset_to_defaults()
+	_check("settings start at their defaults", is_equal_approx(float(Settings.get_value("music_volume")), float(Settings.DEFAULTS["music_volume"])))
+	Settings.set_value("music_volume", 2.5)
+	_check("a volume above 1 is clamped", is_equal_approx(float(Settings.get_value("music_volume")), 1.0))
+	Settings.set_value("hud_scale", 0.1)
+	_check("the HUD size stays in its range", is_equal_approx(float(Settings.get_value("hud_scale")), 0.75))
+	Settings.set_value("nonexistent_setting", 1)
+	_check("unknown settings are ignored", not Settings.values.has("nonexistent_setting"))
+	Settings.set_value("sfx_volume", 0.35)
+	Settings.values["sfx_volume"] = 0.0
+	Settings.load_settings()
+	_check("settings survive a save and load", is_equal_approx(float(Settings.get_value("sfx_volume")), 0.35))
+	var file := FileAccess.open(Settings.path, FileAccess.WRITE)
+	file.store_string("this is [not a config")
+	file.close()
+	Settings.load_settings()
+	_check("a damaged settings file falls back to the defaults", is_equal_approx(float(Settings.get_value("sfx_volume")), float(Settings.DEFAULTS["sfx_volume"])))
+	_check("the audio buses exist", AudioServer.get_bus_index("Music") != -1 and AudioServer.get_bus_index("SFX") != -1 and AudioServer.get_bus_index("UI") != -1)
+	Settings.set_value("master_volume", 0.0)
+	_check("a zero slider mutes the bus", AudioServer.is_bus_mute(AudioServer.get_bus_index("Master")))
+	Settings.reset_to_defaults()
+	Juice.enabled = true
+	Settings.set_value("screen_shake", 0.0)
+	Juice.shake(5.0, 0.5)
+	_check("screen shake off means no camera offset", Juice.offset() == Vector2.ZERO)
+	Juice.enabled = false
+	Settings.reset_to_defaults()
+	DirAccess.remove_absolute(Settings.path)
+	Settings.path = real_path
+	Settings.load_settings()
+
+	# controls
+	Controls.reset_bindings()
+	var dodge_pad := Controls.event_for("dodge", "pad")
+	_check("dodge is on the A button by default", dodge_pad is InputEventJoypadButton and dodge_pad.button_index == JOY_BUTTON_A)
+	var fire_pad := Controls.event_for("skill_primary", "pad")
+	_check("the right trigger fuses", fire_pad is InputEventJoypadMotion and fire_pad.axis == JOY_AXIS_TRIGGER_RIGHT)
+	_check("every listed action has a keyboard or gamepad binding", Controls.ACTIONS.all(func(row): return InputMap.has_action(row[0]) and not InputMap.action_get_events(row[0]).is_empty()))
+	_check("the left stick moves", Controls.event_for("move_left", "pad") is InputEventJoypadMotion)
+	var jay := InputEventKey.new()
+	jay.keycode = KEY_J
+	Controls.rebind("dodge", jay)
+	_check("rebinding sets the key", Controls.event_for("dodge", "desk").keycode == KEY_J)
+	_check("the gamepad binding is kept when the key changes", Controls.event_for("dodge", "pad") != null)
+	var jay_again := InputEventKey.new()
+	jay_again.keycode = KEY_J
+	var stolen: String = Controls.rebind("imbue", jay_again)
+	_check("one key does one thing: it leaves the old action", stolen == "dodge" and Controls.event_for("dodge", "desk") == null)
+	var config := ConfigFile.new()
+	Controls.write_bindings(config)
+	Controls.reset_bindings()
+	_check("reset restores the shipped keys", Controls.event_for("dodge", "desk").keycode == KEY_SPACE and Controls.event_for("imbue", "desk").keycode != KEY_J)
+	Controls.read_bindings(config)
+	_check("saved bindings load back", Controls.event_for("imbue", "desk").keycode == KEY_J)
+	var junk := ConfigFile.new()
+	junk.set_value("bindings", "dodge", [{"t": "key", "c": 0}, "garbage", {"t": "wat"}])
+	Controls.reset_bindings()
+	Controls.read_bindings(junk)
+	_check("an unusable binding never leaves an action unbound", Controls.event_for("dodge", "desk") != null)
+	_check("binding names read well", Controls.label_of(dodge_pad) == "Pad A" and Controls.label_of(fire_pad) == "Pad RT" and Controls.label_of(null) == "-")
+	Controls.reset_bindings()
+
+	# aiming with a stick
+	var holder := Node2D.new()
+	add_child(holder)
+	Controls.using_pad = true
+	Input.action_press("aim_right", 1.0)
+	_check("the right stick gives the aim direction", Controls.stick_aim().distance_to(Vector2.RIGHT) < 0.01)
+	var aim: Vector2 = Controls.aim_point(holder, Vector2(100, 100))
+	_check("the pad aim point is a fixed reach in front", aim.distance_to(Vector2(100, 100) + Vector2.RIGHT * Controls.AIM_REACH) < 0.01)
+	var target := Monsters.spawn(holder, "slime", Vector2(160, 115))
+	await get_tree().process_frame
+	var assisted: Vector2 = Controls.aim_point(holder, Vector2(100, 100)) - Vector2(100, 100)
+	_check("aim assist pulls toward a nearby enemy", assisted.y > 0.5 and assisted.x > 0.0)
+	var real_assist: float = float(Settings.get_value("aim_assist"))
+	Settings.set_value("aim_assist", 0.0, false)
+	_check("aim assist can be turned off", (Controls.aim_point(holder, Vector2(100, 100)) - Vector2(100, 100)).y == 0.0)
+	Settings.set_value("aim_assist", real_assist, false)
+	Input.action_release("aim_right")
+	Controls.using_pad = false
+	holder.queue_free()
+
+
+func _p5_saves() -> void:
+	var real_dir: String = SaveStore.dir
+	SaveStore.dir = "user://test_saves"
+	for slot in SaveStore.SLOTS:
+		SaveStore.delete_slot(slot)
+	var hero := CharacterData.create_sandbox("vanguard", ["fire", "water"], 4)
+	var err := SaveStore.save_slot(0, hero.to_dict(), SaveStore.new_meta("warlord"), {"tier": 1, "seed": 7, "floor": 2, "room": 1})
+	_check("a slot saves", err == OK and SaveStore.exists(0) and not SaveStore.exists(1))
+	var loaded := SaveStore.load_slot(0)
+	var back := CharacterData.from_dict(loaded["character"])
+	_check("the hero round-trips through a save", back.level == hero.level and back.elements == hero.elements and back.class_id == hero.class_id and back.attributes == hero.attributes)
+	_check("the meta and the run round-trip", loaded["meta"]["difficulty"] == "warlord" and int(loaded["run"]["floor"]) == 2 and int(loaded["run"]["seed"]) == 7)
+	var info := SaveStore.summary(0)
+	_check("the slot summary names the hero and the place", String(info["where"]).contains("floor 3") and info["level"] == 4 and info["difficulty"] == "warlord")
+	_check("an empty slot has no summary", SaveStore.summary(2).is_empty())
+	SaveStore.save_slot(0, hero.to_dict(), SaveStore.new_meta("knight"))
+	_check("saving again keeps the last good save as a backup", FileAccess.file_exists(SaveStore.slot_path(0) + ".bak"))
+	var file := FileAccess.open(SaveStore.slot_path(0), FileAccess.WRITE)
+	file.store_string("{broken")
+	file.close()
+	var recovered := SaveStore.load_slot(0)
+	_check("a corrupt save falls back to the backup", not recovered.is_empty() and recovered["meta"]["difficulty"] == "warlord")
+	_check("a save from a newer build is refused", SaveStore.migrate({"version": 99, "character": hero.to_dict()}).is_empty())
+	_check("a save with no character is refused", SaveStore.migrate({"version": 1}).is_empty())
+	_check("a JSON float version still migrates", not SaveStore.migrate({"version": 1.0, "character": hero.to_dict()}).is_empty())
+	var bare := SaveStore.migrate({"version": 1, "character": hero.to_dict()})
+	_check("missing meta and run get defaults", bare["meta"]["tier_cleared"] == 0 and bare["run"].is_empty())
+	_check("bad slot numbers are rejected", SaveStore.save_slot(9, {}, {}) != OK and SaveStore.load_slot(-1).is_empty())
+	var text := FileAccess.get_file_as_string(SaveStore.slot_path(0) + ".bak")
+	_check("a save is plain JSON data", JSON.parse_string(text) is Dictionary and not text.contains("Object("))
+	SaveStore.delete_slot(0)
+	_check("deleting empties the slot", not SaveStore.exists(0))
+	SaveStore.dir = real_dir
+
+
+func _p5_leaderboard() -> void:
+	var real_path: String = Leaderboard.path
+	Leaderboard.path = "user://test_leaderboard.json"
+	Leaderboard.clear()
+	var base := Leaderboard.score_for({"floors": 2, "kills": 5, "level": 3, "gold": 100})
+	_check("the score counts depth, kills, level and gold", base == 2 * 100 + 5 * 10 + 3 * 50 + 10)
+	var cleared := Leaderboard.score_for({"floors": 2, "kills": 5, "level": 3, "gold": 100, "cleared": true, "tier": 1, "time": 300.0})
+	_check("clearing a dungeon adds its bonus and a speed bonus", cleared == base + 1000 + 450)
+	_check("a richer oath multiplies the score", Leaderboard.score_for({"floors": 1, "reward_mult": 1.6}) == 240)
+	_check("an empty board lists nothing", Leaderboard.entries().is_empty())
+	for i in 30:
+		Leaderboard.record({"score": i * 10, "name": "T%d" % i})
+	var list := Leaderboard.entries()
+	_check("the board keeps the best 25", list.size() == Leaderboard.MAX_ENTRIES)
+	_check("the board is sorted best first", int(list[0]["score"]) == 290 and int(list[-1]["score"]) == 50)
+	_check("a run too weak for the board earns no rank", Leaderboard.record({"score": 5}) == 0)
+	_check("the best run so far takes rank 1", Leaderboard.record({"score": 1000}) == 1)
+	var file := FileAccess.open(Leaderboard.path, FileAccess.WRITE)
+	file.store_string("nonsense")
+	file.close()
+	_check("a damaged board reads as empty", Leaderboard.entries().is_empty())
+	Leaderboard.clear()
+	Leaderboard.path = real_path
+
+
+func _p5_flow_and_dungeons() -> void:
+	var diffs: Dictionary = Game.DIFFICULTIES
+	_check("harder oaths mean tougher monsters and richer spoils", diffs["squire"]["hardness"] < diffs["knight"]["hardness"] and diffs["knight"]["hardness"] < diffs["warlord"]["hardness"] and diffs["squire"]["reward"] < diffs["knight"]["reward"] and diffs["knight"]["reward"] < diffs["warlord"]["reward"])
+	var real_meta: Dictionary = Game.meta
+	Game.meta = SaveStore.new_meta("warlord")
+	_check("the oath sets the reward and hardness multipliers", is_equal_approx(Game.reward_mult(), 1.6) and is_equal_approx(Game.hardness_mult(), 1.3))
+	_check("a richer oath improves drop luck", Game.loot_bonus() > 0.5)
+	_check("only the first dungeon is open at the start", Game.tier_unlocked(1) and not Game.tier_unlocked(2))
+	Game.meta["tier_cleared"] = 1
+	_check("clearing a dungeon opens the next", Game.tier_unlocked(2))
+	_check("the dungeons are five then ten floors", Game.TIERS[1]["floors"] == 5 and Game.TIERS[2]["floors"] == 10 and Game.TIERS[2]["depth"] == 5)
+	Game.meta = real_meta
+
+	var camp := DungeonGen.camp_room()
+	_check("the camp is one safe room without a door or monsters", camp["kind"] == "camp" and camp["exit"] == "" and camp["waves"].is_empty() and camp["boss"] == "")
+	var five := DungeonGen.generate(_rng(5), 5, 1, 0)
+	_check("a five-floor dungeon has five floors", five.size() == 5)
+	_check("floor 3 ends in a mini boss with a door out", five[2][-1]["kind"] == "miniboss" and Monsters.is_mini(five[2][-1]["boss"]) and five[2][-1]["exit"] != "")
+	_check("the last floor ends in a final boss of the dungeon", five[4][-1]["kind"] == "boss" and five[4][-1]["boss"] in Monsters.bosses(1))
+	_check("other floors have no mini boss", [0, 1, 3].all(func(f): return five[f].all(func(r): return r["kind"] in ["combat", "treasure", "forge"])))
+	_check("the same seed makes the same tiered dungeon", DungeonGen.generate(_rng(5), 5, 1, 0) == five)
+	var ten := DungeonGen.generate(_rng(6), 10, 2, 5)
+	_check("a ten-floor dungeon has mini bosses on floors 3, 6 and 9", [3, 6, 9].all(func(f): return ten[f - 1][-1]["kind"] == "miniboss") and ten[9][-1]["kind"] == "boss" and ten[9][-1]["boss"] in Monsters.bosses(2))
+	_check("the second dungeon starts at depth 6 and ends at 15", ten[0][0]["depth"] == 6 and ten[9][-1]["depth"] == 15 and five[0][0]["depth"] == 1)
+	var waves_ok := true
+	for room in ten[8]:
+		for wave in room["waves"]:
+			waves_ok = waves_ok and wave.all(func(e): return Monsters.DEFS.has(e["id"]) and not Monsters.is_boss(e["id"]))
+	_check("deep waves hold only regular monsters", waves_ok)
+	_check("deep monsters toughen more", Monsters.floor_scale(15).x > Monsters.floor_scale(5).x)
+
+
+func _p5_bosses() -> void:
+	_check("three mini bosses and four final bosses", Monsters.mini_bosses().size() == 3 and Monsters.bosses().size() == 4 and Monsters.bosses(1).size() == 2 and Monsters.bosses(2).size() == 2)
+	var defs_ok := true
+	for id in Monsters.mini_bosses() + Monsters.bosses():
+		var d: Dictionary = Monsters.DEFS[id]
+		defs_ok = defs_ok and d["behavior"] == "boss" and d.has("slam") and d.has("summon") and Monsters.DEFS.has(d["summon"]["id"]) and not Monsters.is_boss(d["summon"]["id"]) and AssetDB.get_texture(String(d["sprite"])) != null
+	_check("every boss has a slam, valid minions and a sprite", defs_ok)
+	_check("a mini boss is smaller than any final boss", Monsters.mini_bosses().all(func(m): return Monsters.bosses().all(func(b): return Monsters.DEFS[m]["hp"] < Monsters.DEFS[b]["hp"])))
+	var holder := Node2D.new()
+	add_child(holder)
+	var lich := Monsters.spawn(holder, "crypt_lich", Vector2(50, 50))
+	var warden := Monsters.spawn(holder, "grave_warden", Vector2(90, 50))
+	await get_tree().process_frame
+	_check("a boss has not enraged at full health", not lich.enraged)
+	lich.hp = lich.max_hp * 0.2
+	warden.hp = warden.max_hp * 0.2
+	var speed_before: float = lich.speed
+	lich._check_enrage()
+	warden._check_enrage()
+	_check("a boss enrages when badly hurt: faster and quicker to attack", lich.enraged and lich.speed > speed_before and is_equal_approx(lich._enrage_cooldown(), 0.65))
+	_check("a mini boss never enrages", not warden.enraged and warden.mini and warden.boss)
+	_check("a boss that can shoot also keeps a slam", lich.shot.size() > 0 and lich.slam.size() > 0)
+	holder.queue_free()
+	var rng := _rng(3)
+	var drops := Loot.mini_boss_drops(rng, 6, 0.0)
+	_check("a mini boss drops gold, scrap and a rare", drops.any(func(d): return d["kind"] == "gold") and drops.any(func(d): return d["kind"] == "item" and d["item"]["rarity"] == "rare"))
+	var never_gem := true
+	for i in 40:
+		for d in Loot.mini_boss_drops(rng, 6, 0.0):
+			never_gem = never_gem and not (d["kind"] == "material" and String(d["id"]).begins_with("gem"))
+	_check("a mini boss never drops an elemental gem", never_gem)
+
+
+func _p5_menus() -> void:
+	var real_slot: int = Game.slot
+	var real_meta: Dictionary = Game.meta
+	var real_dir: String = SaveStore.dir
+	var real_board: String = Leaderboard.path
+	SaveStore.dir = "user://test_saves"
+	Leaderboard.path = "user://test_leaderboard.json"
+	Leaderboard.clear()
+	Game.meta = SaveStore.new_meta()
+
+	var settings := SettingsMenu.new()
+	add_child(settings)
+	await get_tree().process_frame
+	settings.open(0)
+	await get_tree().process_frame
+	_check("the audio tab has four sliders", settings.find_children("*", "HSlider", true, false).size() == 4)
+	settings.open(1)
+	await get_tree().process_frame
+	_check("the game tab has toggles and sliders", settings.find_children("*", "CheckButton", true, false).size() == 3 and settings.find_children("*", "HSlider", true, false).size() == 4)
+	settings.open(2)
+	await get_tree().process_frame
+	_check("the controls tab lists every action with a key and a pad button", settings.find_children("*", "Button", true, false).size() >= Controls.ACTIONS.size() * 2)
+	settings._begin_capture("dodge", "desk", settings.find_children("*", "Button", true, false)[5])
+	var key_press := InputEventKey.new()
+	key_press.keycode = KEY_K
+	key_press.pressed = true
+	settings._try_capture(key_press)
+	_check("capturing a key rebinds the action", Controls.event_for("dodge", "desk").keycode == KEY_K)
+	Controls.reset_bindings()
+	settings.close()
+	_check("closing the settings hides them", not settings.is_open())
+	settings.queue_free()
+
+	var board := LeaderboardScreen.new()
+	add_child(board)
+	await get_tree().process_frame
+	board.open()
+	await get_tree().process_frame
+	_check("an empty hall says so, and opening pauses the game", get_tree().paused and " ".join(board.find_children("*", "Label", true, false).map(func(l): return l.text)).contains("No runs yet"))
+	board.close()
+	Leaderboard.record({"score": 123, "name": "Ada", "class": "Sage", "level": 5, "floors": 4, "outcome": "cleared"})
+	board.open()
+	await get_tree().process_frame
+	_check("the hall lists a recorded run", " ".join(board.find_children("*", "Label", true, false).map(func(l): return l.text)).contains("Ada (Sage)"))
+	board.close()
+	_check("closing the hall resumes the game", not get_tree().paused)
+	board.queue_free()
+
+	var gate := DungeonSelect.new()
+	add_child(gate)
+	await get_tree().process_frame
+	gate.open()
+	await get_tree().process_frame
+	var enter_buttons := gate.find_children("*", "Button", true, false).filter(func(b): return b.text in ["Enter", "Locked"])
+	_check("the gate offers both dungeons, the second locked at first", enter_buttons.size() == 2 and not enter_buttons[0].disabled and enter_buttons[1].disabled)
+	gate.close()
+	Game.meta["tier_cleared"] = 1
+	gate.open()
+	await get_tree().process_frame
+	enter_buttons = gate.find_children("*", "Button", true, false).filter(func(b): return b.text in ["Enter", "Locked"])
+	_check("clearing the first opens the second", enter_buttons.size() == 2 and not enter_buttons[1].disabled)
+	gate.close()
+	gate.queue_free()
+
+	var pause := PauseMenu.new()
+	add_child(pause)
+	await get_tree().process_frame
+	pause.open()
+	await get_tree().process_frame
+	var pause_texts := pause.find_children("*", "Button", true, false).map(func(b): return b.text)
+	_check("the pause menu offers resume, settings and the ways out", "Resume" in pause_texts and "Settings" in pause_texts and "Save and quit to menu" in pause_texts and get_tree().paused)
+	_check("retreating is offered only inside a dungeon", not ("Retreat to camp" in pause_texts))
+	pause.resume()
+	_check("resuming unpauses", not get_tree().paused)
+	pause.queue_free()
+
+	var menu := MainMenu.new()
+	add_child(menu)
+	await get_tree().process_frame
+	var menu_texts := menu.find_children("*", "Button", true, false).map(func(b): return b.text)
+	_check("the title screen lists the five choices", menu_texts == ["Continue", "New game", "Hall of heroes", "Settings", "Quit"])
+	_check("Continue is disabled with no saves", menu.find_children("*", "Button", true, false)[0].disabled)
+	menu.show_slots("new")
+	await get_tree().process_frame
+	_check("the slot list shows three slots", menu.find_children("*", "Button", true, false).filter(func(b): return b.text.begins_with("Slot")).size() == 3)
+	menu.show_difficulty()
+	await get_tree().process_frame
+	_check("the oath screen has all three oaths", menu.find_children("*", "Button", true, false).filter(func(b): return b.text == "Swear").size() == 3)
+	menu.queue_free()
+
+	SaveStore.dir = real_dir
+	Leaderboard.clear()
+	Leaderboard.path = real_board
+	Game.meta = real_meta
+	Game.slot = real_slot
+	get_tree().paused = false
+
+
+## Camp and run flow inside a Dungeon node (no UI).
+func _p5_camp_and_runs() -> void:
+	Game.character = _bare(CharacterData.create_sandbox("vanguard", ["fire"], 3))
+	var world := Node2D.new()
+	add_child(world)
+	var player = PLAYER.instantiate()
+	world.add_child(player)
+	var dungeon := Dungeon.new()
+	dungeon.with_ui = false
+	dungeon.layout = [[DungeonGen.camp_room()]]
+	world.add_child(dungeon)
+	await get_tree().process_frame
+	_check("the camp has the forge, the board and the gate", get_tree().get_nodes_in_group("interactables").size() >= 3 and dungeon.state == "camp")
+	_check("the camp shows no run text but its name", Game.run_text == "Camp")
+	world.queue_free()

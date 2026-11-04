@@ -37,6 +37,12 @@ const PLACEHOLDERS := {
 	"chest": [Color("a8742c"), Color("3b2610"), Vector2i(14, 12)],
 	"chest_open": [Color("6b4a1c"), Color("3b2610"), Vector2i(14, 12)],
 	"forge": [Color("5b5f6e"), Color("e86a2b"), Vector2i(18, 14)],
+	"board": [Color("8a6a3a"), Color("2f2010"), Vector2i(18, 16)],
+	"mini_warden": [Color("9ab0a0"), Color("2a3a30"), Vector2i(18, 22)],
+	"mini_matron": [Color("e0663a"), Color("501a10"), Vector2i(16, 22)],
+	"mini_hulk": [Color("6a8a4a"), Color("27381a"), Vector2i(22, 22)],
+	"boss_lich": [Color("8a7ae0"), Color("2a2060"), Vector2i(26, 32)],
+	"boss_titan": [Color("4a8ac0"), Color("143050"), Vector2i(34, 34)],
 }
 
 var _cache: Dictionary = {}

@@ -34,7 +34,7 @@ func _draw() -> void:
 		for i in 8:
 			draw_circle(target + Vector2.from_angle(TAU * i / 8.0) * radius, 0.8, Color(color, 0.4))
 
-	var mouse := get_global_mouse_position()
+	var mouse := Controls.aim_point(self, player.global_position)
 	var tick := Color(1, 1, 1, 0.95)
 	draw_line(mouse + Vector2(-4, 0), mouse + Vector2(-2, 0), tick, 1.0)
 	draw_line(mouse + Vector2(2, 0), mouse + Vector2(4, 0), tick, 1.0)

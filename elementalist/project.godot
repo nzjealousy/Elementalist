@@ -11,7 +11,7 @@ config_version=5
 [application]
 
 config/name="Elementalist"
-run/main_scene="res://scenes/main.tscn"
+run/main_scene="res://scenes/menu/main_menu.tscn"
 config/features=PackedStringArray("4.7", "Forward Plus")
 config/icon="res://icon.svg"
 
@@ -23,6 +23,9 @@ Elements="*res://scripts/core/elements.gd"
 SkillDB="*res://scripts/core/skill_db.gd"
 Juice="*res://scripts/core/juice.gd"
 Game="*res://scripts/core/game.gd"
+Controls="*res://scripts/core/controls.gd"
+Settings="*res://scripts/core/settings.gd"
+Sfx="*res://scripts/core/sfx.gd"
 
 [display]
 
