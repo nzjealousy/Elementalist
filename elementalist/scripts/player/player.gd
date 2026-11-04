@@ -86,6 +86,9 @@ func _ready() -> void:
 	var marker := AimMarker.new()
 	marker.player = self
 	add_child(marker)
+	var ring := MeleeRing.new()
+	ring.player = self
+	add_child(ring)
 
 
 ## Pulls max HP / stamina / speed / regen from the character's attributes and passives.
@@ -185,6 +188,11 @@ func take_damage(amount: float, from: Vector2) -> bool:
 		else:
 			died.emit()
 	return true
+
+
+## Restores health (a draining bolt, a pickup); never past the maximum.
+func heal(amount: float) -> void:
+	hp = minf(max_hp, hp + maxf(amount, 0.0))
 
 
 ## Slow passive recovery, paused for a few seconds after taking damage.

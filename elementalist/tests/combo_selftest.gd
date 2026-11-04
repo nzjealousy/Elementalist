@@ -78,6 +78,7 @@ func _ready() -> void:
 	_test_traits_and_gear_rework()
 	await _test_phase5()
 	await _test_light_dark()
+	await _test_phase6a()
 	_test_items()
 	_test_inventory_and_gear_stats()
 	_test_forge()
@@ -499,7 +500,7 @@ func _test_attribute_scaling() -> void:
 	_check("martial skills have no element potency", is_equal_approx(c.potency_mult(""), 1.0))
 	_check("area radius scales with its attribute", is_equal_approx(c.skill_scale("flame_burst", "radius"), 1.3))
 	_check("skills that do not scale a property are unchanged", is_equal_approx(c.skill_scale("fireball", "radius"), 1.0))
-	_check("Agility shortens thorn shot cooldown", is_equal_approx(c.skill_cooldown("thorn_shot"), 0.45 * 0.8))
+	_check("Agility shortens thorn shot cooldown", is_equal_approx(c.skill_cooldown("thorn_shot"), 0.5 * 0.8))
 	_check("projectile speed scales with Agility", is_equal_approx(c.skill_scale("water_jet", "speed"), 1.3))
 	var data_ok := true
 	for id in SkillDB.DEFS:
@@ -2247,7 +2248,7 @@ func _test_support_skills() -> void:
 	var buffs := SkillDB.LOADOUTS.values().filter(func(l): return SkillDB.DEFS[l["support"]]["kind"] == "buff")
 	var debuffs := SkillDB.LOADOUTS.values().filter(func(l): return SkillDB.DEFS[l["support"]]["kind"] == "aoe")
 	_check("there are five buffs and three debuffs", buffs.size() == 5 and debuffs.size() == 3)
-	_check("effect text says what a buff or debuff does", SkillDB.effect_text(SkillDB.DEFS["blazing_might"]) == "+25% damage for 8s" and SkillDB.effect_text(SkillDB.DEFS["tidal_mending"]).contains("8 HP/s") and SkillDB.effect_text(SkillDB.DEFS["intimidate"]).contains("Weakens") and SkillDB.effect_text(SkillDB.DEFS["fireball"]) == "")
+	_check("effect text says what a buff or debuff does", SkillDB.effect_text(SkillDB.DEFS["blazing_might"]) == "+25% damage for 8s" and SkillDB.effect_text(SkillDB.DEFS["tidal_mending"]).contains("8 HP/s") and SkillDB.effect_text(SkillDB.DEFS["intimidate"]).contains("Weakens") and SkillDB.effect_text(SkillDB.DEFS["fireball"]) == "bursts on impact")
 	var six := CharacterData.create_sandbox("channeler", ["fire"], Classes.SUPPORT_LEVEL - 1)
 	var seven := CharacterData.create_sandbox("channeler", ["fire"], Classes.SUPPORT_LEVEL)
 	_check("the support skill is learned at level 7, for everyone", not six.can_use_skill("blazing_might") and seven.can_use_skill("blazing_might") and Classes.SUPPORT_LEVEL == 7)
@@ -2421,6 +2422,8 @@ func _test_monsters() -> void:
 	var defs_ok := true
 	for id in Monsters.DEFS:
 		var d: Dictionary = Monsters.DEFS[id]
+		if d.get("training", false):
+			continue  # the training dummy is built to stand still
 		defs_ok = defs_ok and AssetDB.PLACEHOLDERS.has(d["sprite"]) and d["behavior"] in ["chase", "flutter", "ranged", "boss"] and float(d["hp"]) > 0.0 and float(d["speed"]) > 0.0 and int(d["xp"]) > 0
 		if d["behavior"] == "ranged":
 			defs_ok = defs_ok and d.has("shot") and d.has("attack_range") and d.has("keep_distance") and float(d["keep_distance"]) < float(d["attack_range"])
@@ -3316,6 +3319,8 @@ func _test_enemy_abilities() -> void:
 	var attack_ok := true
 	for id in Monsters.DEFS:
 		var d: Dictionary = Monsters.DEFS[id]
+		if d.get("training", false):
+			continue
 		attack_ok = attack_ok and d["attack"] in ["melee", "ranged", "both"]
 		match d["attack"]:
 			"melee": attack_ok = attack_ok and not d.has("shot")
@@ -3757,7 +3762,7 @@ func _p5_menus() -> void:
 	_check("the audio tab has four sliders", settings.find_children("*", "HSlider", true, false).size() == 4)
 	settings.open(1)
 	await get_tree().process_frame
-	_check("the game tab has toggles and sliders", settings.find_children("*", "CheckButton", true, false).size() == 3 and settings.find_children("*", "HSlider", true, false).size() == 4)
+	_check("the game tab has toggles and sliders", settings.find_children("*", "CheckButton", true, false).size() == 4 and settings.find_children("*", "HSlider", true, false).size() == 4)
 	settings.open(2)
 	await get_tree().process_frame
 	_check("the controls tab lists every action with a key and a pad button", settings.find_children("*", "Button", true, false).size() >= Controls.ACTIONS.size() * 2)
@@ -4051,3 +4056,174 @@ func _p5_finish_run() -> void:
 	Game.slot = real_slot
 	Game.meta = real_meta
 	Game.run = real_run
+
+
+# ---------- Phase 6a: names, melee ring, element identity, training grounds ----------
+
+func _p6_still(pos: Vector2) -> Enemy:
+	var e := _dummy(pos)
+	e.speed = 0.0
+	return e
+
+
+func _test_phase6a() -> void:
+	# names
+	_check("a typed name is trimmed and squeezed", Game.clean_name("  Aldric   the  Bold ") == "Aldric the Bold")
+	_check("control characters are dropped from a name", Game.clean_name("Al\tdric\n") == "Aldric")
+	_check("a name is at most 16 letters", Game.clean_name("ABCDEFGHIJKLMNOPQRSTUVWXYZ").length() == Game.NAME_MAX)
+	_check("an empty name becomes Hero", Game.clean_name("   ") == "Hero" and Game.clean_name("") == "Hero")
+	var kept := Game.character
+	Game.start_new("wanderer", CharacterData.ELEMENTALIST, "Mira")
+	_check("a new hero carries the typed name", Game.character.display_name == "Mira")
+	Game.character = kept
+	var menu := NewCharacterMenu.new()
+	add_child(menu)
+	await get_tree().process_frame
+	menu.toggle()
+	await get_tree().process_frame
+	var fields := menu.find_children("*", "LineEdit", true, false)
+	_check("the creation menu has a name field holding a suggestion", fields.size() == 1 and (fields[0] as LineEdit).text != "")
+	menu.toggle()
+	menu.queue_free()
+
+	# elements differ from one another
+	var speeds := {}
+	var radii := {}
+	var manas: Array = []
+	for element in Elements.MAIN:
+		var s := AltarScreen.stats_of(element)
+		speeds[s["speed"]] = true
+		radii[s["radius"]] = true
+		manas.append(s["mana"])
+	_check("every main element's bolt has its own speed", speeds.size() == 5)
+	_check("every main element's area has its own radius", radii.size() == 5)
+	_check("mana costs spread widely: the dearest bolt costs three times the cheapest", manas.max() >= manas.min() * 3.0)
+	_check("air is the fastest bolt and mineral the slowest", AltarScreen.stats_of("air")["speed"] == speeds.keys().max() and AltarScreen.stats_of("mineral")["speed"] == speeds.keys().min())
+	_check("each element has a signature trait", SkillDB.DEFS["gust"]["pierce"] == 2 and SkillDB.DEFS["fireball"]["splash"] > 0.0
+		and SkillDB.DEFS["thorn_shot"]["spread_count"] == 3 and SkillDB.DEFS["shadow_bolt"]["homing"] > 0.0
+		and SkillDB.DEFS["shadow_bolt"]["lifesteal"] > 0.0 and SkillDB.DEFS["light_lance"]["pierce"] == 1)
+	_check("trait text names them", SkillDB.trait_text(SkillDB.DEFS["gust"]) == "pierces 2" and SkillDB.effect_text(SkillDB.DEFS["shadow_bolt"]).contains("drains 25%"))
+	var roles_ok := true
+	for set_id in SkillDB.LOADOUTS:
+		roles_ok = roles_ok and SkillDB.ROLES.has(set_id)
+	_check("every set has a one-line role", roles_ok)
+
+	# bolts behave by trait
+	var player = await _player_with(_bare(CharacterData.create_sandbox("wanderer", ["earth", "dark"], 1)))
+	var e1 := _p6_still(Vector2(3030, 3000))
+	var e2 := _p6_still(Vector2(3050, 3000))
+	var e3 := _p6_still(Vector2(3070, 3000))
+	await get_tree().physics_frame
+	var pierce := Projectile.new()
+	pierce.setup(Vector2(330, 0), {"damage": 10.0, "element": "air", "knockback": 0.0}, 1.0, [], {"pierce": 1})
+	add_child(pierce)
+	pierce.global_position = Vector2(3000, 3000)
+	for i in 30:
+		await get_tree().physics_frame
+	_check("a piercing bolt passes its first target and stops at the next", e1.hp < e1.max_hp and e2.hp < e2.max_hp and is_equal_approx(e3.hp, e3.max_hp))
+
+	var s1 := _p6_still(Vector2(3100, 3200))
+	var s2 := _p6_still(Vector2(3100, 3215))
+	var far := _p6_still(Vector2(3100, 3300))
+	await get_tree().physics_frame
+	var burst := Projectile.new()
+	burst.setup(Vector2(200, 0), {"damage": 20.0, "element": "fire", "knockback": 0.0}, 1.0, [], {"splash": 22.0})
+	add_child(burst)
+	burst.global_position = Vector2(3050, 3200)
+	for i in 40:
+		await get_tree().physics_frame
+	var dealt: float = s1.max_hp - s1.hp
+	var shared: float = s2.max_hp - s2.hp
+	_check("a bursting bolt hurts its target fully and its neighbour for 60%", absf(dealt - 20.0) < 0.5 and absf(shared - 12.0) < 0.5 and is_equal_approx(far.hp, far.max_hp))
+
+	var d1 := _p6_still(Vector2(3300, 3000))
+	await get_tree().physics_frame
+	player.hp = 50.0
+	var drain := Projectile.new()
+	drain.setup(Vector2(200, 0), {"damage": 20.0, "element": "dark", "knockback": 0.0}, 1.0, [], {"lifesteal": 0.5})
+	add_child(drain)
+	drain.global_position = Vector2(3270, 3000)
+	for i in 30:
+		await get_tree().physics_frame
+	_check("a draining bolt heals the caster for half the damage", absf(player.hp - 60.0) < 0.5)
+
+	player.caster.mana = player.caster.max_mana
+	player.caster.cooldowns.clear()
+	var before := find_children("*", "Projectile", false, false).size()
+	player.caster.try_cast("thorn_shot")
+	_check("thorn shot fans three bolts", find_children("*", "Projectile", false, false).size() - before == 3)
+
+	# the melee ring
+	_check("the hero wears a melee range ring", player.get_children().any(func(c): return c is MeleeRing))
+	_check("the ring is on by default", Settings.DEFAULTS["melee_indicator"] == true)
+
+	# the training grounds
+	var dummy := Monsters.spawn(self, "dummy", Vector2(40, 0), "", Vector2.ONE, 1)
+	player.global_position = Vector2.ZERO
+	player.hp = player.max_hp
+	for i in 40:
+		await get_tree().physics_frame
+	_check("a training dummy never moves or hurts", player.hp == player.max_hp and dummy.global_position.distance_to(Vector2(40, 0)) < 1.0)
+	_check("dummies are not part of any wave", not Monsters.regular().has("dummy") and Monsters.DEFS["dummy"].get("training", false))
+
+	var altar := AltarScreen.new()
+	add_child(altar)
+	await get_tree().process_frame
+	altar.open()
+	await get_tree().process_frame
+	_check("the altar lists all seven elements and two actions", altar.find_children("*", "Button", true, false).size() == 9)
+	var described := true
+	for element in Elements.MAIN + Elements.RARE:
+		described = described and AltarScreen.describe(element).contains(String(SkillDB.ROLES[element]))
+	_check("the altar describes each element's role and skills", described)
+	altar.close()
+	altar.queue_free()
+
+	var guide := TutorialGuide.new()
+	add_child(guide)
+	await get_tree().process_frame
+	_check("the checklist starts with nothing ticked", guide.done_count() == 0)
+	Input.action_press("dodge")
+	await get_tree().process_frame
+	await get_tree().process_frame
+	Input.action_release("dodge")
+	_check("doing a thing ticks its step", guide.is_done("dodge"))
+	_check("each step shows the bound key", TutorialGuide.keys_for("dodge") != "")
+	guide.queue_free()
+
+	Game.mode = "training"
+	var world := Node2D.new()
+	add_child(world)
+	var hero = PLAYER.instantiate()
+	world.add_child(hero)
+	var grounds := Dungeon.new()
+	grounds.with_ui = false
+	world.add_child(grounds)
+	await get_tree().process_frame
+	await get_tree().physics_frame
+	var posts := get_tree().get_nodes_in_group("interactables").filter(func(n): return n is TrainingSign and n.leaving)
+	var altars := get_tree().get_nodes_in_group("interactables").filter(func(n): return n is ElementAltar)
+	_check("the grounds hold the altar, a sign back and three dummies", grounds.state == "training" and Game.run_text == "Training grounds"
+		and get_tree().get_nodes_in_group("dummies").size() == 3 and not altars.is_empty() and not posts.is_empty())
+	get_tree().get_nodes_in_group("dummies")[0].queue_free()
+	await get_tree().process_frame
+	grounds._keep_dummies()
+	_check("a destroyed dummy is replaced", get_tree().get_nodes_in_group("dummies").filter(func(n): return not n.is_queued_for_deletion()).size() == 3)
+	Game.slot = 0
+	var saved_result: Error = Game.save_game()
+	Game.slot = -1
+	_check("the grounds never save", saved_result == ERR_UNAVAILABLE)
+	world.queue_free()
+	Game.mode = "camp"
+
+	var real := Game.character
+	Game.stashed_hero = real
+	Game.character = CharacterData.create_sandbox("channeler", ["fire"], 1)
+	Game.mode = "training"
+	Game._restore_hero()
+	_check("leaving the grounds puts the real hero back", Game.character == real and Game.stashed_hero == null and Game.mode == "camp")
+
+	for node in [e1, e2, e3, s1, s2, far, d1, dummy, player]:
+		if is_instance_valid(node):
+			node.queue_free()
+	Game.character = kept

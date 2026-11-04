@@ -481,11 +481,47 @@ def pickups():
     save('pickup_item', [finish(item)])
 
 
+def altar():
+    cv = Canvas(22, 18)
+    stone = hexc('9aa0c8')
+    shaded_rect(cv, 1, 12, 20, 6, shade(stone, 0.8))
+    shaded_rect(cv, 3, 7, 16, 6, stone)
+    shaded_rect(cv, 5, 4, 12, 4, shade(stone, 1.1))
+    for i, c in enumerate(['ff6a2b', '3fa7ff', '5fbf4a', 'd9f2ff', 'b5a58a']):  # the five elements on its face
+        rect(cv, 5 + i * 2 + (i // 5), 9, 2, 2, hexc(c))
+    shaded_ellipse(cv, 11, 3, 2.4, 2.4, hexc('fff3a8'))  # a glowing orb on top
+    return finish(cv)
+
+
+def training_sign():
+    cv = Canvas(14, 18)
+    wood = hexc('a8742c')
+    rect(cv, 6, 6, 2, 12, shade(wood, 0.7))
+    shaded_rect(cv, 0, 1, 12, 5, wood)
+    poly(cv, [(12, 1), (14, 3), (12, 5)], shade(wood, 1.1))
+    for x in (2, 4, 6, 8):
+        rect(cv, x, 3, 1, 1, hexc('3b2610'))
+    return finish(cv)
+
+
+def dummy():
+    cv = Canvas(12, 18)
+    rect(cv, 5, 8, 2, 10, hexc('6a4a20'))
+    shaded_rect(cv, 1, 8, 10, 3, hexc('c8a870'))  # arms
+    shaded_ellipse(cv, 6, 5, 4.0, 4.5, hexc('d8b880'))
+    rect(cv, 3, 4, 6, 1, hexc('b03a3a'))  # a painted target band
+    rect(cv, 4, 15, 4, 3, hexc('5a4020'))
+    return finish(cv)
+
+
 def props():
     save('chest', [chest(False)])
     save('chest_open', [chest(True)])
     save('forge', [forge()])
     save('board', [board()])
+    save('altar', [altar()])
+    save('training_sign', [training_sign()])
+    save('enemy_dummy', [dummy()])
     for kind in ('locked', 'open', 'sealed'):
         save('door_' + kind, [door(kind)])
     pickups()

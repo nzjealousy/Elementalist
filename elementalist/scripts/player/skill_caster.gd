@@ -388,10 +388,14 @@ func _spawn(id: String, def: Dictionary) -> void:
 			body.add_buff(String(buff["kind"]), float(buff["time"]), float(buff["power"]), String(def["element"]))
 		"projectile":
 			var speed := float(def["speed"]) * character.skill_scale(id, "speed") * float(stats["projectile_speed_mult"])
-			var p := Projectile.new()
-			p.setup(dir * speed, hit, float(def["range"]) / speed)
-			parent.add_child(p)
-			p.global_position = origin + dir * 8.0
+			var count := int(def.get("spread_count", 1))
+			var spread := deg_to_rad(float(def.get("spread_deg", 0.0)))
+			for i in count:  # a spread fans its bolts evenly around the aim
+				var bolt_dir := dir.rotated((i - (count - 1) * 0.5) * spread)
+				var p := Projectile.new()
+				p.setup(bolt_dir * speed, hit.duplicate(), float(def["range"]) / speed, [], SkillDB.traits_of(def))
+				parent.add_child(p)
+				p.global_position = origin + bolt_dir * 8.0
 		"aoe":
 			var a := AoeEffect.new()
 			a.setup(hit, area_radius(id), def.get("duration", 0.0), def.get("tick", 0.5))

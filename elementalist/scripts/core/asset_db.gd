@@ -43,6 +43,9 @@ const PLACEHOLDERS := {
 	"mini_hulk": [Color("6a8a4a"), Color("27381a"), Vector2i(22, 22)],
 	"boss_lich": [Color("8a7ae0"), Color("2a2060"), Vector2i(26, 32)],
 	"boss_titan": [Color("4a8ac0"), Color("143050"), Vector2i(34, 34)],
+	"altar": [Color("9aa0c8"), Color("2a2c4a"), Vector2i(22, 18)],
+	"training_sign": [Color("a8742c"), Color("3b2610"), Vector2i(14, 18)],
+	"enemy_dummy": [Color("c8a870"), Color("5a4020"), Vector2i(12, 18)],
 }
 
 var _cache: Dictionary = {}

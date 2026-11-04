@@ -132,6 +132,7 @@ func _slider(text: String, key: String, low: float = 0.0, high: float = 1.0, sho
 func _build_game() -> void:
 	_check("Fullscreen", "fullscreen")
 	_check("Damage numbers", "damage_numbers")
+	_check("Melee range ring", "melee_indicator")
 	_check("Tips and hints", "show_tips")
 	_slider("Screen shake", "screen_shake")
 	_slider("HUD size", "hud_scale", 0.75, 1.5, false)

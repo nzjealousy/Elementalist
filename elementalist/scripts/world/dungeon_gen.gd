@@ -48,6 +48,13 @@ static func camp_room() -> Dictionary:
 	return room
 
 
+## The training grounds: one safe room with dummies, the element altar and a way back to camp.
+static func training_room() -> Dictionary:
+	return {"floor": 0, "index": 0, "kind": "training", "entry": "", "exit": "", "door_entry": 0, "door_exit": 0,
+		"obstacles": [Rect2i(8, 3, 1, 1), Rect2i(8, 11, 1, 1), Rect2i(20, 3, 1, 1), Rect2i(20, 11, 1, 1)],
+		"waves": [], "boss": "", "cols": 28, "rows": 15, "depth": 0}
+
+
 static func _make_floor(rng: RandomNumberGenerator, floor_number: int, last: bool, tier: int = 1, depth_offset: int = 0) -> Array:
 	var special := "treasure" if rng.randf() < 0.5 else "forge"
 	var kinds: Array[String]
@@ -179,4 +186,4 @@ static func _place_obstacles(rng: RandomNumberGenerator, room: Dictionary, count
 
 ## "Floor 2, room 3: combat" for banners.
 static func describe(room: Dictionary) -> String:
-	return "Floor %d - %s" % [room["floor"], {"combat": "Combat", "treasure": "Treasure room", "forge": "Forge and rest", "boss": "Boss", "miniboss": "Guardian", "camp": "Camp"}[room["kind"]]]
+	return "Floor %d - %s" % [room["floor"], {"combat": "Combat", "treasure": "Treasure room", "forge": "Forge and rest", "boss": "Boss", "miniboss": "Guardian", "camp": "Camp", "training": "Training grounds"}[room["kind"]]]

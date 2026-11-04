@@ -42,6 +42,7 @@ var _boss_spawned := false
 var _fade: ColorRect
 var _end_screen: RunEndScreen
 var _text_timer := 0.0
+var _dummy_timer := 0.0
 
 
 func _ready() -> void:
@@ -67,6 +68,7 @@ func _ready() -> void:
 			creation.toggle.call_deferred()
 		parent.add_child.call_deferred(RewardCards.new())
 		parent.add_child.call_deferred(DungeonSelect.new())
+		parent.add_child.call_deferred(AltarScreen.new())
 		parent.add_child.call_deferred(LeaderboardScreen.new())
 		parent.add_child.call_deferred(PauseMenu.new())
 		parent.add_child.call_deferred(ClassCards.new())
@@ -86,6 +88,10 @@ func _ready() -> void:
 
 ## Builds the layout for the current Game.mode. Returns the (floor, room) to start in.
 func _make_layout() -> Vector2i:
+	if Game.mode == "training":
+		layout = [[DungeonGen.training_room()]]
+		Game.run_kills = 0
+		return Vector2i.ZERO
 	if Game.mode == "camp" or Game.run.is_empty():
 		layout = [[DungeonGen.camp_room()]]
 		Game.run_kills = 0
@@ -172,6 +178,8 @@ func _load_room(floor_number: int, room_number: int) -> void:
 	match String(room["kind"]):
 		"camp":
 			_build_camp()
+		"training":
+			_build_training()
 		"combat", "boss", "miniboss":
 			state = "fighting"
 			_wave_timer = WAVE_DELAY
@@ -227,8 +235,40 @@ func _build_camp() -> void:
 	gate.position = middle + Vector2(0, -float(room["rows"]) * TILE * 0.5 + TILE * 1.5)
 	_room_node.add_child(gate)
 	_heal_player(1.0)
+	var post := TrainingSign.new()
+	post.position = middle + Vector2(-float(room["cols"]) * TILE * 0.5 + TILE * 3.0, float(room["rows"]) * TILE * 0.5 - TILE * 2.0)
+	_room_node.add_child(post)
 	state = "camp"
-	Game.say("The camp. The gate (north) leads to the dungeons.\nYour progress is saved here.")
+	Game.say("The camp. The gate (north) leads to the dungeons; the sign (south-west) to the training grounds.\nYour progress is saved here.")
+
+
+## The training grounds: dummies that never fight back, the altar of elements, a sign back to camp
+## and the controls checklist. The hero is a sandbox copy, so nothing here is saved or lost.
+func _build_training() -> void:
+	var middle := _centre()
+	var altar := ElementAltar.new()
+	altar.position = middle + Vector2(0, -float(room["rows"]) * TILE * 0.5 + TILE * 3.0)
+	_room_node.add_child(altar)
+	var post := TrainingSign.new()
+	post.leaving = true
+	post.position = middle + Vector2(-float(room["cols"]) * TILE * 0.5 + TILE * 3.0, float(room["rows"]) * TILE * 0.5 - TILE * 2.0)
+	_room_node.add_child(post)
+	_keep_dummies()
+	_heal_player(1.0)
+	state = "training"
+	if with_ui:
+		get_parent().add_child.call_deferred(TutorialGuide.new())
+	Game.say("The training grounds.\nTry every control on the dummies; the altar compares the elements.")
+
+
+## Three dummies stand in the grounds; a destroyed one comes back after a moment.
+func _keep_dummies() -> void:
+	var spots := [Vector2(0.72, 0.35), Vector2(0.78, 0.65), Vector2(0.58, 0.5)]
+	var alive := get_tree().get_nodes_in_group("dummies").filter(func(n): return is_instance_valid(n) and not n.is_queued_for_deletion()).size()
+	for i in range(alive, spots.size()):
+		var size := Vector2(int(room["cols"]), int(room["rows"])) * TILE
+		var dummy := Monsters.spawn(_room_node, "dummy", size * spots[i], "", Vector2.ONE, 1)
+		dummy.add_to_group("dummies")
 
 
 ## Saves the run (not in camp, tests or the sandbox): where we are and how much health is left.
@@ -251,7 +291,7 @@ func _centre() -> Vector2:
 
 ## The look of the place: the camp, the first dungeon (vault) or the second (crypt).
 func _theme() -> String:
-	if room.get("kind", "") == "camp":
+	if room.get("kind", "") in ["camp", "training"]:
 		return "camp"
 	return "crypt" if tier >= 2 else "vault"
 
@@ -340,6 +380,11 @@ func _physics_process(delta: float) -> void:
 	if state in ["fighting", "clear"] and room.get("kind", "") != "camp":
 		run_time += delta
 	match state:
+		"training":
+			_dummy_timer -= delta
+			if _dummy_timer <= 0.0:
+				_dummy_timer = 1.5
+				_keep_dummies()
 		"fighting":
 			_tick_fight(delta)
 		"clear":
@@ -516,6 +561,12 @@ func _win() -> void:
 func _on_player_died() -> void:
 	if state in ["won", "dead"]:
 		return
+	if Game.mode == "training":  # a sandbox hero cannot fall: stand them up again
+		var player := _player()
+		if player:
+			player.hp = player.max_hp
+			player.stamina = player.max_stamina
+		return
 	state = "dead"
 	death = Game.character.die()
 	if with_ui and Game.slot >= 0 and Game.mode == "dungeon":
@@ -584,6 +635,9 @@ func summary_lines(won: bool) -> Array:
 func _update_run_text() -> void:
 	if room.get("kind", "") == "camp":
 		Game.run_text = "Camp"
+		return
+	if room.get("kind", "") == "training":
+		Game.run_text = "Training grounds"
 		return
 	var text := "Floor %d/%d  Room %d/%d" % [floor_index + 1, layout.size(), room_index + 1, layout[floor_index].size()]
 	if room.get("kind", "") == "combat" and state == "fighting":

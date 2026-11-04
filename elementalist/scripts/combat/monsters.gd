@@ -85,6 +85,12 @@ const DEFS := {
 		"dash": {"range": 90.0, "cooldown": 3.6, "windup": 0.45, "time": 0.25, "speed": 200.0, "damage_mult": 1.5},
 		"dodge": {"chance": 0.3, "cooldown": 2.4},
 	},
+	# The training dummy ("training": true) stands in the training grounds: it never moves or hurts,
+	# so elements and combos can be tried on it. It is not part of any wave.
+	"dummy": {
+		"name": "Training Dummy", "sprite": "enemy_dummy", "hp": 600.0, "speed": 0.0, "contact": 0.0, "xp": 0,
+		"behavior": "idle", "attack": "ranged", "training": true, "knock_resist": 0.5,
+	},
 	# Mini bosses ("mini": true) guard the end of every third floor. Smaller than a boss, they drop a
 	# rare and sometimes an elemental essence, but no gem.
 	"grave_warden": {
@@ -170,7 +176,7 @@ static func mini_bosses() -> Array:
 
 ## The monsters that appear in ordinary waves.
 static func regular() -> Array:
-	return DEFS.keys().filter(func(id): return not is_boss(id))
+	return DEFS.keys().filter(func(id): return not is_boss(id) and not DEFS[id].get("training", false))
 
 
 ## A random wave: `count` entries of {"id", "variant"} for a dungeon floor. Deeper floors bring

@@ -48,7 +48,8 @@ var hurt_dir := Vector2.ZERO  # screen direction the last hit came from
 var slot := -1              # save slot of the hero being played (-1: none, e.g. the sandbox or tests)
 var meta: Dictionary = SaveStore.new_meta()  # long-term hero state (difficulty, dungeons cleared ...)
 var run: Dictionary = {}    # the dungeon in progress ({} in camp): tier, seed, floor, room, hp ...
-var mode := "camp"          # "camp" or "dungeon": what the main scene builds
+var mode := "camp"          # "camp", "dungeon" or "training": what the main scene builds
+var stashed_hero: CharacterData  # the real hero, kept aside while a sandbox hero trains
 var _session_start := 0.0
 
 
@@ -103,8 +104,8 @@ func continue_game(save_slot: int) -> bool:
 
 ## Writes the current hero to its slot. Does nothing without a slot (sandbox, tests).
 func save_game() -> Error:
-	if slot < 0:
-		return ERR_UNAVAILABLE
+	if slot < 0 or mode == "training":
+		return ERR_UNAVAILABLE  # training never touches the save
 	var now := Time.get_ticks_msec() / 1000.0
 	meta["play_time"] = float(meta.get("play_time", 0.0)) + (now - _session_start)
 	_session_start = now
@@ -118,6 +119,7 @@ func go_to_game() -> void:
 
 
 func go_to_menu() -> void:
+	_restore_hero()
 	get_tree().paused = false
 	slot = -1
 	get_tree().change_scene_to_file(MENU_SCENE)
@@ -135,11 +137,43 @@ func begin_run(tier: int) -> void:
 
 ## Back to camp: the run ends (won, fallen or abandoned) and the hero is saved.
 func return_to_camp() -> void:
+	_restore_hero()
 	run = {}
 	mode = "camp"
 	save_game()
 	get_tree().paused = false
 	get_tree().reload_current_scene()
+
+
+## From camp: the training grounds. The real hero is put aside and a sandbox hero (every element,
+## every skill, the same name and class) takes their place until end_training(); nothing is saved.
+func begin_training() -> void:
+	if mode == "training":
+		return
+	save_game()
+	stashed_hero = character
+	var cls := character.class_id
+	if Classes.is_starter(cls):
+		cls = "channeler"
+	character = CharacterData.create_sandbox(cls, Elements.MAIN + Elements.RARE, SANDBOX_LEVEL)
+	character.display_name = stashed_hero.display_name
+	mode = "training"
+	get_tree().paused = false
+	get_tree().reload_current_scene()
+
+
+func end_training() -> void:
+	_restore_hero()
+	mode = "camp"
+	get_tree().paused = false
+	get_tree().reload_current_scene()
+
+
+func _restore_hero() -> void:
+	if stashed_hero != null:
+		character = stashed_hero
+		stashed_hero = null
+		mode = "camp"
 
 
 func tier_unlocked(tier: int) -> bool:
@@ -161,12 +195,36 @@ func loot_allows_spell() -> bool:
 	return character.affinity != CharacterData.SEALED
 
 
+const NAME_MAX := 16
+const NAME_SUGGESTIONS := [
+	"Aldric", "Brenna", "Cael", "Dara", "Edmund", "Fenna", "Gareth", "Hild", "Isolde", "Joren", "Kestrel", "Lyra",
+	"Merrin", "Nyra", "Orsin", "Perrin", "Quill", "Rowan", "Sable", "Tamsin", "Ulric", "Vesper", "Wren", "Yara",
+]
+
+
+## A name a player typed, made safe to show and save: control characters dropped, spaces
+## trimmed and squeezed, at most NAME_MAX letters; "Hero" when nothing usable is left.
+func clean_name(text: String) -> String:
+	var kept := ""
+	for i in text.length():
+		var code := text.unicode_at(i)
+		if code >= 32 and code != 127:
+			kept += text[i]
+	var words := kept.strip_edges().split(" ", false)
+	var cleaned := " ".join(words).substr(0, NAME_MAX).strip_edges()
+	return cleaned if cleaned != "" else "Hero"
+
+
+func random_name() -> String:
+	return String(NAME_SUGGESTIONS[randi() % NAME_SUGGESTIONS.size()])
+
+
 ## Fresh character: class chosen, then born through the ceremony (elementalists roll their
 ## elements and may be born with none), or created as attunable / sealed without a ceremony.
-func start_new(class_id: String, affinity: String = CharacterData.ELEMENTALIST) -> void:
+func start_new(class_id: String, affinity: String = CharacterData.ELEMENTALIST, hero_name: String = "Hero") -> void:
 	var rng := RandomNumberGenerator.new()
 	rng.randomize()
-	character = CharacterData.create("Hero", class_id, affinity, rng)
+	character = CharacterData.create(clean_name(hero_name), class_id, affinity, rng)
 	var class_name_text: String = Classes.CLASSES[class_id]["name"]
 	var traits: Array = character.traits.map(func(t): return String(Classes.passive_info(t)["name"]))
 	var born: Array = character.elements.map(func(e): return String(e).capitalize())

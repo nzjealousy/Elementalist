@@ -18,6 +18,8 @@ var _class_id := Classes.NEUTRAL_CLASS
 var _birth: String = CharacterData.ELEMENTALIST
 var _theme: Theme
 var _description: Label
+var _hero_name := ""
+var _name_edit: LineEdit
 
 
 func _ready() -> void:
@@ -25,6 +27,7 @@ func _ready() -> void:
 	process_mode = Node.PROCESS_MODE_ALWAYS
 	visible = false
 	_theme = UiTheme.make()
+	_hero_name = Game.random_name()  # a suggestion; type over it
 
 
 func _exit_tree() -> void:
@@ -65,6 +68,25 @@ func _build() -> void:
 	panel.add_child(root)
 
 	root.add_child(_label("New character   (Esc to cancel)", Color("ffd84a")))
+	var name_row := HBoxContainer.new()
+	name_row.add_theme_constant_override("separation", 3)
+	root.add_child(name_row)
+	name_row.add_child(_label("Name"))
+	_name_edit = LineEdit.new()
+	_name_edit.max_length = Game.NAME_MAX
+	_name_edit.placeholder_text = "Your hero's name"
+	_name_edit.text = _hero_name
+	_name_edit.custom_minimum_size = Vector2(110, 0)
+	_name_edit.text_changed.connect(func(text: String): _hero_name = text)
+	_name_edit.text_submitted.connect(func(_text: String): _name_edit.release_focus())
+	name_row.add_child(_name_edit)
+	var dice := Button.new()
+	dice.text = "Random"
+	dice.focus_mode = Control.FOCUS_NONE
+	dice.pressed.connect(func():
+		_hero_name = Game.random_name()
+		_name_edit.text = _hero_name)
+	name_row.add_child(dice)
 	root.add_child(_label("Class  (everyone normally starts as a Novice; pick one to skip ahead for testing)"))
 	var class_row := GridContainer.new()
 	class_row.columns = 5
@@ -128,7 +150,7 @@ func _refresh_description() -> void:
 
 
 func _begin() -> void:
-	Game.start_new(_class_id, _birth)
+	Game.start_new(_class_id, _birth, _hero_name)
 	Game.creation_required = false
 	Game.save_game()  # (does nothing without a save slot)
 	_open = false

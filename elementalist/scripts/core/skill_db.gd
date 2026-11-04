@@ -20,60 +20,64 @@ extends Node
 const DEFS := {
 	"fireball": {
 		"name": "Fireball", "element": "fire", "kind": "projectile",
-		"damage": 16.0, "mana": 7.0, "cooldown": 0.4, "speed": 170.0, "range": 200.0,
+		"damage": 18.0, "mana": 9.0, "cooldown": 0.55, "speed": 135.0, "range": 190.0,
+		"splash": 22.0,
 		"apply": {"kind": "dot", "time": 2.5, "power": 3.0},
 	},
 	"flame_burst": {
 		"name": "Flame Burst", "element": "fire", "kind": "aoe",
-		"damage": 22.0, "mana": 22.0, "cooldown": 3.5, "radius": 30.0, "range": 120.0,
+		"damage": 26.0, "mana": 26.0, "cooldown": 4.0, "radius": 36.0, "range": 110.0,
 		"apply": {"kind": "dot", "time": 2.5, "power": 3.0}, "knockback": 90.0,
 		"scales": {"radius": "intellect"},
 	},
 	"water_jet": {
 		"name": "Water Jet", "element": "water", "kind": "projectile",
-		"damage": 11.0, "mana": 6.0, "cooldown": 0.3, "speed": 200.0, "range": 180.0,
+		"damage": 8.0, "mana": 4.0, "cooldown": 0.2, "speed": 215.0, "range": 235.0,
 		"apply": {"kind": "slow", "time": 2.0, "power": 0.5},
 		"scales": {"speed": "agility"},
 	},
 	"rain_pool": {
 		"name": "Rain Pool", "element": "water", "kind": "aoe",
-		"damage": 4.0, "mana": 24.0, "cooldown": 5.0, "radius": 34.0, "range": 120.0,
-		"duration": 3.5, "tick": 0.5, "knockback": 0.0,
+		"damage": 3.0, "mana": 20.0, "cooldown": 5.5, "radius": 44.0, "range": 120.0,
+		"duration": 4.0, "tick": 0.5, "knockback": 0.0,
 		"apply": {"kind": "slow", "time": 1.0, "power": 0.5},
 		"scales": {"radius": "intellect"},
 	},
 	"gust": {
 		"name": "Gust", "element": "air", "kind": "projectile",
-		"damage": 9.0, "mana": 5.0, "cooldown": 0.28, "speed": 230.0, "range": 170.0,
-		"apply": {"kind": "slow", "time": 1.0, "power": 0.3}, "knockback": 110.0,
+		"damage": 7.0, "mana": 4.0, "cooldown": 0.25, "speed": 330.0, "range": 270.0,
+		"apply": {"kind": "slow", "time": 1.0, "power": 0.3}, "knockback": 120.0,
+		"pierce": 2,
 		"scales": {"speed": "agility"},
 	},
 	"cyclone": {
 		"name": "Cyclone", "element": "air", "kind": "aoe",
-		"damage": 10.0, "mana": 22.0, "cooldown": 4.0, "radius": 32.0, "range": 110.0,
-		"apply": {}, "knockback": 170.0,
+		"damage": 8.0, "mana": 18.0, "cooldown": 4.0, "radius": 26.0, "range": 90.0,
+		"apply": {}, "knockback": 230.0,
 		"scales": {"knockback": "strength"},
 	},
 	"shard_shot": {
 		"name": "Shard Shot", "element": "mineral", "kind": "projectile",
-		"damage": 17.0, "mana": 8.0, "cooldown": 0.5, "speed": 160.0, "range": 190.0,
+		"damage": 28.0, "mana": 13.0, "cooldown": 0.85, "speed": 105.0, "range": 150.0,
+		"knockback": 70.0,
 		"apply": {},
 	},
 	"stone_quake": {
 		"name": "Stone Quake", "element": "mineral", "kind": "aoe",
-		"damage": 14.0, "mana": 22.0, "cooldown": 4.5, "radius": 32.0, "range": 100.0,
+		"damage": 18.0, "mana": 26.0, "cooldown": 5.0, "radius": 40.0, "range": 100.0,
 		"apply": {"kind": "stun", "time": 0.6, "power": 1.0}, "knockback": 40.0,
 		"scales": {"radius": "strength"},
 	},
 	"thorn_shot": {
 		"name": "Thorn Shot", "element": "earth", "kind": "projectile",
-		"damage": 14.0, "mana": 7.0, "cooldown": 0.45, "speed": 150.0, "range": 220.0,
+		"damage": 6.0, "mana": 8.0, "cooldown": 0.5, "speed": 170.0, "range": 210.0,
+		"spread_count": 3, "spread_deg": 16.0,
 		"apply": {},
 		"scales": {"cooldown": "agility"},
 	},
 	"root_snare": {
 		"name": "Root Snare", "element": "earth", "kind": "aoe",
-		"damage": 8.0, "mana": 20.0, "cooldown": 5.0, "radius": 30.0, "range": 120.0,
+		"damage": 8.0, "mana": 20.0, "cooldown": 5.0, "radius": 32.0, "range": 120.0,
 		"apply": {"kind": "root", "time": 1.5, "power": 1.0}, "knockback": 0.0,
 		"scales": {"radius": "vitality"},
 	},
@@ -118,7 +122,8 @@ const DEFS := {
 	# light and dark (rare elements). Light blinds and heals; dark drains and curses.
 	"light_lance": {
 		"name": "Light Lance", "element": "light", "kind": "projectile",
-		"damage": 14.0, "mana": 7.0, "cooldown": 0.4, "speed": 250.0, "range": 210.0,
+		"damage": 12.0, "mana": 6.0, "cooldown": 0.35, "speed": 390.0, "range": 280.0,
+		"pierce": 1,
 		"apply": {"kind": "weaken", "time": 2.0, "power": 0.2},
 		"scales": {"speed": "agility"},
 	},
@@ -141,7 +146,8 @@ const DEFS := {
 	},
 	"shadow_bolt": {
 		"name": "Shadow Bolt", "element": "dark", "kind": "projectile",
-		"damage": 15.0, "mana": 8.0, "cooldown": 0.4, "speed": 160.0, "range": 200.0,
+		"damage": 13.0, "mana": 9.0, "cooldown": 0.45, "speed": 125.0, "range": 230.0,
+		"homing": 2.4, "lifesteal": 0.25,
 		"apply": {"kind": "dot", "time": 2.0, "power": 3.0},
 		"scales": {"cooldown": "intellect"},
 	},
@@ -231,6 +237,44 @@ const MELEE := {
 }
 
 
+## The bolt traits a projectile skill carries (see Projectile): pierce, splash, homing, lifesteal.
+func traits_of(def: Dictionary) -> Dictionary:
+	var out := {}
+	for key in ["pierce", "splash", "homing", "lifesteal"]:
+		if def.has(key):
+			out[key] = def[key]
+	return out
+
+
+## What a skill does beyond damage, in a few words ("fans 3 thorns", "pierces 2", "bursts on impact").
+func trait_text(def: Dictionary) -> String:
+	var parts: Array[String] = []
+	if int(def.get("spread_count", 1)) > 1:
+		parts.append("fans %d bolts" % int(def["spread_count"]))
+	if int(def.get("pierce", 0)) > 0:
+		parts.append("pierces %d" % int(def["pierce"]))
+	if float(def.get("splash", 0.0)) > 0.0:
+		parts.append("bursts on impact")
+	if float(def.get("homing", 0.0)) > 0.0:
+		parts.append("homes in")
+	if float(def.get("lifesteal", 0.0)) > 0.0:
+		parts.append("drains %d%%" % roundi(float(def["lifesteal"]) * 100.0))
+	return ", ".join(parts)
+
+
+## The way each element plays, shown on the altar and in the guide.
+const ROLES := {
+	"fire": "Heavy and slow. Bolts burst on impact and burn. Costly, hits hard.",
+	"water": "Cheap and quick. A long stream that slows; wide soaking pools.",
+	"air": "The fastest bolt: pierces a line of enemies and shoves them back.",
+	"mineral": "Slowest and hardest hitting. Stuns; the quake is a wide stun.",
+	"earth": "A fan of three thorns. Roots enemies in a wide ring.",
+	"light": "A swift piercing lance that weakens. Blessings heal.",
+	"dark": "A slow homing bolt that drains life. Curses wither.",
+	"martial": "Stamina, not mana: knives and blows with no element.",
+}
+
+
 ## "primary", "area", "support" or "special" for a skill id ("" if unknown).
 func slot_of(skill_id: String) -> String:
 	for set_id in LOADOUTS:
@@ -257,10 +301,14 @@ func effect_text(def: Dictionary) -> String:
 		var amount: int = roundi(power * 100.0) if power < 1.0 else roundi(power)
 		return (what % amount) + " for %ds" % roundi(float(buff["time"]))
 	var apply: Dictionary = def.get("apply", {})
+	var text := ""
 	match String(apply.get("kind", "")):
-		"weaken": return "Weakens enemies (-%d%% damage)" % roundi(float(apply["power"]) * 100.0)
-		"vuln": return "Enemies take +25% damage"
-	return ""
+		"weaken": text = "Weakens enemies (-%d%% damage)" % roundi(float(apply["power"]) * 100.0)
+		"vuln": text = "Enemies take +25% damage"
+	var traits := trait_text(def)
+	if traits != "":
+		text = (text + ", " if text != "" else "") + traits
+	return text
 
 
 func uses_stamina(def: Dictionary) -> bool:
