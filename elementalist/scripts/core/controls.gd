@@ -102,8 +102,12 @@ func stick_aim() -> Vector2:
 ## node in the world (for the mouse position).
 func aim_point(canvas_item: CanvasItem, origin: Vector2) -> Vector2:
 	if not using_pad:
+		if IsoView.active != null:
+			return IsoView.mouse_ground()
 		return canvas_item.get_global_mouse_position()
 	var dir := stick_aim()
+	if IsoView.active != null:
+		dir = IsoView.world_dir(dir).normalized()  # the stick points across the screen, not across the ground
 	var assist := float(Settings.get_value("aim_assist"))
 	if assist > 0.0:
 		var best: Node2D = null

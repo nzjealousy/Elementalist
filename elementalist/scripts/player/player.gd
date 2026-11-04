@@ -1,3 +1,4 @@
+class_name Player
 extends CharacterBody2D
 ## Player: WASD movement, mouse aim, stamina-costed dodge, melee (slash and the dodge spin),
 ## health, and an elemental SkillCaster. Max HP, stamina, speed, regen and damage scaling all
@@ -432,15 +433,18 @@ func _refresh_look() -> void:
 
 ## Picks the art for where the hero faces (toward the aim) and walks it while moving.
 func _update_sprite() -> void:
+	var look_dir := aim_direction
+	if IsoView.active != null:
+		look_dir = IsoView.screen_dir(aim_direction)  # face the way the aim points on the screen
 	var facing := "side"
-	if absf(aim_direction.y) > absf(aim_direction.x) * 1.1:
-		facing = "up" if aim_direction.y < 0.0 else "down"
+	if absf(look_dir.y) > absf(look_dir.x) * 0.6:
+		facing = "up" if look_dir.y < 0.0 else "down"
 	var id := "%s:%s" % [_look_prefix, facing]
 	if _anim == null:
 		_anim = SpriteAnim.attach(sprite, id, 8.0, self)
 	_anim.set_art(id)
 	_anim.playing = velocity.length() > 8.0 or is_dodging()
-	sprite.flip_h = facing == "side" and aim_direction.x < 0.0
+	sprite.flip_h = facing == "side" and look_dir.x < 0.0
 
 
 func _physics_process(delta: float) -> void:
@@ -475,6 +479,8 @@ func _physics_process(delta: float) -> void:
 		try_melee()
 
 	var input := Input.get_vector("move_left", "move_right", "move_up", "move_down")
+	if IsoView.active != null:
+		input = IsoView.world_dir(input)  # up is up on the screen, whatever way the ground runs
 	if Input.is_action_just_pressed("dodge"):
 		_dodge_buffer = DODGE_BUFFER
 	if _dodge_buffer > 0.0 and try_dodge(input):

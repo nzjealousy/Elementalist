@@ -34,6 +34,7 @@ var run_bonus := 0       # gold for clearing the dungeon
 var gold_lost := 0       # gold a fall cost
 var with_ui := true      # the menus and the fade layer (tests turn it off)
 var rng := RandomNumberGenerator.new()
+var iso_view: IsoView   # the isometric picture (when the setting is on and the game has its UI)
 
 var _room_node: Node2D
 var _exit_door: Door
@@ -52,6 +53,8 @@ func _ready() -> void:
 	else:
 		Game.run_kills = 0
 	Game.boss = null
+	if with_ui and bool(Settings.get_value("iso_view")):
+		iso_view = IsoView.attach(self)
 	Game.loot_dropped.connect(_on_loot_dropped)
 	if with_ui:
 		Game.character.leveled_up.connect(func(_level): _fanfare("level_up"))
@@ -163,6 +166,8 @@ func _load_room(floor_number: int, room_number: int) -> void:
 	_boss_spawned = false
 	Game.boss = null
 	Game.danger = (int(room.get("depth", floor_number + 1)) - 1) * 3 + room_number
+	if iso_view:
+		iso_view.begin_room(room, TILE)
 	_build_room()
 
 	var player := _player()
@@ -363,6 +368,9 @@ func _add_tile(texture: Texture2D, tile: Vector2i, solid: bool) -> void:
 	sprite.position = Vector2(tile) * TILE
 	sprite.z_index = -10
 	_room_node.add_child(sprite)
+	if solid and iso_view:
+		var is_pillar := texture == AssetDB.get_texture("tile_pillar_" + _theme())
+		iso_view.add_wall(tile, _tile_art("wall", tile, 3) if is_pillar else texture, int(room["cols"]), int(room["rows"]), is_pillar)
 	if solid:
 		var body := StaticBody2D.new()
 		var shape := CollisionShape2D.new()

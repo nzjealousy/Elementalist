@@ -131,6 +131,7 @@ func _slider(text: String, key: String, low: float = 0.0, high: float = 1.0, sho
 
 func _build_game() -> void:
 	_check("Fullscreen", "fullscreen")
+	_check("Isometric view (next scene)", "iso_view")
 	_check("Damage numbers", "damage_numbers")
 	_check("Melee range ring", "melee_indicator")
 	_check("Tips and hints", "show_tips")

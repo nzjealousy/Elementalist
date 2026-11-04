@@ -17,6 +17,7 @@ const DEFAULTS := {
 	"fullscreen": false,
 	"screen_shake": 1.0,       # 0 turns shake off
 	"damage_numbers": true,
+	"iso_view": true,          # the isometric HD-2D picture (off: the flat top-down one); applies from the next scene
 	"melee_indicator": true,   # the slash reach ring and wedge around the hero
 	"hud_scale": 1.0,          # 0.75 .. 1.5
 	"aim_assist": 0.5,         # controller only: pulls the aim toward the nearest enemy

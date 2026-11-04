@@ -324,8 +324,12 @@ func _physics_process(delta: float) -> void:
 	_age += delta
 	var target := get_tree().get_first_node_in_group("player") as Node2D
 	velocity = _desired_velocity(target) + _knock
-	if target and absf(target.global_position.x - global_position.x) > 2.0:
-		sprite.flip_h = target.global_position.x < global_position.x  # art faces right
+	if target:
+		var toward := target.global_position - global_position
+		if IsoView.active != null:
+			toward = IsoView.screen_dir(toward)  # which way the player is across the screen
+		if absf(toward.x) > 2.0:
+			sprite.flip_h = toward.x < 0.0  # art faces right
 	_knock = _knock.move_toward(Vector2.ZERO, 300.0 * delta)
 	move_and_slide()
 

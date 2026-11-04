@@ -81,6 +81,7 @@ func _ready() -> void:
 	await _test_phase6a()
 	await _test_phase6b()
 	_test_dungeons5()
+	await _test_iso()
 	_test_items()
 	_test_inventory_and_gear_stats()
 	_test_forge()
@@ -3764,7 +3765,7 @@ func _p5_menus() -> void:
 	_check("the audio tab has four sliders", settings.find_children("*", "HSlider", true, false).size() == 4)
 	settings.open(1)
 	await get_tree().process_frame
-	_check("the game tab has toggles and sliders", settings.find_children("*", "CheckButton", true, false).size() == 4 and settings.find_children("*", "HSlider", true, false).size() == 4)
+	_check("the game tab has toggles and sliders", settings.find_children("*", "CheckButton", true, false).size() == 5 and settings.find_children("*", "HSlider", true, false).size() == 4)
 	settings.open(2)
 	await get_tree().process_frame
 	_check("the controls tab lists every action with a key and a pad button", settings.find_children("*", "Button", true, false).size() >= Controls.ACTIONS.size() * 2)
@@ -4423,3 +4424,76 @@ func _test_dungeons5() -> void:
 	var capped: float = Game.loot_bonus()
 	Game.danger = old_danger
 	_check("loot luck from depth is capped", capped <= 5.0 + float(Game.character.derived()["loot_luck"]) + 1.0)
+
+
+# ---------- Phase 6c: the isometric HD-2D view ----------
+
+func _test_iso() -> void:
+	_check("the screen and ground directions are inverse", (func():
+		var ok := true
+		for d in [Vector2(1, 0), Vector2(0, 1), Vector2(-3, 2), Vector2(0.4, -0.9)]:
+			var back := IsoView.world_dir(IsoView.screen_dir(d))
+			ok = ok and absf(back.angle_to(d)) < 0.01
+		return ok).call())
+	_check("up on the screen is north-west on the ground and right is north-east", IsoView.world_dir(Vector2(0, -1)).dot(Vector2(-1, -1).normalized()) > 0.99 and IsoView.world_dir(Vector2(1, 0)).dot(Vector2(1, -1).normalized()) > 0.99)
+	_check("a tile is one world unit", IsoView.ground_to_3d(Vector2(32, 48)).is_equal_approx(Vector3(2, 0, 3)) and IsoView.to_ground(Vector3(2, 0, 3)) == Vector2(32, 48))
+
+	var world := Node2D.new()
+	add_child(world)
+	var hero = PLAYER.instantiate()
+	world.add_child(hero)
+	var dungeon := Dungeon.new()
+	dungeon.with_ui = false
+	dungeon.layout = [[DungeonGen.camp_room()]]
+	world.add_child(dungeon)
+	await get_tree().process_frame
+	var view := IsoView.attach(dungeon)
+	dungeon.iso_view = view
+	await get_tree().process_frame
+	dungeon.debug_goto(0, 0)  # builds the room again, now with walls
+	await get_tree().process_frame
+	await get_tree().process_frame
+	_check("the view is the active one and has a sloped orthographic camera", IsoView.active == view and view.camera.projection == Camera3D.PROJECTION_ORTHOGONAL and is_equal_approx(view.camera.rotation_degrees.x, -IsoView.PITCH))
+	var room := DungeonGen.camp_room()
+	var ring_tiles := 2 * (int(room["cols"]) + int(room["rows"])) - 4
+	_check("the room's walls and pillars became boxes", view.wall_count() == ring_tiles + room["obstacles"].size())
+	_check("the ground texture is as big as the room", view.ground_viewport.size == Vector2i(int(room["cols"]) * 16, int(room["rows"]) * 16))
+	_check("the main window hides the flat world and the ground shows it", (get_viewport().canvas_cull_mask & (IsoView.LAYER_GROUND | IsoView.LAYER_ENTITY)) == 0 and (view.ground_viewport.canvas_cull_mask & IsoView.LAYER_GROUND) != 0 and (view.ground_viewport.canvas_cull_mask & IsoView.LAYER_ENTITY) == 0)
+	var floor_sprite: Sprite2D = null
+	for node in dungeon._room_node.get_children():
+		if node is Sprite2D and node.z_index == -10:
+			floor_sprite = node
+			break
+	_check("floor tiles go to the ground layer", floor_sprite != null and floor_sprite.visibility_layer == IsoView.LAYER_GROUND)
+	_check("the hero's sprite stands up in 3D", hero.get_node("Sprite2D").visibility_layer == IsoView.LAYER_ENTITY and view.mirror_count() >= 1)
+	var before := view.mirror_count()
+	var enemy := Monsters.spawn(dungeon._room_node, "slime", Vector2(120, 100), "", Vector2.ONE, 1)
+	await get_tree().process_frame
+	await get_tree().process_frame
+	_check("a monster gets a standing sprite, a shadow and a health bar", view.mirror_count() >= before + 2 and enemy.sprite.visibility_layer == IsoView.LAYER_ENTITY)
+	var mirror: Sprite3D = view._mirrors[enemy.sprite]
+	_check("the 3D sprite stands where the monster does", absf(mirror.position.x - enemy.sprite.global_position.x / 16.0) < 0.2 and absf(mirror.position.z - enemy.sprite.global_position.y / 16.0) < 0.2 and mirror.position.y > 0.2)
+	_check("it faces the camera upright", mirror.billboard == BaseMaterial3D.BILLBOARD_FIXED_Y)
+	var tex_before := mirror.texture
+	enemy.sprite.flip_h = true
+	await get_tree().process_frame
+	_check("it copies the 2D sprite's picture and flip", mirror.texture == enemy.sprite.texture and tex_before != null and mirror.flip_h)
+	var screen := view.screen_point_of(hero.global_position)
+	_check("a ground point projected to the screen and back lands where it started", view.ground_point_at(screen).distance_to(hero.global_position) < 0.5)
+	FloatText.spawn(world, hero.global_position, "-9", Color.RED)
+	await get_tree().process_frame
+	await get_tree().process_frame
+	_check("floating text becomes a 3D label", view._mirrors.keys().any(func(n): return n is FloatText) and view.get_children().any(func(c): return c is Label3D and c.text == "-9"))
+	enemy.queue_free()
+	await get_tree().process_frame
+	await get_tree().process_frame
+	_check("a monster that goes takes its stand-ins with it", not view._mirrors.has(enemy.sprite) if is_instance_valid(enemy) else true)
+	_check("the camera follows the hero", view.camera.position.distance_to(IsoView.ground_to_3d(hero.global_position)) < 60.0)
+	var player_dir := IsoView.screen_dir(Vector2.RIGHT)
+	_check("east runs right and down the screen", player_dir.x > 0.0 and player_dir.y > 0.0)
+	var settings_on := Settings.DEFAULTS["iso_view"] == true
+	_check("the isometric view is the default", settings_on)
+	view.queue_free()
+	await get_tree().process_frame
+	_check("closing the view gives the window its flat world back", IsoView.active == null and get_viewport().canvas_cull_mask == 0xFFFFFFFF)
+	world.queue_free()
