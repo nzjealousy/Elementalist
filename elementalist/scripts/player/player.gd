@@ -64,6 +64,7 @@ var _imbue_fx: CPUParticles2D
 
 @onready var sprite: Sprite2D = $Sprite2D
 var _anim: SpriteAnim
+var _look_prefix := ""   # AssetDB id prefix of the composed hero pictures (HeroComposer)
 @onready var camera: Camera2D = $Camera2D
 var _look := Vector2.ZERO   # the camera look-ahead, smoothed
 
@@ -71,6 +72,7 @@ var _look := Vector2.ZERO   # the camera look-ahead, smoothed
 func _ready() -> void:
 	add_to_group("player")
 	sprite.texture = AssetDB.get_texture("player")
+	sprite.offset = Vector2(0, -3)  # the hero's feet stand a little below the body's centre
 	caster = SkillCaster.new()
 	caster.body = self
 	caster.element_changed.connect(_on_element_changed)
@@ -78,6 +80,9 @@ func _ready() -> void:
 	apply_stats(true)
 	stamina = max_stamina
 	Game.character.changed.connect(apply_stats)
+	Game.character.changed.connect(_refresh_look)
+	Game.character.class_chosen.connect(func(_id): _refresh_look())
+	_refresh_look()
 	Game.character.leveled_up.connect(_on_level_up)
 	Game.character.mastery_leveled.connect(_on_mastery_leveled)
 	Game.character.passive_unlocked.connect(_on_passive_unlocked)
@@ -419,19 +424,20 @@ func _process(delta: float) -> void:
 	camera.offset = _look.round() + Juice.offset()
 
 
-## Picks the art for where the hero faces (toward the aim) and walks it while moving. The art is
-## per class (player_<class>_<down|up|side>), then generic, then the old single picture.
+## The hero's pictures follow the class, subclass and gear (HeroLook/HeroComposer); a changed
+## look is composed once and then reused.
+func _refresh_look() -> void:
+	_look_prefix = HeroComposer.register(HeroLook.for_character(Game.character))
+
+
+## Picks the art for where the hero faces (toward the aim) and walks it while moving.
 func _update_sprite() -> void:
 	var facing := "side"
 	if absf(aim_direction.y) > absf(aim_direction.x) * 1.1:
 		facing = "up" if aim_direction.y < 0.0 else "down"
-	var id := "player_%s_%s" % [Game.character.class_id, facing]
-	if not AssetDB.has_art(id):
-		id = "player_" + facing
-	if not AssetDB.has_art(id):
-		id = "player"
+	var id := "%s:%s" % [_look_prefix, facing]
 	if _anim == null:
-		_anim = SpriteAnim.attach(sprite, id, 9.0, self)
+		_anim = SpriteAnim.attach(sprite, id, 8.0, self)
 	_anim.set_art(id)
 	_anim.playing = velocity.length() > 8.0 or is_dodging()
 	sprite.flip_h = facing == "side" and aim_direction.x < 0.0

@@ -85,6 +85,27 @@ const DEFS := {
 		"dash": {"range": 90.0, "cooldown": 3.6, "windup": 0.45, "time": 0.25, "speed": 200.0, "damage_mult": 1.5},
 		"dodge": {"chance": 0.3, "cooldown": 2.4},
 	},
+	# From the third dungeon on: forest, fire and shadow dwellers.
+	"sapling": {
+		"name": "Thornling", "sprite": "enemy_sapling", "hp": 34.0, "speed": 22.0, "contact": 0.0, "xp": 22,
+		"behavior": "ranged", "attack": "ranged", "attack_range": 110.0, "keep_distance": 70.0,
+		"shot": {"damage": 8.0, "speed": 80.0, "cooldown": 2.0},
+	},
+	"wolf": {
+		"name": "Dire Wolf", "sprite": "enemy_wolf", "hp": 48.0, "speed": 52.0, "contact": 10.0, "xp": 26,
+		"behavior": "chase", "attack": "melee",
+		"dash": {"range": 90.0, "cooldown": 2.8, "windup": 0.3, "time": 0.25, "speed": 210.0, "damage_mult": 1.5},
+	},
+	"slug": {
+		"name": "Magma Slug", "sprite": "enemy_slug", "hp": 150.0, "speed": 14.0, "contact": 18.0, "xp": 38,
+		"behavior": "chase", "attack": "melee", "knock_resist": 0.8,
+	},
+	"shade": {
+		"name": "Gloom Shade", "sprite": "enemy_shade", "hp": 40.0, "speed": 38.0, "contact": 0.0, "xp": 36,
+		"behavior": "ranged", "attack": "ranged", "attack_range": 130.0, "keep_distance": 90.0,
+		"shot": {"damage": 11.0, "speed": 90.0, "cooldown": 1.6},
+		"dodge": {"chance": 0.4, "cooldown": 1.8},
+	},
 	# The training dummy ("training": true) stands in the training grounds: it never moves or hurts,
 	# so elements and combos can be tried on it. It is not part of any wave.
 	"dummy": {
@@ -143,18 +164,56 @@ const DEFS := {
 		"slam": {"radius": 60.0, "damage": 38.0, "cooldown": 5.0, "telegraph": 1.0},
 		"summon": {"id": "spitter", "count": 4, "stages": [0.5]},
 	},
+	"thorn_matriarch": {
+		"name": "Thorn Matriarch", "sprite": "boss_matriarch", "hp": 1250.0, "speed": 22.0, "contact": 18.0, "xp": 560, "tier": 3,
+		"behavior": "boss", "attack": "both", "boss": true, "knock_resist": 0.9,
+		"attack_range": 120.0, "shot": {"damage": 9.0, "speed": 85.0, "cooldown": 2.0},
+		"slam": {"radius": 46.0, "damage": 26.0, "cooldown": 4.2, "telegraph": 0.85},
+		"summon": {"id": "sapling", "count": 3, "stages": [0.7, 0.4]},
+	},
+	"cinder_tyrant": {
+		"name": "Cinder Tyrant", "sprite": "boss_tyrant", "hp": 1700.0, "speed": 24.0, "contact": 22.0, "xp": 720, "tier": 4,
+		"behavior": "boss", "attack": "both", "boss": true, "knock_resist": 0.92,
+		"attack_range": 110.0, "shot": {"damage": 12.0, "speed": 95.0, "cooldown": 1.6},
+		"dash": {"range": 100.0, "cooldown": 5.0, "windup": 0.5, "time": 0.3, "speed": 220.0, "damage_mult": 1.7},
+		"slam": {"radius": 52.0, "damage": 32.0, "cooldown": 3.8, "telegraph": 0.9},
+		"summon": {"id": "slug", "count": 2, "stages": [0.66, 0.33]},
+	},
+	"gloaming_sovereign": {
+		"name": "Gloaming Sovereign", "sprite": "boss_sovereign", "hp": 2300.0, "speed": 28.0, "contact": 24.0, "xp": 1000, "tier": 5,
+		"behavior": "boss", "attack": "both", "boss": true, "knock_resist": 0.95,
+		"attack_range": 140.0, "shot": {"damage": 14.0, "speed": 100.0, "cooldown": 1.3},
+		"dash": {"range": 110.0, "cooldown": 4.5, "windup": 0.45, "time": 0.3, "speed": 230.0, "damage_mult": 1.8},
+		"slam": {"radius": 56.0, "damage": 38.0, "cooldown": 3.5, "telegraph": 0.9},
+		"summon": {"id": "shade", "count": 3, "stages": [0.75, 0.5, 0.25]},
+	},
 }
 
-## Relative frequency of each regular monster by dungeon floor (1-based).
+## Relative frequency of each regular monster by depth band (see band_of): the first four bands are the first
+## four floors, then each band spans a stretch of the deeper dungeons.
+const BAND_STARTS := [1, 2, 3, 4, 5, 13, 21, 31, 43]
 const WEIGHTS := {
 	1: {"slime": 4.0, "bat": 3.0, "skeleton": 1.0, "spitter": 1.0},
 	2: {"slime": 2.0, "bat": 2.0, "skeleton": 2.0, "wisp": 2.0, "brute": 1.0, "spitter": 2.0, "imp": 2.0, "wraith": 1.0},
 	3: {"slime": 1.0, "bat": 1.0, "skeleton": 2.0, "wisp": 2.0, "brute": 3.0, "spitter": 2.0, "imp": 3.0, "wraith": 3.0, "duelist": 2.0},
 	4: {"bat": 1.0, "skeleton": 2.0, "wisp": 2.0, "brute": 3.0, "spitter": 2.0, "imp": 3.0, "wraith": 3.0, "duelist": 3.0},
 	5: {"skeleton": 1.0, "wisp": 2.0, "brute": 3.0, "imp": 3.0, "wraith": 4.0, "duelist": 4.0},
+	6: {"skeleton": 1.0, "wisp": 2.0, "brute": 3.0, "imp": 3.0, "wraith": 3.0, "duelist": 4.0, "wolf": 3.0, "sapling": 2.0},
+	7: {"brute": 2.0, "imp": 2.0, "wraith": 3.0, "duelist": 4.0, "wolf": 4.0, "sapling": 3.0, "shade": 1.0},
+	8: {"imp": 2.0, "wraith": 2.0, "duelist": 4.0, "wolf": 3.0, "sapling": 2.0, "shade": 3.0, "slug": 3.0, "brute": 2.0},
+	9: {"wraith": 2.0, "duelist": 3.0, "wolf": 3.0, "shade": 4.0, "slug": 4.0, "brute": 2.0},
 }
 const VARIANT_CHANCE_PER_FLOOR := 0.15  # per depth, capped at VARIANT_CHANCE_MAX
 const VARIANT_CHANCE_MAX := 0.6
+
+
+## Which WEIGHTS band a dungeon depth belongs to.
+static func band_of(depth: int) -> int:
+	var band := 1
+	for i in BAND_STARTS.size():
+		if depth >= int(BAND_STARTS[i]):
+			band = i + 1
+	return band
 
 
 static func is_boss(id: String) -> bool:
@@ -183,7 +242,7 @@ static func regular() -> Array:
 ## tougher monsters and more elemental variants.
 static func roll_wave(rng: RandomNumberGenerator, floor_number: int, count: int) -> Array[Dictionary]:
 	var out: Array[Dictionary] = []
-	var weights: Dictionary = WEIGHTS[clampi(floor_number, 1, WEIGHTS.size())]
+	var weights: Dictionary = WEIGHTS[band_of(floor_number)]
 	for i in count:
 		var variant := ""
 		if rng.randf() < minf(VARIANT_CHANCE_PER_FLOOR * floor_number, VARIANT_CHANCE_MAX):
@@ -196,7 +255,9 @@ static func roll_wave(rng: RandomNumberGenerator, floor_number: int, count: int)
 
 ## Health and damage multipliers for a floor: monsters toughen as you go deeper.
 static func floor_scale(floor_number: int) -> Vector2:
-	return Vector2(1.0 + 0.35 * (floor_number - 1), 1.0 + 0.2 * (floor_number - 1))
+	var early := mini(floor_number, 10) - 1   # the first ten floors climb steeply...
+	var late := maxi(floor_number - 10, 0)    # ...the deeper ones more gently, so the last dungeon is hard but not absurd
+	return Vector2(1.0 + 0.35 * early + 0.14 * late, 1.0 + 0.2 * early + 0.07 * late)
 
 
 ## Creates a configured monster at `pos` under `parent`.

@@ -131,12 +131,7 @@ func _fill_stats() -> void:
 		title += " / " + String(Classes.SUBCLASSES[ch.subclass_id]["name"])
 	var head := HBoxContainer.new()
 	head.add_theme_constant_override("separation", 5)
-	var portrait_id := "player_%s_down" % ch.class_id
-	var portrait := TextureRect.new()
-	portrait.texture = AssetDB.get_texture(portrait_id if AssetDB.has_art(portrait_id) else "player")
-	portrait.custom_minimum_size = portrait.texture.get_size() * 2.0
-	portrait.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
-	portrait.stretch_mode = TextureRect.STRETCH_SCALE
+	var portrait := HeroDoll.of_character(ch, 2)
 	head.add_child(portrait)
 	var who := VBoxContainer.new()
 	who.add_theme_constant_override("separation", 1)
@@ -224,16 +219,7 @@ func _fill_gear() -> void:
 	var detail := _label("Hover an item for details.", DIM)
 
 	left.add_child(_label("Equipped  (%s)" % ch.weapon_type.capitalize(), GOLD))
-	for slot in Items.SLOTS:
-		var label: String = Items.SLOT_NAMES[slot]
-		if inv.equipped.has(slot):
-			var item: Dictionary = inv.equipped[slot]
-			var button := _item_button("%s: %s" % [label, Items.display_name(item)], item, detail)
-			button.disabled = inv.bag_full()
-			button.pressed.connect(_unequip.bind(slot))
-			left.add_child(button)
-		else:
-			left.add_child(_label("%s: -" % label, DIM))
+	left.add_child(_paper_doll(ch, detail))
 	var wallet := inv.summary()
 	left.add_child(_spacer())
 	detail.add_theme_font_size_override("font_size", 6)  # a full item description has to fit under the slots
@@ -260,6 +246,58 @@ func _fill_gear() -> void:
 		var button := _item_button(Items.display_name(item), item, detail)
 		button.pressed.connect(_equip.bind(index))
 		right.add_child(button)
+
+
+## The hero in the middle with a slot on either side (head, body, feet | weapon, ring, amulet): what is worn shows on
+## the hero and as an icon in its slot; click a slot to take the item off, hover for its details.
+func _paper_doll(ch: CharacterData, detail: Label) -> Control:
+	var row := HBoxContainer.new()
+	row.alignment = BoxContainer.ALIGNMENT_CENTER
+	row.add_theme_constant_override("separation", 3)
+	var left_slots := VBoxContainer.new()
+	var right_slots := VBoxContainer.new()
+	for slots in [left_slots, right_slots]:
+		slots.add_theme_constant_override("separation", 2)
+		slots.alignment = BoxContainer.ALIGNMENT_CENTER
+	for slot in ["head", "body", "feet"]:
+		left_slots.add_child(_slot_button(slot, ch.inventory, detail))
+	for slot in ["weapon", "ring", "amulet"]:
+		right_slots.add_child(_slot_button(slot, ch.inventory, detail))
+	row.add_child(left_slots)
+	var doll := HeroDoll.of_character(ch, 3)
+	doll.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	row.add_child(doll)
+	row.add_child(right_slots)
+	return row
+
+
+func _slot_button(slot: String, inv: Inventory, detail: Label) -> Button:
+	var button := Button.new()
+	button.custom_minimum_size = Vector2(24, 24)
+	button.focus_mode = Control.FOCUS_ALL
+	button.expand_icon = true
+	button.icon_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	button.add_theme_constant_override("icon_max_width", 16)
+	button.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+	var item: Variant = inv.equipped.get(slot, {})
+	if item is Dictionary and not item.is_empty():
+		button.icon = HeroLook.slot_icon(item)
+		var tint := Color.WHITE.lerp(Items.rarity_color(item), 0.6)
+		for state in ["normal", "hover", "pressed", "disabled", "focus"]:  # the frame takes the rarity colour, the icon keeps its own
+			var box := button.get_theme_stylebox(state).duplicate()
+			if box is StyleBoxTexture:
+				box.modulate_color = tint
+			button.add_theme_stylebox_override(state, box)
+		button.disabled = inv.bag_full()
+		button.pressed.connect(_unequip.bind(slot))
+		button.mouse_entered.connect(func(): detail.text = Items.describe(item))
+		button.focus_entered.connect(func(): detail.text = Items.describe(item))
+	else:
+		button.text = String(Items.SLOT_NAMES[slot]).substr(0, 1)
+		button.add_theme_color_override("font_color", DIM)
+		button.mouse_entered.connect(func(): detail.text = "%s: nothing worn." % Items.SLOT_NAMES[slot])
+		button.focus_entered.connect(func(): detail.text = "%s: nothing worn." % Items.SLOT_NAMES[slot])
+	return button
 
 
 ## A button for an item, tinted by rarity; hovering it fills the detail label.

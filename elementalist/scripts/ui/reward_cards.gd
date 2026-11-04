@@ -11,6 +11,8 @@ const TYPE_COLORS := {"skill": Color("b6ff8a"), "passive": Color("8fe3ff")}
 
 var _open := false
 var _theme: Theme
+var _frames: Array[CardFrame] = []
+var _buttons: Array[Button] = []
 
 
 func _ready() -> void:
@@ -79,6 +81,8 @@ func _build() -> void:
 	if pending.is_empty():
 		return
 	var offer: Array = pending[0]
+	_frames.clear()
+	_buttons.clear()
 
 	var dim := ColorRect.new()
 	dim.color = Color(0, 0, 0, 0.65)
@@ -104,6 +108,9 @@ func _build() -> void:
 	column.add_child(cards)
 	for i in offer.size():
 		cards.add_child(_card(offer[i], i))
+	if not _buttons.is_empty():
+		_buttons[0].grab_focus.call_deferred()
+		_set_hot(0)
 	var keys := "1" if offer.size() == 1 else "1-%d" % offer.size()
 	var footer := "Click a card or press %s    Esc: decide later" % keys
 	if pending.size() > 1:
@@ -115,30 +122,70 @@ func _build() -> void:
 
 
 func _card(option: Dictionary, index: int) -> Control:
-	var panel := PanelContainer.new()
-	panel.theme = _theme
-	panel.custom_minimum_size = CARD_SIZE
 	var type: String = option["type"]
-	var box := UiTheme.frame("panel", 8, 6)  # the gold frame, tinted toward the card's kind
-	if box is StyleBoxTexture:
-		box.modulate_color = Color.WHITE.lerp(TYPE_COLORS[type], 0.5)
-	panel.add_theme_stylebox_override("panel", box)
+	var color: Color = TYPE_COLORS[type]
+	var holder := Control.new()
+	holder.custom_minimum_size = CARD_SIZE
+	var frame := CardFrame.for_kind(color, "stars" if type == "passive" else "flames")
+	frame.set_anchors_preset(Control.PRESET_FULL_RECT)
+	holder.add_child(frame)
+	_frames.append(frame)
 
 	var content := VBoxContainer.new()
-	content.add_theme_constant_override("separation", 3)
-	panel.add_child(content)
-	content.add_child(_label("%d  %s" % [index + 1, type.to_upper()], TYPE_COLORS[type], 6))
-	content.add_child(_label(Rewards.option_name(option), Color.WHITE, 9))
-	content.add_child(_label(_describe(option), Color(0.85, 0.88, 0.95), 6))
+	content.set_anchors_preset(Control.PRESET_FULL_RECT)
+	content.offset_left = 6
+	content.offset_right = -6
+	content.offset_top = 6
+	content.offset_bottom = -5
+	content.add_theme_constant_override("separation", 2)
+	holder.add_child(content)
+	var kind := _label("%d  %s" % [index + 1, type.to_upper()], color, 6)
+	kind.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	content.add_child(kind)
+	var picture := TextureRect.new()
+	picture.texture = _icon_for(option)
+	picture.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+	picture.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	picture.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	picture.custom_minimum_size = Vector2(0, 26)
+	picture.modulate = _icon_tint(option)
+	picture.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	content.add_child(picture)
+	var name_label := _label(Rewards.option_name(option), Color.WHITE, 8)
+	name_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	content.add_child(name_label)
+	var body := _label(_describe(option), Color(0.85, 0.88, 0.95), 5)
+	body.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	content.add_child(body)
 	var spacer := Control.new()
 	spacer.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	content.add_child(spacer)
-	var choose := Button.new()
-	choose.text = "Choose"
-	choose.focus_mode = Control.FOCUS_NONE
-	choose.pressed.connect(_choose.bind(index))
+	var choose := UiKit.button("Choose", _choose.bind(index))
+	choose.focus_mode = Control.FOCUS_ALL
+	choose.mouse_entered.connect(func(): _set_hot(index))
+	choose.focus_entered.connect(func(): _set_hot(index))
 	content.add_child(choose)
-	return panel
+	_buttons.append(choose)
+	return holder
+
+
+## A picture for a card: the skill's element bolt, or a gem-like diamond for a passive.
+func _icon_for(option: Dictionary) -> Texture2D:
+	if option["type"] == "skill":
+		var set_id := SkillDB.set_of(option["id"])
+		return AssetDB.get_texture("proj_" + set_id)
+	return AssetDB.get_texture("pickup_material")
+
+
+func _icon_tint(option: Dictionary) -> Color:
+	if option["type"] == "skill":
+		return Color.WHITE
+	return TYPE_COLORS["passive"]
+
+
+func _set_hot(index: int) -> void:
+	for i in _frames.size():
+		_frames[i].hot = i == index
 
 
 ## The body text of a card: what a skill does and costs, or what a passive gives.

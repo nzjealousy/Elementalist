@@ -219,7 +219,7 @@ func _play_music() -> void:
 	if kind in ["boss", "miniboss"] and state != "clear":
 		Sfx.music("boss")
 	else:
-		Sfx.music({"camp": "camp"}.get(_theme(), "crypt" if _theme() == "crypt" else "vault"))
+		Sfx.music(String({"camp": "camp", "crypt": "crypt", "spire": "crypt"}.get(_theme(), "vault")))
 
 
 ## The camp: heal up, stand the forge, the notice board and the gate in the room.
@@ -293,7 +293,7 @@ func _centre() -> Vector2:
 func _theme() -> String:
 	if room.get("kind", "") in ["camp", "training"]:
 		return "camp"
-	return "crypt" if tier >= 2 else "vault"
+	return String(Game.TIERS.get(tier, {}).get("theme", "crypt" if tier >= 2 else "vault"))
 
 
 ## The ground picture for a tile: one of a few variants, chosen by position so the same room always

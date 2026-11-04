@@ -27,6 +27,12 @@ const TIERS := {
 		"desc": "Five floors under a burned chapel. A warden waits on the third; the Slime King below."},
 	2: {"name": "The Drowned Crypts", "floors": 10, "depth": 5,
 		"desc": "Ten flooded floors. Three wardens, then the master of the crypts."},
+	3: {"name": "The Thornroot Hollow", "floors": 12, "depth": 15, "theme": "hollow", "color": "6fbf4a",
+		"desc": "Twelve floors of ruins swallowed by roots. Dire wolves hunt in packs; the Matriarch waits at the heart."},
+	4: {"name": "The Cinder Forge", "floors": 15, "depth": 27, "theme": "ember", "color": "ff7a2a",
+		"desc": "Fifteen floors of lava halls. Magma slugs and heavy hitters; the Tyrant keeps the oldest fire."},
+	5: {"name": "The Gloaming Spire", "floors": 20, "depth": 42, "theme": "spire", "color": "b58af0",
+		"desc": "Twenty floors of a tower between light and dark. Shades dodge and drain; the Sovereign sits at the top."},
 }
 
 ## Emitted when a kill drops loot (see Loot): the world spawns Pickups at `position`.
@@ -187,7 +193,7 @@ func loot_level() -> int:
 
 ## Luck: each wave of depth shifts drops toward better rarities.
 func loot_bonus() -> float:
-	return maxf(0.1 * danger + float(character.derived()["loot_luck"]) + (reward_mult() - 1.0), 0.0)
+	return maxf(minf(0.1 * danger, 5.0) + float(character.derived()["loot_luck"]) + (reward_mult() - 1.0), 0.0)
 
 
 ## Sealed characters can never use spells, so they are not given spell-only gear or affixes.

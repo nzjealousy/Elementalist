@@ -55,23 +55,29 @@ func _input(event: InputEvent) -> void:
 		close()
 
 
+const ROMAN := ["I", "II", "III", "IV", "V"]
+const CARD_SIZE := Vector2(58, 100)
+const DEFAULT_COLORS := {1: "c8503a", 2: "4aa0d8"}
+const ORNAMENTS := {1: "flames", 2: "stars", 3: "leaves", 4: "spikes", 5: "rivets"}
+
+
 func _build() -> void:
 	for child in get_children():
 		child.queue_free()
 	UiKit.dim(self, 0.88)
-	var column := UiKit.column(self, _theme, 280.0, 3)
+	var column := UiKit.column(self, _theme, 304.0, 3)
 	column.add_child(UiTheme.heading("The Gate", 10))
 	column.add_child(UiKit.label("Choose a dungeon. Falling costs elements and 30% of your gold; clearing one pays well.", UiTheme.TEXT_DIM, 6, HORIZONTAL_ALIGNMENT_CENTER))
 	column.add_child(UiTheme.divider())
 	var cards := HBoxContainer.new()
 	cards.alignment = BoxContainer.ALIGNMENT_CENTER
-	cards.add_theme_constant_override("separation", 6)
+	cards.add_theme_constant_override("separation", 3)
 	column.add_child(cards)
 	for tier in Game.TIERS:
 		cards.add_child(_card(int(tier)))
 	_detail = UiKit.label("", UiTheme.TEXT, 6, HORIZONTAL_ALIGNMENT_CENTER)
 	_detail.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	_detail.custom_minimum_size = Vector2(250, 16)
+	_detail.custom_minimum_size = Vector2(280, 24)
 	column.add_child(_detail)
 	var row := HBoxContainer.new()
 	row.alignment = BoxContainer.ALIGNMENT_CENTER
@@ -84,16 +90,41 @@ func _card(tier: int) -> Control:
 	var spec: Dictionary = Game.TIERS[tier]
 	var unlocked := Game.tier_unlocked(tier)
 	var cleared := int(Game.meta.get("tier_cleared", 0)) >= tier
+	var tint := Color(String(spec.get("color", DEFAULT_COLORS.get(tier, "c8c8c8"))))
+	if not unlocked:
+		tint = tint.lerp(Color(0.35, 0.33, 0.33), 0.75)
+	var holder := Control.new()
+	holder.custom_minimum_size = CARD_SIZE
+	var frame := CardFrame.for_kind(tint, String(ORNAMENTS.get(tier, "plain")))
+	frame.set_anchors_preset(Control.PRESET_FULL_RECT)
+	holder.add_child(frame)
 	var box := VBoxContainer.new()
-	box.add_theme_constant_override("separation", 1)
-	box.add_child(UiKit.label("Dungeon %s" % ["I", "II", "III"][tier - 1], UiTheme.GOLD if unlocked else UiTheme.TEXT_DIM, 7, HORIZONTAL_ALIGNMENT_CENTER))
-	box.add_child(UiKit.label(String(spec["name"]), UiTheme.TEXT if unlocked else UiTheme.TEXT_DIM, 7, HORIZONTAL_ALIGNMENT_CENTER))
-	box.add_child(UiKit.label("%d floors" % int(spec["floors"]), UiTheme.TEXT_DIM, 6, HORIZONTAL_ALIGNMENT_CENTER))
-	var status := "Cleared" if cleared else ("Locked" if not unlocked else "Unexplored")
-	box.add_child(UiKit.label(status, UiTheme.GREEN if cleared else (UiTheme.RED if not unlocked else UiTheme.TEXT_DIM), 6, HORIZONTAL_ALIGNMENT_CENTER))
-	var enter := UiKit.button("Enter" if unlocked else "Locked", func(): Game.begin_run(tier), 110.0)
+	box.set_anchors_preset(Control.PRESET_FULL_RECT)
+	box.offset_left = 4
+	box.offset_right = -4
+	box.offset_top = 6
+	box.offset_bottom = -4
+	box.add_theme_constant_override("separation", 2)
+	holder.add_child(box)
+	box.add_child(UiKit.label(ROMAN[tier - 1], UiTheme.GOLD if unlocked else UiTheme.TEXT_DIM, 9, HORIZONTAL_ALIGNMENT_CENTER))
+	var name_label := UiKit.label(String(spec["name"]).trim_prefix("The "), UiTheme.TEXT if unlocked else UiTheme.TEXT_DIM, 6, HORIZONTAL_ALIGNMENT_CENTER)
+	name_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	name_label.custom_minimum_size = Vector2(0, 28)
+	box.add_child(name_label)
+	box.add_child(UiKit.label("%d floors" % int(spec["floors"]), UiTheme.TEXT_DIM, 5, HORIZONTAL_ALIGNMENT_CENTER))
+	var status := "Cleared" if cleared else ("Locked" if not unlocked else "New")
+	box.add_child(UiKit.label(status, UiTheme.GREEN if cleared else (UiTheme.RED if not unlocked else UiTheme.TEXT_DIM), 5, HORIZONTAL_ALIGNMENT_CENTER))
+	var spacer := Control.new()
+	spacer.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	box.add_child(spacer)
+	var enter := UiKit.button("Enter" if unlocked else "Locked", func(): Game.begin_run(tier), 0.0)
 	enter.disabled = not unlocked
-	enter.mouse_entered.connect(func(): _detail.text = String(spec["desc"]) if unlocked else "Clear the dungeon before it to open this one.")
-	enter.focus_entered.connect(func(): _detail.text = String(spec["desc"]) if unlocked else "Clear the dungeon before it to open this one.")
+	var show := func():
+		frame.hot = true
+		_detail.text = String(spec["desc"]) if unlocked else "Clear the dungeon before it to open this one."
+	enter.mouse_entered.connect(show)
+	enter.focus_entered.connect(show)
+	enter.mouse_exited.connect(func(): frame.hot = false)
+	enter.focus_exited.connect(func(): frame.hot = false)
 	box.add_child(enter)
-	return box
+	return holder

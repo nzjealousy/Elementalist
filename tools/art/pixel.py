@@ -52,9 +52,12 @@ class Canvas:
         return out
 
     def outline(self, c, diagonal=False):
-        """1px outline around opaque pixels (drawn on transparent neighbours)."""
+        """1px outline around opaque pixels (drawn on transparent neighbours). With c=None the outline is SOFT:
+        each outline pixel is a dark, slightly purple shade of the sprite pixel it touches (the way Stardew Valley
+        and Witchbrook draw theirs), instead of one black line."""
         out = Canvas(self.w + 2, self.h + 2)
         out.blit(self, 1, 1)
+        placed = []
         for y in range(out.h):
             for x in range(out.w):
                 if out.px[y * out.w + x][3]:
@@ -62,8 +65,13 @@ class Canvas:
                 near = [(1, 0), (-1, 0), (0, 1), (0, -1)]
                 if diagonal:
                     near += [(1, 1), (-1, -1), (1, -1), (-1, 1)]
-                if any(out.get(x + dx, y + dy)[3] and out.get(x + dx, y + dy) != c for dx, dy in near):
-                    out.px[y * out.w + x] = c
+                for dx, dy in near:
+                    n = out.get(x + dx, y + dy)
+                    if n[3] and n != c:
+                        placed.append((x, y, c if c is not None else soft_outline(n)))
+                        break
+        for x, y, col in placed:
+            out.px[y * out.w + x] = col
         return out
 
     def save(self, path):
@@ -130,9 +138,28 @@ _LL = math.sqrt(sum(v * v for v in _LIGHT))
 LIGHT = tuple(v / _LL for v in _LIGHT)
 
 
+def soft_outline(c):
+    """A dark shade of a pixel, pushed toward purple: the outline colour for the pixel it surrounds."""
+    return (min(255, int(c[0] * 0.36 + 20)), min(255, int(c[1] * 0.34 + 8)), min(255, int(c[2] * 0.4 + 36)), 255)
+
+
+def cool_shadow(c, f):
+    """Darkens toward blue-purple instead of toward grey, so shadows feel lit by a warm sun."""
+    d = [c[0] * f, c[1] * f, c[2] * f]
+    mixed = [d[0] + (64 - d[0]) * 0.18, d[1] + (44 - d[1]) * 0.18, d[2] + (120 - d[2]) * 0.18]
+    return (max(0, min(255, int(mixed[0]))), max(0, min(255, int(mixed[1]))), max(0, min(255, int(mixed[2]))), c[3])
+
+
+def warm_light(c, f):
+    """Lightens toward warm cream instead of toward white."""
+    l = [c[0] * f, c[1] * f, c[2] * f]
+    mixed = [l[0] + (255 - l[0]) * 0.1, l[1] + (240 - l[1]) * 0.1, l[2] + (205 - l[2]) * 0.1]
+    return (max(0, min(255, int(mixed[0]))), max(0, min(255, int(mixed[1]))), max(0, min(255, int(mixed[2]))), c[3])
+
+
 def tones(base):
-    """(highlight, base, shadow, deep) for a colour."""
-    return (shade(base, 1.28), base, shade(base, 0.74), shade(base, 0.5))
+    """(highlight, base, shadow, deep) for a colour: warm highlights, cool shadows."""
+    return (warm_light(base, 1.2), base, cool_shadow(base, 0.78), cool_shadow(base, 0.55))
 
 
 def ellipse(cv, cx, cy, rx, ry, c):
@@ -210,8 +237,8 @@ def eyes(cv, x, y, gap, c=(255, 255, 255, 255), pupil=(20, 16, 30, 255), size=1)
         cv.set(sx + (1 if sx >= x else 0), y + (size - 1), pupil)
 
 
-def finish(cv, outline=OUTLINE, pad=0):
-    """Add the 1px outline and return the framed canvas."""
+def finish(cv, outline=None, pad=0):
+    """Add the 1px outline (soft and coloured unless a colour is given) and return the framed canvas."""
     return cv.outline(outline)
 
 

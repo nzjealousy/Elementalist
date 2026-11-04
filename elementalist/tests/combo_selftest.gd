@@ -79,6 +79,8 @@ func _ready() -> void:
 	await _test_phase5()
 	await _test_light_dark()
 	await _test_phase6a()
+	await _test_phase6b()
+	_test_dungeons5()
 	_test_items()
 	_test_inventory_and_gear_stats()
 	_test_forge()
@@ -925,10 +927,10 @@ func _test_styles_and_imbue() -> void:
 	player.try_melee(Vector2.RIGHT)
 	_check("not imbued, the slash is plain physical", plain.aura == "")
 	player.try_imbue()
-	caster.mana = 2.0
 	var broke := _dummy(Vector2(12, 0))
 	await get_tree().process_frame
 	broke.global_position = Vector2(12, 0)
+	caster.mana = 2.0  # (set after the wait: a slow frame would regenerate it)
 	player._melee_cd = 0.0
 	player.try_melee(Vector2.RIGHT)
 	_check("without the mana, an imbued slash falls back to plain", broke.aura == "" and caster.mana < player.IMBUE_SWING_COST)
@@ -2061,7 +2063,7 @@ func _test_gear_screens() -> void:
 	sheet.show_tab("gear")
 	await get_tree().process_frame
 	var buttons := sheet._content.find_children("*", "Button", true, false)
-	_check("the gear tab has a button for each worn item and each bagged item", buttons.size() == ch.inventory.equipped.size() + ch.inventory.bag.size())
+	_check("the gear tab has a button for each worn item and each bagged item", buttons.size() == Items.SLOTS.size() + ch.inventory.bag.size())
 	var first_bag := ch.inventory.bag[0]
 	var slot := Items.slot_of(first_bag)
 	var worn_before: Dictionary = ch.inventory.equipped.get(slot, {})
@@ -2430,7 +2432,7 @@ func _test_monsters() -> void:
 		if d.get("boss", false):
 			defs_ok = defs_ok and d["behavior"] == "boss" and d.has("slam") and d.has("summon") and Monsters.DEFS.has(d["summon"]["id"]) and not Monsters.is_boss(d["summon"]["id"])
 	_check("every monster has a sprite, valid stats and the parts its behaviour needs", defs_ok)
-	_check("there are nine regular monsters, three mini bosses and four bosses", Monsters.regular().size() == 9 and Monsters.mini_bosses().size() == 3 and Monsters.bosses().size() == 4)
+	_check("there are thirteen regular monsters, three mini bosses and seven bosses", Monsters.regular().size() == 13 and Monsters.mini_bosses().size() == 3 and Monsters.bosses().size() == 7)
 	_check("wave weights only name regular monsters", Monsters.WEIGHTS.values().all(func(w): return w.keys().all(func(id): return Monsters.DEFS.has(id) and not Monsters.is_boss(id))))
 	_check("every element is weak to exactly one other", Elements.MAIN.all(func(e): return Monsters.WEAK_TO.has(e) and Monsters.WEAK_TO[e] != e and Monsters.WEAK_TO[e] in Elements.MAIN))
 	var plain_slime: Enemy = SLIME.instantiate()
@@ -3712,7 +3714,7 @@ func _p5_flow_and_dungeons() -> void:
 
 
 func _p5_bosses() -> void:
-	_check("three mini bosses and four final bosses", Monsters.mini_bosses().size() == 3 and Monsters.bosses().size() == 4 and Monsters.bosses(1).size() == 2 and Monsters.bosses(2).size() == 2)
+	_check("three mini bosses and seven final bosses", Monsters.mini_bosses().size() == 3 and Monsters.bosses().size() == 7 and Monsters.bosses(1).size() == 2 and Monsters.bosses(2).size() == 2 and Monsters.bosses(3).size() == 1)
 	var defs_ok := true
 	for id in Monsters.mini_bosses() + Monsters.bosses():
 		var d: Dictionary = Monsters.DEFS[id]
@@ -3798,13 +3800,13 @@ func _p5_menus() -> void:
 	gate.open()
 	await get_tree().process_frame
 	var enter_buttons := gate.find_children("*", "Button", true, false).filter(func(b): return b.text in ["Enter", "Locked"])
-	_check("the gate offers both dungeons, the second locked at first", enter_buttons.size() == 2 and not enter_buttons[0].disabled and enter_buttons[1].disabled)
+	_check("the gate offers all five dungeons, only the first open at first", enter_buttons.size() == 5 and not enter_buttons[0].disabled and enter_buttons.slice(1).all(func(b): return b.disabled))
 	gate.close()
 	Game.meta["tier_cleared"] = 1
 	gate.open()
 	await get_tree().process_frame
 	enter_buttons = gate.find_children("*", "Button", true, false).filter(func(b): return b.text in ["Enter", "Locked"])
-	_check("clearing the first opens the second", enter_buttons.size() == 2 and not enter_buttons[1].disabled)
+	_check("clearing the first opens the second, and no further", enter_buttons.size() == 5 and not enter_buttons[1].disabled and enter_buttons[2].disabled)
 	gate.close()
 	gate.queue_free()
 
@@ -4158,6 +4160,9 @@ func _test_phase6a() -> void:
 	_check("the ring is on by default", Settings.DEFAULTS["melee_indicator"] == true)
 
 	# the training grounds
+	for bolt in find_children("*", "Projectile", false, false):
+		bolt.queue_free()  # the thorns fired earlier must not reach the dummy
+	await get_tree().process_frame
 	var dummy := Monsters.spawn(self, "dummy", Vector2(40, 0), "", Vector2.ONE, 1)
 	player.global_position = Vector2.ZERO
 	player.hp = player.max_hp
@@ -4227,3 +4232,194 @@ func _test_phase6a() -> void:
 		if is_instance_valid(node):
 			node.queue_free()
 	Game.character = kept
+
+
+# ---------- Phase 6b: layered heroes, class cards, paper doll ----------
+
+func _test_phase6b() -> void:
+	var d := HeroLook.data()
+	_check("the look data lists every class and subclass", Classes.CLASSES.keys().all(func(id): return d["classes"].has(id)) and Classes.SUBCLASSES.keys().all(func(id): return d["subclasses"].has(id)))
+
+	# every look's parts exist as pictures
+	var files_ok := true
+	var looks := {}
+	for class_id in Classes.CLASSES:
+		looks[class_id] = HeroLook.for_class(class_id)
+		for sub_id in Classes.CLASSES[class_id]["subclasses"]:
+			looks[class_id + "/" + sub_id] = HeroLook.for_class(class_id, sub_id)
+	for key in looks:
+		var parts: Dictionary = looks[key]["parts"]
+		var names: Array = ["base_body", "boots_" + parts["boots"], "outfit_" + parts["outfit"]]
+		for slot in ["hair", "head", "back", "accent", "weapon"]:
+			if parts[slot] != "":
+				names.append("%s_%s" % [slot, parts[slot]])
+		for part_name in names:
+			for facing in HeroComposer.FACINGS:
+				files_ok = files_ok and ResourceLoader.exists("res://assets/sprites/hero/%s_%s.png" % [part_name, facing])
+	_check("every class and subclass look is made of parts that exist", files_ok)
+
+	var keys := {}
+	for key in looks:
+		keys[HeroComposer.key_of(looks[key])] = true
+	_check("every class and subclass looks different", keys.size() == looks.size())
+	_check("a subclass changes its class's look", HeroComposer.key_of(HeroLook.for_class("vanguard")) != HeroComposer.key_of(HeroLook.for_class("vanguard", "bulwark")))
+
+	# composing
+	var frames := HeroComposer.compose(HeroLook.for_class("channeler"))
+	var size := HeroComposer.size()
+	var shape_ok: bool = frames.size() == 3
+	for facing in HeroComposer.FACINGS:
+		shape_ok = shape_ok and frames[facing].size() == 4
+		for texture in frames[facing]:
+			shape_ok = shape_ok and texture.get_size() == Vector2(size)
+	_check("a look composes to three facings of four frames", shape_ok)
+	var image: Image = HeroComposer.portrait(HeroLook.for_class("channeler")).get_image()
+	var opaque := 0
+	for y in image.get_height():
+		for x in image.get_width():
+			opaque += 1 if image.get_pixel(x, y).a > 0.5 else 0
+	_check("the hero picture is a filled, outlined figure", opaque > 120 and opaque < size.x * size.y * 0.85)
+	var other: Image = HeroComposer.portrait(HeroLook.for_class("vanguard")).get_image()
+	_check("two classes paint different pictures", image.get_data() != other.get_data())
+	var a_frame: Image = frames["side"][0].get_image()
+	var b_frame: Image = frames["side"][1].get_image()
+	_check("the walking frames differ from the standing one", a_frame.get_data() != b_frame.get_data())
+	_check("composing the same look again reuses the pictures", HeroComposer.compose(HeroLook.for_class("channeler")) == frames)
+	var prefix := HeroComposer.register(HeroLook.for_class("ranger"))
+	_check("a registered look is found by AssetDB with four frames", AssetDB.has_art(prefix + ":side") and AssetDB.get_frames(prefix + ":side").size() == 4)
+
+	# gear changes the look
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 7
+	var hero := CharacterData.create_sandbox("vanguard", ["fire"], 5)
+	_bare(hero)
+	var plain_key := HeroComposer.key_of(HeroLook.for_character(hero))
+	var helm := Items.make("iron_helm", "rare", 4, rng)
+	var mail := Items.make("chain_mail", "rare", 4, rng)
+	var boots := Items.make("runner_boots", "common", 4, rng)
+	var axe := Items.make("battle_axe", "epic", 4, rng)
+	for item in [helm, mail, boots, axe]:
+		hero.inventory.add_item(item)
+		hero.inventory.equip(hero.inventory.bag.size() - 1)
+	var worn: Dictionary = HeroLook.for_character(hero)
+	_check("worn gear shows on the hero", worn["parts"]["head"] == "helm" and worn["parts"]["outfit"] == "mail" and worn["parts"]["boots"] == "boots" and worn["parts"]["weapon"] == "axe")
+	_check("so the look key changes", HeroComposer.key_of(worn) != plain_key)
+	hero.inventory.unequip("weapon")
+	_check("an empty hand shows no weapon", HeroLook.for_character(hero)["parts"]["weapon"] == "")
+	var icons_ok := true
+	for item in [helm, mail, boots, axe]:
+		var icon: Texture2D = HeroLook.slot_icon(item)
+		icons_ok = icons_ok and icon != null and icon.get_width() >= 4 and icon.get_height() >= 4 and icon != AssetDB.get_texture("pickup_item")
+	_check("every worn item has its own icon", icons_ok)
+
+	# saving the hero's looks
+	var saved := hero.to_dict()
+	hero.look_skin = 3
+	hero.look_hair = 5
+	var loaded := CharacterData.from_dict(JSON.parse_string(JSON.stringify(hero.to_dict())))
+	_check("skin tone and hair colour are saved", loaded.look_skin == 3 and loaded.look_hair == 5)
+	_check("an old save without them still loads", CharacterData.from_dict(JSON.parse_string(JSON.stringify(saved))).look_skin == 0)
+
+	# the class cards show pictures and wear their own borders
+	var kept := Game.character
+	Game.character = CharacterData.create_sandbox(Classes.NEUTRAL_CLASS, ["fire"], 3)
+	var cards := ClassCards.new()
+	add_child(cards)
+	await get_tree().process_frame
+	cards.open("class")
+	await get_tree().process_frame
+	_check("each class card has a hero picture", cards.find_children("*", "TextureRect", true, false).size() == 8)
+	var frame_nodes := cards.find_children("*", "CardFrame", true, false)
+	var ornaments := {}
+	for frame in frame_nodes:
+		ornaments[frame.ornament] = true
+	_check("each class card has a frame, and the borders differ by class", frame_nodes.size() == 8 and ornaments.size() >= 5)
+	_check("the class cards can be moved with left and right", (func():
+		var before: int = cards._hot
+		var right := InputEventAction.new()
+		right.action = "ui_right"
+		right.pressed = true
+		cards._input(right)
+		return cards._hot == (before + 1) % 8).call())
+	cards.close()
+	cards.queue_free()
+	Game.character = kept
+
+	# the reward cards draw frames too
+	var tester := CharacterData.create_sandbox("channeler", ["fire"], 1)
+	tester.pending_rewards.append([{"type": "skill", "id": "inferno_ring"}, {"type": "passive", "id": "sturdy"}])
+	Game.character = tester
+	var reward := RewardCards.new()
+	add_child(reward)
+	await get_tree().process_frame
+	reward._build()
+	await get_tree().process_frame
+	_check("each reward card has a frame and a picture", reward.find_children("*", "CardFrame", true, false).size() == 2 and reward.find_children("*", "TextureRect", true, false).size() == 2)
+	reward.free()
+
+	# the paper doll
+	var sheet_hero := CharacterData.create_sandbox("vanguard", Elements.MAIN, 5)
+	sheet_hero.inventory.add_item(Items.make("iron_helm", "rare", 4, rng))
+	sheet_hero.inventory.equip(sheet_hero.inventory.bag.size() - 1)
+	Game.character = sheet_hero
+	var sheet := CharacterSheet.new()
+	add_child(sheet)
+	await get_tree().process_frame
+	sheet.show_tab("gear")
+	await get_tree().process_frame
+	var slot_buttons := sheet._content.find_children("*", "Button", true, false).filter(func(b): return b.custom_minimum_size == Vector2(24, 24))
+	_check("the gear tab has a slot for each of the six places and the hero between", slot_buttons.size() == 6 and not sheet._content.find_children("*", "TextureRect", true, false).is_empty())
+	_check("a worn item's slot shows its icon", slot_buttons.any(func(b): return b.icon != null))
+	sheet.queue_free()
+	Game.character = kept
+
+
+# ---------- Phase 6b: five dungeons ----------
+
+func _test_dungeons5() -> void:
+	var tiers: Array = Game.TIERS.keys()
+	_check("there are five dungeons", tiers.size() == 5 and tiers == [1, 2, 3, 4, 5])
+	var floors: Array = tiers.map(func(t): return Game.TIERS[t]["floors"])
+	_check("they grow longer: 5, 10, 12, 15, 20 floors", floors == [5, 10, 12, 15, 20])
+	var contiguous := true
+	for i in range(1, tiers.size()):
+		contiguous = contiguous and Game.TIERS[tiers[i]]["depth"] == Game.TIERS[tiers[i - 1]]["depth"] + Game.TIERS[tiers[i - 1]]["floors"]
+	_check("each starts at the depth where the one before ends", contiguous and Game.TIERS[1]["depth"] == 0)
+	var harder := true
+	var previous := Vector2.ZERO
+	for tier in tiers:
+		var scale := Monsters.floor_scale(int(Game.TIERS[tier]["depth"]) + 1)
+		harder = harder and scale.x > previous.x and scale.y > previous.y
+		previous = scale
+	_check("each dungeon starts with tougher monsters than the one before", harder)
+	_check("the deepest floors are hard but not absurd", Monsters.floor_scale(62).x < 14.0 and Monsters.floor_scale(62).y < 8.0)
+	var bosses_ok := true
+	var themes_ok := true
+	var generates := true
+	for tier in tiers:
+		var finals: Array = Monsters.bosses(int(tier))
+		bosses_ok = bosses_ok and not finals.is_empty() and finals.all(func(id): return AssetDB.has_art(String(Monsters.DEFS[id]["sprite"])))
+		var theme := String(Game.TIERS[tier].get("theme", "crypt" if tier >= 2 else "vault"))
+		themes_ok = themes_ok and AssetDB.has_art("tile_floor_%s_0" % theme) and AssetDB.has_art("tile_wall_%s_0" % theme) and AssetDB.has_art("tile_pillar_" + theme) and AssetDB.has_art("bg_" + theme)
+		var layout := DungeonGen.generate(_rng(40 + int(tier)), int(Game.TIERS[tier]["floors"]), int(tier), int(Game.TIERS[tier]["depth"]))
+		var last_room: Dictionary = layout[-1][-1]
+		generates = generates and layout.size() == int(Game.TIERS[tier]["floors"]) and last_room["kind"] == "boss" and Monsters.bosses(int(tier)).has(last_room["boss"]) \
+			and int(last_room["depth"]) == int(Game.TIERS[tier]["depth"]) + int(Game.TIERS[tier]["floors"])
+	_check("every dungeon has a final boss with art", bosses_ok)
+	_check("every dungeon has its own tiles and background", themes_ok)
+	_check("every dungeon generates and ends in its own boss", generates)
+	var new_monsters := ["sapling", "wolf", "slug", "shade"]
+	_check("the new monsters have art and appear in the deeper bands", new_monsters.all(func(id): return AssetDB.has_art(String(Monsters.DEFS[id]["sprite"])) and Monsters.WEIGHTS.values().any(func(w): return w.has(id))))
+	var seen := {}
+	for depth in [3, 8, 18, 30, 50]:
+		for entry in Monsters.roll_wave(_rng(depth), depth, 40):
+			seen[entry["id"]] = true
+	_check("deeper dungeons field the new monsters", seen.has("wolf") and seen.has("shade") and seen.has("slug"))
+	_check("the depth bands run from the first floor to the last dungeon", Monsters.band_of(1) == 1 and Monsters.band_of(5) == 5 and Monsters.band_of(60) == Monsters.WEIGHTS.size())
+	var theme_music := Game.TIERS[3]["theme"] == "hollow" and Game.TIERS[4]["theme"] == "ember" and Game.TIERS[5]["theme"] == "spire"
+	_check("the new dungeons are themed", theme_music)
+	var old_danger := Game.danger
+	Game.danger = 400
+	var capped: float = Game.loot_bonus()
+	Game.danger = old_danger
+	_check("loot luck from depth is capped", capped <= 5.0 + float(Game.character.derived()["loot_luck"]) + 1.0)

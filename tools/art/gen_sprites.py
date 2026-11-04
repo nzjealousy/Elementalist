@@ -385,11 +385,152 @@ def titan(ph):
     return cv
 
 
+def sapling(ph):
+    cv = Canvas(13, 17)
+    bark = hexc('8a5a30')
+    leaf = hexc('4fa84a')
+    w = WAVE[ph]
+    shaded_ellipse(cv, 6, 11, 3.8, 4.4, bark)
+    for dx, lift in ((-2, 0 if ph % 2 == 0 else 1), (2, 1 if ph % 2 == 0 else 0)):  # root feet
+        rect(cv, 6 + dx - 1, 14 + lift - 1, 2, 3, shade(bark, 0.75))
+    for cx, cy, r in ((3, 5 + w, 2.6), (9, 5 - w, 2.6), (6, 3, 3.2)):  # a crown of leaves
+        shaded_ellipse(cv, cx, cy, r, r, leaf)
+    ellipse(cv, 6, 1.5, 1.2, 1.2, hexc('e0553a'))  # a red bud
+    cv.set(5, 10, hexc('ffe84a')); cv.set(7, 10, hexc('ffe84a'))
+    rect(cv, 5, 12, 3, 1, hexc('3a2010'))
+    return cv
+
+
+def wolf(ph):
+    cv = Canvas(20, 12)
+    fur = hexc('8a8a96')
+    run = [0, 1, 0, -1][ph]
+    shaded_ellipse(cv, 9, 6, 6.5, 3.4, fur)
+    shaded_ellipse(cv, 15.5, 4.5, 3.0, 2.6, shade(fur, 1.1))
+    poly(cv, [(14, 2), (15, 0), (16.5, 2.5)], shade(fur, 0.85))                  # ear
+    poly(cv, [(17.5, 4.5), (20, 5.5), (17.5, 6.5)], shade(fur, 1.15))            # snout
+    cv.set(19, 5, hexc('1a1020'))
+    cv.set(16, 4, hexc('ffd84a'))
+    line(cv, 2, 4, 0, 2 - run, shade(fur, 0.8), 2)                               # tail
+    for lx, lift in ((5, run), (8, -run), (11, run), (14, -run)):                # legs
+        rect(cv, lx, 8, 2, 3 + (1 if lift > 0 else 0), shade(fur, 0.75))
+    rect(cv, 6, 5, 6, 1, shade(fur, 1.25))
+    return cv
+
+
+def slug(ph):
+    cv = Canvas(18, 11)
+    rock = hexc('6a3a30')
+    f = [0, 1, 2, 1][ph]
+    shaded_ellipse(cv, 9, 6, 8.0 - f * 0.3, 3.8 + f * 0.2, rock)
+    glow = hexc('ff8a2a')
+    for x0, y0 in ((4, 4), (8, 3), (12, 5)):
+        line(cv, x0, y0, x0 + 2, y0 + 2 + (f % 2), glow)
+    cv.set(14, 3, hexc('ffe84a')); cv.set(16, 4, hexc('ffe84a'))
+    for sx in (13, 15):
+        line(cv, sx, 3, sx + 1, 1, shade(rock, 0.8))
+    rect(cv, 2, 9, 14, 1, shade(rock, 0.6))
+    return cv
+
+
+def shade_monster(ph):
+    cv = Canvas(13, 17)
+    robe = hexc('4a3a70')
+    w = [0, 1, 0, -1][ph]
+    pts = [(6, 1), (10, 5), (11 + w, 15), (8, 13), (6, 16), (4, 13), (1 - w, 15), (2, 5)]
+    poly(cv, pts, shade(robe, 0.8))
+    shaded_ellipse(cv, 6, 5, 3.8, 4.0, robe)
+    ellipse(cv, 6, 5.5, 2.4, 2.4, hexc('0a0612'))
+    cv.set(5, 5, hexc('ff4a6a')); cv.set(7, 5, hexc('ff4a6a'))
+    for sgn in (-1, 1):  # claws
+        line(cv, 6 + sgn * 4, 9, 6 + sgn * 6, 11 + w, hexc('d8d0f0'))
+    return cv
+
+
+def matriarch(ph):
+    w, h = 32, 36
+    cv = Canvas(w, h)
+    bark = hexc('7a5030')
+    leaf = hexc('4fa84a')
+    sway = WAVE[ph]
+    cx = w // 2
+    shaded_ellipse(cv, cx, 23, 8, 11, bark)
+    shaded_ellipse(cv, cx, 10, 5.2, 5.0, hexc('c8a070'))                                    # a bark-pale face
+    cv.set(cx - 2, 10, hexc('7fff9a')); cv.set(cx + 2, 10, hexc('7fff9a'))
+    rect(cv, cx - 2, 13, 4, 1, hexc('3a2010'))
+    for sgn in (-1, 1):  # antlers with leaves
+        line(cv, cx + sgn * 3, 6, cx + sgn * 8, 0 + sway, hexc('b08a50'), 1)
+        line(cv, cx + sgn * 6, 3, cx + sgn * 11, 3 + sway, hexc('b08a50'), 1)
+        shaded_ellipse(cv, cx + sgn * 9, 1 + sway, 2.2, 2.0, leaf)
+        shaded_ellipse(cv, cx + sgn * 12, 4 + sway, 2.0, 1.8, leaf)
+        for k in range(5):                                                                    # vine arms
+            line(cv, cx + sgn * 7, 18 + k, cx + sgn * (12 + k // 2), 24 + k * 2 + (sway if sgn > 0 else -sway), shade(leaf, 0.7), 1)
+        shaded_ellipse(cv, cx + sgn * 14, 31 + (sway if sgn > 0 else -sway), 3.2, 3.0, shade(leaf, 0.9))
+    for dx in (-8, -4, 0, 4, 8):                                                              # root feet
+        shaded_rect(cv, cx + dx - 1, h - 5, 4, 5, shade(bark, 0.8))
+    for p in [(cx - 3, 20), (cx + 4, 25), (cx - 1, 29)]:
+        cv.set(p[0], p[1], hexc('a8d070')); cv.set(p[0] + 1, p[1], hexc('a8d070'))
+    return cv
+
+
+def tyrant(ph):
+    w, h = 36, 36
+    cv = Canvas(w, h)
+    rock = hexc('5a3a38')
+    glow = hexc('ff8a2a')
+    sway = WAVE[ph]
+    cx = w // 2
+    shaded_ellipse(cv, cx, 23, 12, 10, rock)
+    shaded_ellipse(cv, cx, 10, 6.5, 5.8, shade(rock, 1.1))
+    for sx in (cx - 3, cx + 2):
+        rect(cv, sx, 10, 2, 2, hexc('ffe84a'))
+    for i, dx in enumerate((-5, -2, 1, 4)):                                                   # a crown of flames
+        base = 4 + (1 if i % 2 else 0)
+        line(cv, cx + dx, base, cx + dx + (i % 2) - 1, (sway if i % 2 else 1), hexc('ffb030' if i % 2 else 'ff6a1a'), 1)
+    for sgn in (-1, 1):
+        shaded_ellipse(cv, cx + sgn * 15, 24 + (sway if sgn > 0 else -sway), 4.6, 6.4, shade(rock, 0.95))
+        line(cv, cx + sgn * 15, 20, cx + sgn * 15, 28, glow)
+    for x0, y0, x1, y1 in ((cx - 7, 19, cx - 3, 24), (cx + 2, 18, cx + 7, 23), (cx - 3, 25, cx + 2, 30)):  # glowing cracks
+        line(cv, x0, y0, x1, y1, glow)
+    shaded_rect(cv, cx - 9, h - 6, 8, 6, shade(rock, 0.8)); shaded_rect(cv, cx + 1, h - 6, 8, 6, shade(rock, 0.8))
+    return cv
+
+
+def sovereign(ph):
+    w, h = 40, 38
+    cv = Canvas(w, h)
+    sway = WAVE[ph]
+    cx = w // 2
+    light = hexc('f4ecd0')
+    dark = hexc('3a2a5a')
+    for sgn, col in ((-1, light), (1, dark)):                                                 # wings, one of each
+        poly(cv, [(cx + sgn * 4, 14), (cx + sgn * 19, 3 + sway), (cx + sgn * 17, 18), (cx + sgn * 10, 24)], shade(col, 0.9))
+        for k in range(3):
+            line(cv, cx + sgn * 6, 16 + k * 2, cx + sgn * (16 - k), 8 + k * 4 + sway, shade(col, 1.15))
+    for dx in range(-6, 6):                                                                   # the body: half light, half dark
+        col = light if dx < 0 else dark
+        for y in range(13, 32):
+            cv.set(cx + dx, y, shade(col, 1.0 - 0.18 * (dx % 3) / 2.0))
+    shaded_ellipse(cv, cx - 3, 9, 3.4, 4.2, light)
+    shaded_ellipse(cv, cx + 3, 9, 3.4, 4.2, dark)
+    cv.set(cx - 3, 9, hexc('ffd84a')); cv.set(cx + 3, 9, hexc('ff4a8a'))
+    ellipse(cv, cx, 2, 6.5, 1.4, hexc('fff3a8'))                                              # a halo
+    ellipse(cv, cx, 2, 4.5, 0.6, hexc('0a0612'))
+    for sgn, col in ((-1, hexc('ffd84a')), (1, hexc('b58af0'))):
+        poly(cv, [(cx + sgn * 2, 5), (cx + sgn * 6, 1), (cx + sgn * 4, 7)], col)
+    line(cv, cx + 9, 14 + sway, cx + 9, 36 + sway, hexc('d8d0f0'))                            # a long blade
+    rect(cv, cx + 6, 22 + sway, 7, 1, hexc('f2cf6a'))
+    shaded_rect(cv, cx - 5, 31, 4, 7, shade(light, 0.85)); shaded_rect(cv, cx + 1, 31, 4, 7, shade(dark, 0.9))
+    return cv
+
+
 MONSTERS = {
     'enemy_slime': slime, 'enemy_bat': bat, 'enemy_skeleton': skeleton, 'enemy_wisp': wisp, 'enemy_brute': brute,
     'enemy_spitter': spitter, 'enemy_imp': imp, 'enemy_wraith': wraith, 'enemy_duelist': duelist,
     'boss_slime_king': slime_king, 'boss_colossus': colossus, 'mini_warden': warden, 'mini_matron': matron,
     'mini_hulk': hulk, 'boss_lich': lich, 'boss_titan': titan,
+    'enemy_sapling': sapling, 'enemy_wolf': wolf, 'enemy_slug': slug, 'enemy_shade': shade_monster,
+    'boss_matriarch': matriarch, 'boss_tyrant': tyrant, 'boss_sovereign': sovereign,
 }
 
 

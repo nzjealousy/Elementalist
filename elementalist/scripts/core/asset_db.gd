@@ -43,6 +43,13 @@ const PLACEHOLDERS := {
 	"mini_hulk": [Color("6a8a4a"), Color("27381a"), Vector2i(22, 22)],
 	"boss_lich": [Color("8a7ae0"), Color("2a2060"), Vector2i(26, 32)],
 	"boss_titan": [Color("4a8ac0"), Color("143050"), Vector2i(34, 34)],
+	"enemy_sapling": [Color("4fa84a"), Color("2a4a20"), Vector2i(12, 16)],
+	"enemy_wolf": [Color("8a8a96"), Color("33333f"), Vector2i(18, 11)],
+	"enemy_slug": [Color("6a3a30"), Color("2a1410"), Vector2i(16, 10)],
+	"enemy_shade": [Color("4a3a70"), Color("1a1230"), Vector2i(12, 16)],
+	"boss_matriarch": [Color("7a5030"), Color("2a1a10"), Vector2i(30, 34)],
+	"boss_tyrant": [Color("5a3a38"), Color("1a0f0e"), Vector2i(34, 34)],
+	"boss_sovereign": [Color("c8c0e0"), Color("2a2040"), Vector2i(38, 36)],
 	"altar": [Color("9aa0c8"), Color("2a2c4a"), Vector2i(22, 18)],
 	"training_sign": [Color("a8742c"), Color("3b2610"), Vector2i(14, 18)],
 	"enemy_dummy": [Color("c8a870"), Color("5a4020"), Vector2i(12, 18)],
@@ -66,7 +73,14 @@ func get_texture(id: String) -> Texture2D:
 
 ## True when real art (not the placeholder box) exists for `id`.
 func has_art(id: String) -> bool:
-	return ResourceLoader.exists(SPRITE_DIR + id + ".png")
+	return _cache.has("frames:" + id) or ResourceLoader.exists(SPRITE_DIR + id + ".png")
+
+
+## Art made while playing (the composed heroes, see HeroComposer): its frames are looked up by `id`
+## like any strip.
+func register_frames(id: String, frames: Array) -> void:
+	_cache["frames:" + id] = frames
+	_cache[id] = frames[0]
 
 
 ## The animation frames of `id`: its <id>_strip.png cut into frames as wide as the idle picture.

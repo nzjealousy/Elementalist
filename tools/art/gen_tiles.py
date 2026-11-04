@@ -1,4 +1,4 @@
-"""Floor, wall, pillar and background tiles for the three places (camp, vault, crypt).
+"""Floor, wall, pillar and background tiles for the places (camp and the five dungeons: vault, crypt, hollow, ember, spire).
 Run: python tools/art/gen_tiles.py -> elementalist/assets/sprites/tile_*.png and bg_*.png
 
 Per theme: tile_floor_<theme>_0..3, tile_wall_<theme>_0..2, tile_pillar_<theme>, bg_<theme> (32x32, tiles
@@ -25,6 +25,12 @@ THEMES = {
               'wall_lo': '3a2f26', 'accent': 'a05a2a', 'bg': '0e0b0c'},
     'crypt': {'floor': '3a4650', 'floor_hi': '4a5a66', 'floor_lo': '262e36', 'wall': '4a5a62', 'wall_hi': '6a8088',
               'wall_lo': '28343a', 'accent': '4a8a6a', 'bg': '070b10'},
+    'hollow': {'floor': '33452e', 'floor_hi': '44593a', 'floor_lo': '212e1f', 'wall': '4a5a30', 'wall_hi': '6a7a44',
+               'wall_lo': '2a3420', 'accent': 'a8d070', 'bg': '070d08'},
+    'ember': {'floor': '3a2622', 'floor_hi': '523630', 'floor_lo': '241512', 'wall': '5a3a30', 'wall_hi': '7a5040',
+              'wall_lo': '30201a', 'accent': 'ff7a2a', 'bg': '0d0605'},
+    'spire': {'floor': '3a3450', 'floor_hi': '4c4668', 'floor_lo': '262238', 'wall': '5a5078', 'wall_hi': '7a70a0',
+              'wall_lo': '302a48', 'accent': 'f2e8ff', 'bg': '0a0814'},
     'camp': {'floor': '5a6a3a', 'floor_hi': '7a8a4a', 'floor_lo': '3a4a2a', 'wall': '7a5a3a', 'wall_hi': '9a7a4a',
              'wall_lo': '3f2c1a', 'accent': 'e8c84a', 'bg': '0b100a'},
 }
@@ -65,10 +71,10 @@ def floor_tile(theme, variant):
     if variant in (1, 3):  # a crack
         x, y = rng.rint(2, 12), rng.rint(2, 12)
         for i in range(rng.rint(3, 6)):
-            cv.set(x + i, y + (i * 2) // 3, lo)
+            cv.set(x + i, y + (i * 2) // 3, hexc(p['accent']) if theme == 'ember' else lo)
     if variant == 2:
         col = hexc(p['accent'])
-        for _ in range(4 if theme == 'crypt' else 2):  # moss or embers
+        for _ in range(4 if theme in ('crypt', 'hollow') else 2):  # moss, embers or sparks
             x, y = rng.rint(1, T - 2), rng.rint(1, T - 2)
             cv.set(x, y, col); cv.set(x + 1, y, shade(col, 0.8))
     return cv

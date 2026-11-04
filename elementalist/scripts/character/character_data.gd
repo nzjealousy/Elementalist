@@ -40,6 +40,8 @@ const FREE_POINTS_PER_LEVEL := 2
 const LEVEL_UP_HEAL_FRACTION := 0.2  # a level-up restores this share of max HP, not all of it
 
 var display_name := "Hero"
+var look_skin := 0                      # which skin tone and hair colour the hero was given (HeroLook)
+var look_hair := 1
 var class_id := Classes.NEUTRAL_CLASS
 var subclass_id := ""
 var affinity := ELEMENTALIST
@@ -75,6 +77,8 @@ static func create(char_name: String, cls: String, aff: String, rng: RandomNumbe
 		for element in born:
 			c.add_element(String(element))
 	c.traits = Ceremony.roll_traits(rng, c.elements.size(), aff != SEALED)
+	c.look_skin = rng.randi_range(0, 4)
+	c.look_hair = rng.randi_range(0, 7)
 	return c
 
 
@@ -599,7 +603,7 @@ func can_use_skill(skill_id: String) -> bool:
 
 func to_dict() -> Dictionary:
 	return {
-		"name": display_name, "class": class_id, "subclass": subclass_id, "affinity": affinity,
+		"name": display_name, "look_skin": look_skin, "look_hair": look_hair, "class": class_id, "subclass": subclass_id, "affinity": affinity,
 		"level": level, "xp": xp, "points": unspent_points,
 		"attributes": attributes.duplicate(),
 		"elements": Array(elements),
@@ -622,6 +626,8 @@ static func from_dict(d: Dictionary) -> CharacterData:
 	var c := CharacterData.new()
 	c._setup(String(d["name"]), String(d["class"]), String(d["affinity"]))
 	c.subclass_id = String(d["subclass"])
+	c.look_skin = int(d.get("look_skin", 0))
+	c.look_hair = int(d.get("look_hair", 1))
 	c.level = int(d["level"])
 	c.xp = int(d["xp"])
 	c.unspent_points = int(d["points"])
