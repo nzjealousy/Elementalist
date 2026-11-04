@@ -34,6 +34,7 @@ func _ready() -> void:
 	sprite.texture = AssetDB.get_texture("proj_enemy")
 	sprite.modulate = color
 	add_child(sprite)
+	SpriteAnim.attach(sprite, "proj_enemy", 10.0, self)
 	z_index = 5
 	body_entered.connect(_on_body_entered)
 	SkillFx.trail(self, element)

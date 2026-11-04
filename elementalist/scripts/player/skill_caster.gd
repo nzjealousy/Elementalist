@@ -380,8 +380,10 @@ func _spawn(id: String, def: Dictionary) -> void:
 		"knockback": float(def.get("knockback", 50.0)) * character.skill_scale(id, "knockback"),
 	}
 	SkillFx.cast_burst(parent, origin + dir * 8.0, String(def["element"]), dir)
+	Sfx.play("cast_" + (String(def["element"]) if String(def["element"]) != "" else "martial"), &"SFX", -2.0)
 	match def["kind"]:
 		"buff":
+			Sfx.play("buff")
 			var buff: Dictionary = def["buff"]
 			body.add_buff(String(buff["kind"]), float(buff["time"]), float(buff["power"]), String(def["element"]))
 		"projectile":

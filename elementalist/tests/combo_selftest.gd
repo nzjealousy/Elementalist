@@ -77,6 +77,7 @@ func _ready() -> void:
 	await _test_enemy_abilities()
 	_test_traits_and_gear_rework()
 	await _test_phase5()
+	await _test_light_dark()
 	_test_items()
 	_test_inventory_and_gear_stats()
 	_test_forge()
@@ -198,7 +199,7 @@ func _test_skill_gating() -> void:
 				all_skills_ok = false
 	_check("every main element has real primary and area skills", all_skills_ok)
 	var light_only := CharacterData.create_sandbox("channeler", ["light"], 5)
-	_check("light and dark have no skills yet, so nothing is castable", light_only.castable_elements().is_empty())
+	_check("light is castable now that it has skills", light_only.castable_elements().size() == 1 and light_only.castable_elements()[0] == "light")
 
 
 func _test_xp_and_levels() -> void:
@@ -1047,8 +1048,10 @@ func _test_spin_attack() -> void:
 	var hp_before_hit: float = player.hp
 	_check("immune to damage mid-spin even after the dodge ends", player.is_invulnerable() and not player.take_damage(10.0, Vector2(40, 0)) and player.hp == hp_before_hit)
 	player._spin_left = 0.04
-	for i in 6:
+	for i in 60:  # until the spin has run out (a slow machine takes more frames)
 		await get_tree().physics_frame
+		if not player.is_spinning():
+			break
 	_check("the spin ends and immunity with it", not player.is_spinning() and not player.is_invulnerable() and player.take_damage(5.0, Vector2(40, 0)))
 	player._dodge_left = 0.0
 	player._dodge_cd = 0.0
@@ -1180,7 +1183,7 @@ func _test_ui_screens() -> void:
 	Game.character = CharacterData.create_sandbox("channeler", ["fire", "water"], 5)
 	sheet.show_tab("combos")
 	var combo_rows := sheet._content.get_child(0).get_children().filter(func(l): return l is Label and l.text.contains(" + ") and l.text.contains(" = "))
-	_check("combos tab lists all ten element combos", combo_rows.size() == 10)
+	_check("combos tab lists the ten main element combos (the rare ones come with Light or Dark)", combo_rows.size() == 10)
 	var all_text := " ".join(sheet._content.get_child(0).get_children().filter(func(l): return l is Label).map(func(l): return l.text))
 	_check("combos tab also lists resonance and the martial combo", all_text.contains("Resonance") and all_text.contains("Blaze") and all_text.contains("Rend"))
 	var lit := sheet._content.get_child(0).get_children().filter(func(l): return l is Label and l.text.contains("Steam") and not l.text.contains("needs"))
@@ -1284,7 +1287,7 @@ func _test_data_tables() -> void:
 	var skills_ok := true
 	for id in SkillDB.DEFS:
 		var d: Dictionary = SkillDB.DEFS[id]
-		if not (d["element"] in main or d["element"] == "") or not (d["kind"] in ["projectile", "aoe", "buff"]) or d["cooldown"] <= 0.0 or SkillDB.cost_of(d) <= 0.0:
+		if not (d["element"] in main or d["element"] in Elements.RARE or d["element"] == "") or not (d["kind"] in ["projectile", "aoe", "buff"]) or d["cooldown"] <= 0.0 or SkillDB.cost_of(d) <= 0.0:
 			skills_ok = false
 	_check("skill definitions are valid", skills_ok)
 	var loadouts_ok := true
@@ -2236,7 +2239,7 @@ func _test_support_skills() -> void:
 	_check("support skills are buffs (might, mend, ward, haste) or debuffs (weaken, vulnerable)", kinds_ok)
 	var buffs := SkillDB.LOADOUTS.values().filter(func(l): return SkillDB.DEFS[l["support"]]["kind"] == "buff")
 	var debuffs := SkillDB.LOADOUTS.values().filter(func(l): return SkillDB.DEFS[l["support"]]["kind"] == "aoe")
-	_check("there are four buffs and two debuffs", buffs.size() == 4 and debuffs.size() == 2)
+	_check("there are five buffs and three debuffs", buffs.size() == 5 and debuffs.size() == 3)
 	_check("effect text says what a buff or debuff does", SkillDB.effect_text(SkillDB.DEFS["blazing_might"]) == "+25% damage for 8s" and SkillDB.effect_text(SkillDB.DEFS["tidal_mending"]).contains("8 HP/s") and SkillDB.effect_text(SkillDB.DEFS["intimidate"]).contains("Weakens") and SkillDB.effect_text(SkillDB.DEFS["fireball"]) == "")
 	var six := CharacterData.create_sandbox("channeler", ["fire"], Classes.SUPPORT_LEVEL - 1)
 	var seven := CharacterData.create_sandbox("channeler", ["fire"], Classes.SUPPORT_LEVEL)
@@ -2429,7 +2432,7 @@ func _test_monsters() -> void:
 	var brute := _fresh_monster("brute")
 	await get_tree().process_frame
 	_check("configuring sets the stats", bat.max_hp == 18.0 and bat.speed == 58.0 and bat.behavior == "flutter" and bat.display_name == "Cave Bat" and bat.hp == 18.0)
-	_check("and the sprite", bat.sprite.texture == AssetDB.get_texture("enemy_bat") and brute.sprite.texture.get_size().x == 18)
+	_check("and the sprite", bat.sprite.texture.get_size() == AssetDB.get_texture("enemy_bat").get_size() and brute.sprite.texture.get_size() == AssetDB.get_texture("enemy_brute").get_size())
 	_check("big monsters get a bigger body", (brute.get_node("CollisionShape2D").shape as CircleShape2D).radius > (bat.get_node("CollisionShape2D").shape as CircleShape2D).radius)
 	_check("bodies are not shared between monsters", brute.get_node("CollisionShape2D").shape != bat.get_node("CollisionShape2D").shape)
 	_check("a floor scales health and damage", Monsters.floor_scale(1) == Vector2.ONE and Monsters.floor_scale(3).x > 1.5 and Monsters.floor_scale(3).y > 1.2)
@@ -3841,3 +3844,123 @@ func _p5_camp_and_runs() -> void:
 	_check("the camp has the forge, the board and the gate", get_tree().get_nodes_in_group("interactables").size() >= 3 and dungeon.state == "camp")
 	_check("the camp shows no run text but its name", Game.run_text == "Camp")
 	world.queue_free()
+
+	# every kind of room in a five-floor dungeon loads, and a mini boss room works end to end
+	Game.character = _bare(CharacterData.create_sandbox("vanguard", ["fire"], 6))
+	var world2 := Node2D.new()
+	add_child(world2)
+	var player2 = PLAYER.instantiate()
+	world2.add_child(player2)
+	var run := Dungeon.new()
+	run.with_ui = false
+	run.layout = DungeonGen.generate(_rng(12), 5, 1, 0)
+	world2.add_child(run)
+	await get_tree().process_frame
+	var all_load := true
+	for f in run.layout.size():
+		for r in run.layout[f].size():
+			run.debug_goto(f, r)
+			all_load = all_load and run.room["kind"] == run.layout[f][r]["kind"] and DungeonGen.describe(run.room) != ""
+	_check("every room of a five-floor dungeon loads", all_load)
+	run.debug_goto(2, 2)
+	run._physics_process(Dungeon.WAVE_DELAY + 0.1)
+	await get_tree().process_frame
+	_check("a mini boss room spawns its guardian and shows the boss bar", is_instance_valid(Game.boss) and Game.boss.mini and run.enemies_alive() >= 1)
+	_check("the door stays shut while the guardian lives", run.state == "fighting")
+	Game.boss.take_hit({"damage": 1000000.0, "element": "", "from": Vector2.ZERO})
+	await get_tree().process_frame
+	run._physics_process(0.1)
+	_check("slaying the guardian opens the door", run.state == "clear")
+	run.debug_goto(4, 2)
+	run._physics_process(Dungeon.WAVE_DELAY + 0.1)
+	await get_tree().process_frame
+	_check("the last floor holds a final boss, not a mini boss", is_instance_valid(Game.boss) and not Game.boss.mini and Game.boss.boss)
+	_check("depth raises monster strength", run._monster_scale().x > 1.0)
+	world2.queue_free()
+
+
+# ---------- Light and Dark ----------
+
+func _test_light_dark() -> void:
+	var all_pairs := true
+	for rare in Elements.RARE:
+		for other in Elements.MAIN:
+			all_pairs = all_pairs and not Elements.resolve(rare, other).is_empty() and Elements.resolve(rare, other) == Elements.resolve(other, rare)
+	_check("Light and Dark each combine with all five main elements", all_pairs and Elements.RARE_COMBOS.size() == 11)
+	_check("Light and Dark combine with each other: Twilight", Elements.resolve("dark", "light")["name"] == "Twilight")
+	_check("the main combos are untouched", Elements.COMBOS.size() == 10 and Elements.resolve("fire", "water")["name"] == "Steam")
+	_check("Light and Dark have a resonance too", Elements.RESONANCE.has("light") and Elements.RESONANCE.has("dark"))
+	var loadouts_ok := true
+	for set_id in ["light", "dark"]:
+		var loadout: Dictionary = SkillDB.LOADOUTS[set_id]
+		for slot in ["primary", "area", "support", "special"]:
+			var id: String = loadout[slot]
+			loadouts_ok = loadouts_ok and SkillDB.DEFS.has(id) and SkillDB.DEFS[id]["element"] == set_id and SkillDB.slot_of(id) == slot and SkillDB.set_of(id) == set_id
+	_check("Light and Dark have a full set of four skills", loadouts_ok)
+	_check("their looks are defined", SkillFx.PROFILES.has("light") and SkillFx.PROFILES.has("dark"))
+
+	var ch := CharacterData.create_sandbox("sage", ["light", "dark"], 7)
+	_check("a Light and Dark character can cast both", ch.castable_elements().has("light") and ch.castable_elements().has("dark"))
+	_check("and knows their first skills", ch.can_use_skill("light_lance") and ch.can_use_skill("shadow_bolt") and ch.can_use_skill("benediction"))
+	var e := _dummy()
+	_hit(e, "light_lance")
+	var before := e.hp
+	_hit(e, "shadow_bolt")
+	_check("Light then Dark makes Twilight: vulnerable", e.effects.has("vuln") and is_equal_approx(before - e.hp, _dmg("shadow_bolt") * 1.8))
+	e.queue_free()
+
+	var light_less := _bare(CharacterData.create_sandbox("channeler", ["fire"], 3))
+	_check("a character without them can still attune", light_less.missing_rare().size() == 2)
+	_check("the main-element gap is unchanged by rare elements", light_less.missing_elements().size() == 4)
+	light_less.inventory.materials[Items.gem_of("light")] = 1
+	_check("a Light gem attunes", light_less.use_gem("light") and "light" in light_less.elements and light_less.inventory.count(Items.gem_of("light")) == 0)
+	_check("and cannot be used twice", not light_less.use_gem("light"))
+	var sealed := _bare(CharacterData.create_sandbox("vanguard", [], 3))
+	sealed.affinity = CharacterData.SEALED
+	sealed.inventory.materials[Items.gem_of("dark")] = 1
+	_check("a sealed character can never use a rare gem", not sealed.use_gem("dark") and sealed.missing_rare().is_empty())
+
+	_check("Light and Dark are each other's weakness", Monsters.WEAK_TO["light"] == "dark" and Monsters.WEAK_TO["dark"] == "light")
+	var early := true
+	var rare_seen := false
+	var rng := _rng(4)
+	for i in 120:
+		for entry in Monsters.roll_wave(rng, 2, 5):
+			early = early and not (entry["variant"] in Elements.RARE)
+		for entry in Monsters.roll_wave(rng, 9, 5):
+			rare_seen = rare_seen or entry["variant"] in Elements.RARE
+	_check("rare variants never appear in the first dungeon", early)
+	_check("but do in the second", rare_seen)
+	var dark_mob := _fresh_monster("slime", "dark")
+	var light_hit := {"damage": 10.0, "element": "light", "from": dark_mob.global_position}
+	var before_hp: float = dark_mob.hp
+	dark_mob.take_hit(light_hit)
+	_check("a dark monster takes extra damage from Light", is_equal_approx(before_hp - dark_mob.hp, 10.0 * Monsters.WEAK_MULT))
+	dark_mob.queue_free()
+
+	_check("the second dungeon's bosses hold the rare gems", Monsters.DEFS["crypt_lich"]["rare_gem"] == "dark" and Monsters.DEFS["tide_titan"]["rare_gem"] == "light" and not Monsters.DEFS["slime_king"].has("rare_gem"))
+	Game.character = _bare(CharacterData.create_sandbox("sage", ["fire"], 8))
+	var holder := Node2D.new()
+	add_child(holder)
+	var lich := Monsters.spawn(holder, "crypt_lich", Vector2(40, 40))
+	await get_tree().process_frame
+	var gems: Array = []
+	var catcher := func(drops: Array, _pos: Vector2):
+		for d in drops:
+			if d["kind"] == "material" and String(d["id"]) == "gem_dark":
+				gems.append(d)
+	Game.loot_dropped.connect(catcher)
+	Game.loot_rng.seed = 11
+	for i in 25:
+		Game.on_enemy_killed(lich)
+	Game.loot_dropped.disconnect(catcher)
+	_check("a boss of the second dungeon sometimes drops its rare gem", gems.size() > 3 and gems.size() < 25)
+	Game.character.add_element("dark")
+	gems.clear()
+	Game.loot_dropped.connect(catcher)
+	for i in 10:
+		Game.on_enemy_killed(lich)
+	Game.loot_dropped.disconnect(catcher)
+	_check("and never again once you hold that element", gems.is_empty())
+	holder.queue_free()
+	_neutral_character()

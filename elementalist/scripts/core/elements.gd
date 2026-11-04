@@ -31,6 +31,23 @@ const COMBOS := {
 }
 
 
+## Combos with the rare elements: Light and Dark each pair with the five main elements, and with each
+## other. Same shape as COMBOS; resolve() looks in both.
+const RARE_COMBOS := {
+	"air+light": {"name": "Halo", "mult": 1.3, "effect": "stun", "time": 0.8, "power": 1.0, "color": Color("fff8c8")},
+	"earth+light": {"name": "Bloom", "mult": 1.2, "effect": "root", "time": 1.5, "power": 1.0, "color": Color("c8f09a")},
+	"fire+light": {"name": "Solar Flare", "mult": 1.6, "effect": "dot", "time": 3.0, "power": 6.0, "color": Color("ffd24a")},
+	"light+mineral": {"name": "Gleam", "mult": 1.3, "effect": "vuln", "time": 3.5, "power": 1.0, "color": Color("fff0b0")},
+	"light+water": {"name": "Dawn Mist", "mult": 1.3, "effect": "slow", "time": 2.5, "power": 0.6, "color": Color("c8ecff")},
+	"air+dark": {"name": "Miasma", "mult": 1.3, "effect": "dot", "time": 3.0, "power": 4.0, "color": Color("8a7ab0")},
+	"dark+earth": {"name": "Blight", "mult": 1.3, "effect": "dot", "time": 3.0, "power": 5.0, "color": Color("5a6a3a")},
+	"dark+fire": {"name": "Hellfire", "mult": 1.6, "effect": "dot", "time": 3.0, "power": 8.0, "color": Color("c8204a")},
+	"dark+mineral": {"name": "Obsidian", "mult": 1.4, "effect": "stun", "time": 0.8, "power": 1.0, "color": Color("3a2f4a")},
+	"dark+water": {"name": "Abyss", "mult": 1.3, "effect": "root", "time": 1.5, "power": 1.0, "color": Color("2a3a7a")},
+	"dark+light": {"name": "Twilight", "mult": 1.8, "effect": "vuln", "time": 4.0, "power": 1.0, "color": Color("c89af0")},
+}
+
+
 ## Resonance: this many discrete hits of the SAME element in a row (without another element
 ## breaking the chain) trigger that element's resonance combo, and reset the count.
 const RESONANCE_HITS := 3
@@ -40,6 +57,8 @@ const RESONANCE := {
 	"earth": {"name": "Overgrowth", "mult": 1.2, "effect": "root", "time": 2.0, "power": 1.0, "color": Color("7fe05a")},
 	"air": {"name": "Gale", "mult": 1.25, "effect": "stun", "time": 0.7, "power": 1.0, "color": Color("e8f8ff")},
 	"mineral": {"name": "Fracture", "mult": 1.4, "effect": "vuln", "time": 3.5, "power": 1.0, "color": Color("d9c7a0")},
+	"light": {"name": "Smite", "mult": 1.3, "effect": "stun", "time": 0.8, "power": 1.0, "color": Color("fff3a8")},
+	"dark": {"name": "Wither", "mult": 1.3, "effect": "dot", "time": 3.0, "power": 6.0, "color": Color("9a5fd5")},
 }
 
 ## Martial combo: this many physical hits (slashes, martial skills) on one enemy within
@@ -57,7 +76,8 @@ func pair_key(a: String, b: String) -> String:
 
 ## Returns the combo definition for two elements, or {} if there is none.
 func resolve(a: String, b: String) -> Dictionary:
-	return COMBOS.get(pair_key(a, b), {})
+	var key := pair_key(a, b)
+	return COMBOS.get(key, RARE_COMBOS.get(key, {}))
 
 
 ## One-line description of a combo's payoff, e.g. "x1.4 damage, vulnerable 3s".

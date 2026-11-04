@@ -215,10 +215,21 @@ func missing_elements() -> Array[String]:
 	return out
 
 
-## Uses up an elemental gem (from a boss) to attune to its element. False if there is no such
-## gem, the element is already owned, or the character is sealed.
+## Light and Dark, if this character does not have them yet (none for a sealed character).
+func missing_rare() -> Array[String]:
+	var out: Array[String] = []
+	if affinity == SEALED:
+		return out
+	for element in Elements.RARE:
+		if not (element in elements):
+			out.append(element)
+	return out
+
+
+## Uses up an elemental gem (from a boss) to attune to its element, main or rare. False if there is
+## no such gem, the element is already owned, or the character is sealed.
 func use_gem(element: String) -> bool:
-	if not (element in missing_elements()) or inventory.count(Items.gem_of(element)) <= 0:
+	if not (element in missing_elements() or element in missing_rare()) or inventory.count(Items.gem_of(element)) <= 0:
 		return false
 	inventory.pay({Items.gem_of(element): 1})
 	return add_element(element)
@@ -537,7 +548,7 @@ func skill_cooldown(skill_id: String) -> float:
 
 # ---------- skills ----------
 
-## Elements the character owns that have a skill loadout (Light/Dark have none yet).
+## Elements the character owns that have a skill loadout.
 func castable_elements() -> Array[String]:
 	var out: Array[String] = []
 	for element in elements:

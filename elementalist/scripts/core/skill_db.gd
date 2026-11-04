@@ -115,6 +115,55 @@ const DEFS := {
 		"apply": {}, "knockback": 100.0,
 		"scales": {"speed": "agility"},
 	},
+	# light and dark (rare elements). Light blinds and heals; dark drains and curses.
+	"light_lance": {
+		"name": "Light Lance", "element": "light", "kind": "projectile",
+		"damage": 14.0, "mana": 7.0, "cooldown": 0.4, "speed": 250.0, "range": 210.0,
+		"apply": {"kind": "weaken", "time": 2.0, "power": 0.2},
+		"scales": {"speed": "agility"},
+	},
+	"sunburst": {
+		"name": "Sunburst", "element": "light", "kind": "aoe",
+		"damage": 18.0, "mana": 22.0, "cooldown": 4.0, "radius": 32.0, "range": 110.0,
+		"apply": {"kind": "stun", "time": 0.4, "power": 1.0}, "knockback": 60.0,
+		"scales": {"radius": "wisdom"},
+	},
+	"radiant_judgment": {
+		"name": "Radiant Judgment", "element": "light", "kind": "aoe",
+		"damage": 40.0, "mana": 34.0, "cooldown": 9.0, "radius": 48.0, "range": 0.0,
+		"apply": {"kind": "vuln", "time": 4.0, "power": 1.0}, "knockback": 120.0,
+		"scales": {"radius": "wisdom"},
+	},
+	"benediction": {
+		"name": "Benediction", "element": "light", "kind": "buff",
+		"damage": 0.0, "mana": 26.0, "cooldown": 18.0,
+		"buff": {"kind": "mend", "time": 6.0, "power": 10.0},
+	},
+	"shadow_bolt": {
+		"name": "Shadow Bolt", "element": "dark", "kind": "projectile",
+		"damage": 15.0, "mana": 8.0, "cooldown": 0.4, "speed": 160.0, "range": 200.0,
+		"apply": {"kind": "dot", "time": 2.0, "power": 3.0},
+		"scales": {"cooldown": "intellect"},
+	},
+	"void_well": {
+		"name": "Void Well", "element": "dark", "kind": "aoe",
+		"damage": 5.0, "mana": 24.0, "cooldown": 5.0, "radius": 30.0, "range": 120.0,
+		"duration": 3.0, "tick": 0.5, "knockback": 0.0,
+		"apply": {"kind": "weaken", "time": 1.0, "power": 0.3},
+		"scales": {"radius": "intellect"},
+	},
+	"void_eclipse": {
+		"name": "Void Eclipse", "element": "dark", "kind": "aoe",
+		"damage": 30.0, "mana": 34.0, "cooldown": 9.0, "radius": 44.0, "range": 120.0,
+		"apply": {"kind": "stun", "time": 0.8, "power": 1.0}, "knockback": 80.0,
+		"scales": {"radius": "intellect"},
+	},
+	"dread_pact": {
+		"name": "Dread Pact", "element": "dark", "kind": "aoe",
+		"damage": 6.0, "mana": 24.0, "cooldown": 12.0, "radius": 40.0, "range": 110.0,
+		"apply": {"kind": "weaken", "time": 6.0, "power": 0.4}, "knockback": 0.0,
+		"scales": {"radius": "intellect"},
+	},
 	# support (V): buffs on yourself, debuffs on enemies. Level 7.
 	"blazing_might": {
 		"name": "Blazing Might", "element": "fire", "kind": "buff",
@@ -169,6 +218,8 @@ const LOADOUTS := {
 	"earth": {"primary": "thorn_shot", "area": "root_snare", "support": "stone_skin", "special": "bramble_burst"},
 	"air": {"primary": "gust", "area": "cyclone", "support": "tailwind", "special": "tempest"},
 	"mineral": {"primary": "shard_shot", "area": "stone_quake", "support": "fracture", "special": "crystal_lance"},
+	"light": {"primary": "light_lance", "area": "sunburst", "support": "benediction", "special": "radiant_judgment"},
+	"dark": {"primary": "shadow_bolt", "area": "void_well", "support": "dread_pact", "special": "void_eclipse"},
 	"martial": {"primary": "knife_throw", "area": "whirlwind", "support": "intimidate", "special": "rending_throw"},
 }
 

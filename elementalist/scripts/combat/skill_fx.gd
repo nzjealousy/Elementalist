@@ -13,11 +13,24 @@ const PROFILES := {
 	"earth": {"amount": 12, "life": 0.5, "speed": Vector2(10, 40), "gravity": Vector2(0, 110), "size": Vector2(1.6, 3.0), "spin": 200.0, "colors": [Color("8fd45a"), Color("5a4630")]},
 	"air": {"amount": 18, "life": 0.3, "speed": Vector2(30, 75), "gravity": Vector2.ZERO, "size": Vector2(0.8, 1.4), "spin": 0.0, "colors": [Color("ffffff"), Color("9fd8ff")]},
 	"mineral": {"amount": 14, "life": 0.45, "speed": Vector2(20, 60), "gravity": Vector2(0, 40), "size": Vector2(1.4, 2.6), "spin": 520.0, "colors": [Color("fff1cf"), Color("8a7a5a")]},
+	"light": {"amount": 16, "life": 0.4, "speed": Vector2(8, 32), "gravity": Vector2(0, -20), "size": Vector2(0.9, 2.0), "spin": 0.0, "colors": [Color("ffffff"), Color("ffe27a")]},
+	"dark": {"amount": 16, "life": 0.5, "speed": Vector2(6, 28), "gravity": Vector2(0, -10), "size": Vector2(1.2, 2.6), "spin": 120.0, "colors": [Color("b58af0"), Color("2a1040")]},
 	"martial": {"amount": 12, "life": 0.25, "speed": Vector2(25, 70), "gravity": Vector2.ZERO, "size": Vector2(1.0, 1.8), "spin": 0.0, "colors": [Color.WHITE, Color("8a8a96")]},
 }
 
 static var _glow_texture: GradientTexture2D
 static var _glow_material: CanvasItemMaterial
+
+
+static var _additive: CanvasItemMaterial
+
+
+## One shared additive material for glowing effect sprites.
+static func additive_material() -> CanvasItemMaterial:
+	if _additive == null:
+		_additive = CanvasItemMaterial.new()
+		_additive.blend_mode = CanvasItemMaterial.BLEND_MODE_ADD
+	return _additive
 
 
 static func profile(element: String) -> Dictionary:
@@ -120,6 +133,7 @@ static func trail(projectile: Node2D, element: String) -> void:
 ## Impact: particles plus a small shock ring.
 static func impact(parent: Node, pos: Vector2, element: String) -> void:
 	burst(parent, pos, element, 0.7)
+	SpriteAnim.burst(parent, "fx_hit", pos, Elements.color_of(element) if element != "" else Color("e8e8f0"), 0.9)
 	ring(parent, pos, 9.0, Elements.color_of(element), 0.2, 1.0)
 
 
@@ -129,6 +143,17 @@ static func impact(parent: Node, pos: Vector2, element: String) -> void:
 static func area_burst(area: Node2D, element: String, radius: float, duration: float) -> void:
 	var color := Elements.color_of(element)
 	ring(area, Vector2.ZERO, radius, color, 0.4, 1.5, true)
+	if AssetDB.has_art("fx_rune"):  # a rune circle under the area, turning while it lasts
+		var rune := Sprite2D.new()
+		rune.modulate = Color(color, 0.8)
+		rune.material = additive_material()
+		rune.scale = Vector2.ONE * (radius * 2.0 / 38.0)
+		rune.z_index = -7
+		area.add_child(rune)
+		var spin := SpriteAnim.attach(rune, "fx_rune", 8.0, rune)
+		var fade := rune.create_tween()
+		fade.tween_property(rune, "modulate:a", 0.0, maxf(duration, 0.5))
+		fade.tween_callback(rune.queue_free)
 	var node := particles(element, duration <= 0.0, clampf(radius / 20.0, 0.8, 3.0))
 	node.emission_shape = CPUParticles2D.EMISSION_SHAPE_SPHERE
 	node.emission_sphere_radius = radius * 0.8

@@ -209,12 +209,14 @@ func _switch_tab(id: String) -> void:
 
 
 func _craft(base_id: String) -> void:
+	Sfx.play("forge")
 	var item := Forge.craft(Game.character.inventory, base_id, Game.character.level, Game.loot_rng, Game.loot_allows_spell())
 	_status = ("Crafted %s" % Items.display_name(item)) if not item.is_empty() else "Could not craft"
 	show_tab.call_deferred(_tab)
 
 
 func _upgrade(item: Dictionary) -> void:
+	Sfx.play("forge")
 	var ok := Forge.upgrade(Game.character.inventory, item)
 	_status = ("%s upgraded" % Items.display_name(item)) if ok else "Could not upgrade"
 	show_tab.call_deferred(_tab)
@@ -226,6 +228,7 @@ func _pick_enchant_target(item: Dictionary) -> void:
 
 
 func _enchant(element: String) -> void:
+	Sfx.play("forge")
 	var ok := Forge.enchant(Game.character.inventory, _enchant_target, element)
 	_status = ("%s enchanted: %s" % [Items.display_name(_enchant_target), Items.ENCHANTS[element]["name"]]) if ok else "Could not enchant"
 	_enchant_target = {}
@@ -233,6 +236,7 @@ func _enchant(element: String) -> void:
 
 
 func _salvage(index: int) -> void:
+	Sfx.play("forge")
 	var gain := Forge.salvage(Game.character.inventory, index)
 	_status = ("Salvaged: +%d scrap, +%d gold" % [gain["scrap"], gain["gold"]]) if not gain.is_empty() else "Nothing to salvage"
 	show_tab.call_deferred(_tab)

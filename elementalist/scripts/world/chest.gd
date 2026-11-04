@@ -16,6 +16,7 @@ func can_interact() -> bool:
 
 func interact() -> void:
 	opened = true
+	Sfx.play("chest_open")
 	sprite.texture = AssetDB.get_texture("chest_open")
 	for entry in Loot.chest_drops(Game.loot_rng, Game.loot_level(), Game.loot_bonus(), Game.loot_allows_spell()):
 		Pickup.spawn(get_parent(), global_position, entry)

@@ -6,6 +6,7 @@ const SANDBOX_LEVEL := 10
 const HURT_TIME := 0.6  # seconds the hit indicator stays on screen
 const MENU_SCENE := "res://scenes/menu/main_menu.tscn"
 const GAME_SCENE := "res://scenes/main.tscn"
+const RARE_GEM_CHANCE := 0.6  # the second dungeon's bosses: the chance of their Light or Dark gem
 const DEATH_GOLD_LOSS := 0.3  # share of carried gold a fall in the dungeon costs
 
 ## Chosen when a hero is created and kept in the save. "hardness" scales monster health and damage,
@@ -232,6 +233,8 @@ func on_enemy_killed(enemy: Node) -> void:
 		drops = Loot.boss_drops(loot_rng, loot_level(), loot_bonus(), character.missing_elements(), loot_allows_spell())
 	else:
 		drops = Loot.enemy_drops(loot_rng, loot_level(), loot_bonus(), String(enemy.last_element), loot_allows_spell(), String(enemy.variant))
+	if enemy.boss and not enemy.mini and enemy.rare_gem != "" and enemy.rare_gem in character.missing_rare() and loot_rng.randf() < RARE_GEM_CHANCE:
+		drops.append({"kind": "material", "id": Items.gem_of(enemy.rare_gem), "amount": 1})
 	if not drops.is_empty():
 		loot_dropped.emit(drops, enemy.global_position)
 

@@ -34,5 +34,13 @@ func _process(delta: float) -> void:
 
 func _draw() -> void:
 	var t := clampf(_age / lifetime, 0.0, 1.0)
+	if arc < deg_to_rad(200.0) and AssetDB.has_art("fx_slash"):  # a slash: the crescent sprite (a spin keeps its ring)
+		var frames: Array = AssetDB.get_frames("fx_slash")
+		var tex: Texture2D = frames[mini(int(t * frames.size()), frames.size() - 1)]
+		var s := radius / 20.0
+		draw_set_transform(Vector2.ZERO, angle, Vector2(s, s))
+		draw_texture(tex, Vector2(-6, -17), Color(color, 1.0))
+		draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
+		return
 	var sweep := angle - arc * 0.5 + arc * t
 	draw_arc(Vector2.ZERO, radius * (0.6 + 0.4 * t), sweep - arc * 0.35, sweep + arc * 0.1, 10, Color(color, 1.0 - t), 2.0)

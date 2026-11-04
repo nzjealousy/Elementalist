@@ -148,6 +148,8 @@ const MATERIALS := {
 	"gem_earth": {"name": "Earth Gem", "color": Color("5fbf4a")},
 	"gem_air": {"name": "Air Gem", "color": Color("d9f2ff")},
 	"gem_mineral": {"name": "Mineral Gem", "color": Color("b5a58a")},
+	"gem_light": {"name": "Light Gem", "color": Color("fff3a8")},
+	"gem_dark": {"name": "Dark Gem", "color": Color("7a3fb5")},
 }
 
 

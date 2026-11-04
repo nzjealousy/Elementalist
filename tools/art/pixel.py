@@ -116,3 +116,107 @@ class Rng:
 
     def rint(self, a, b):
         return a + int(self.next() * (b - a + 1))
+
+
+# ---------------------------------------------------------------------------------------------
+# Procedural drawing helpers: shaded shapes with a fixed top-left light, so every sprite in the
+# game is lit the same way. All coordinates are pixel units; shapes are filled, never anti-aliased.
+# ---------------------------------------------------------------------------------------------
+import math
+
+OUTLINE = (24, 16, 30, 255)
+_LIGHT = (-0.45, -0.6, 0.66)
+_LL = math.sqrt(sum(v * v for v in _LIGHT))
+LIGHT = tuple(v / _LL for v in _LIGHT)
+
+
+def tones(base):
+    """(highlight, base, shadow, deep) for a colour."""
+    return (shade(base, 1.28), base, shade(base, 0.74), shade(base, 0.5))
+
+
+def ellipse(cv, cx, cy, rx, ry, c):
+    for y in range(int(cy - ry - 1), int(cy + ry + 2)):
+        for x in range(int(cx - rx - 1), int(cx + rx + 2)):
+            if ((x - cx) / max(rx, 0.01)) ** 2 + ((y - cy) / max(ry, 0.01)) ** 2 <= 1.0:
+                cv.set(x, y, c)
+
+
+def shaded_ellipse(cv, cx, cy, rx, ry, base, bands=3):
+    """A ball-lit ellipse in 3 tones (highlight / base / shadow) plus a specular dot."""
+    hi, mid, lo, deep = tones(base)
+    for y in range(int(cy - ry - 1), int(cy + ry + 2)):
+        for x in range(int(cx - rx - 1), int(cx + rx + 2)):
+            nx = (x - cx) / max(rx, 0.01)
+            ny = (y - cy) / max(ry, 0.01)
+            r2 = nx * nx + ny * ny
+            if r2 > 1.0:
+                continue
+            nz = math.sqrt(1.0 - r2)
+            lam = nx * LIGHT[0] + ny * LIGHT[1] + nz * LIGHT[2]
+            cv.set(x, y, hi if lam > 0.78 else (mid if lam > 0.32 else (lo if lam > -0.1 else deep)))
+
+
+def rect(cv, x, y, w, h, c):
+    cv.rect(int(x), int(y), int(w), int(h), c)
+
+
+def shaded_rect(cv, x, y, w, h, base):
+    """A box with a light top-left edge and a dark bottom-right edge."""
+    hi, mid, lo, deep = tones(base)
+    cv.rect(int(x), int(y), int(w), int(h), mid)
+    for i in range(int(w)):
+        cv.set(int(x) + i, int(y), hi)
+        cv.set(int(x) + i, int(y + h - 1), lo)
+    for j in range(int(h)):
+        cv.set(int(x), int(y) + j, hi)
+        cv.set(int(x + w - 1), int(y) + j, lo)
+    cv.set(int(x + w - 1), int(y + h - 1), deep)
+
+
+def line(cv, x0, y0, x1, y1, c, thick=1):
+    steps = int(max(abs(x1 - x0), abs(y1 - y0))) + 1
+    for i in range(steps + 1):
+        t = i / max(steps, 1)
+        x = round(x0 + (x1 - x0) * t)
+        y = round(y0 + (y1 - y0) * t)
+        for dx in range(thick):
+            for dy in range(thick):
+                cv.set(x + dx, y + dy, c)
+
+
+def poly(cv, pts, c):
+    """Filled polygon (scanline, even-odd)."""
+    ys = [p[1] for p in pts]
+    for y in range(int(min(ys)), int(max(ys)) + 1):
+        xs = []
+        n = len(pts)
+        for i in range(n):
+            (x0, y0), (x1, y1) = pts[i], pts[(i + 1) % n]
+            if (y0 <= y + 0.5 < y1) or (y1 <= y + 0.5 < y0):
+                xs.append(x0 + (y + 0.5 - y0) * (x1 - x0) / (y1 - y0))
+        xs.sort()
+        for i in range(0, len(xs) - 1, 2):
+            for x in range(int(round(xs[i])), int(round(xs[i + 1]))):
+                cv.set(x, y, c)
+
+
+def eyes(cv, x, y, gap, c=(255, 255, 255, 255), pupil=(20, 16, 30, 255), size=1):
+    """Two eyes centred on x, `gap` apart."""
+    for sx in (x - gap // 2, x + gap // 2 - (0 if gap % 2 else 0)):
+        cv.set(sx, y, c)
+        if size > 1:
+            cv.set(sx, y + 1, c)
+        cv.set(sx + (1 if sx >= x else 0), y + (size - 1), pupil)
+
+
+def finish(cv, outline=OUTLINE, pad=0):
+    """Add the 1px outline and return the framed canvas."""
+    return cv.outline(outline)
+
+
+def fit(cv, w, h):
+    """Centre `cv` in a (w, h) transparent canvas (bottom-aligned), so animation frames share a size."""
+    out = Canvas(w, h)
+    out.blit(cv, (w - cv.w) // 2, h - cv.h)
+    return out

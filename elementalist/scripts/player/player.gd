@@ -61,6 +61,7 @@ var _buff_fx: Dictionary = {}  # buff kind -> its aura particles
 var _imbue_fx: CPUParticles2D
 
 @onready var sprite: Sprite2D = $Sprite2D
+var _anim: SpriteAnim
 @onready var camera: Camera2D = $Camera2D
 
 
@@ -172,7 +173,10 @@ func take_damage(amount: float, from: Vector2) -> bool:
 	FloatText.spawn(get_parent(), global_position + Vector2(0, -4), "-%d" % int(round(amount)), Color("ff5a5a"), 10)
 	Game.player_hurt(from - global_position)
 	Juice.shake(2.0, 0.2)
+	Sfx.play("player_hurt")
 	if hp <= 0.0:
+		Sfx.play("player_die")
+		Sfx.duck(1.5)
 		if died.get_connections().is_empty():
 			get_tree().reload_current_scene()  # no run is listening (e.g. a bare scene): just restart
 		else:
@@ -299,6 +303,7 @@ func try_melee(dir: Vector2 = Vector2.ZERO, spin: bool = false) -> bool:
 	if dir == Vector2.ZERO:
 		dir = aim_direction
 	spend_stamina(cost)
+	Sfx.play("spin" if spin else "slash")
 	_melee_cd = (SPIN_COOLDOWN if spin else float(m["cooldown"])) / float(stats["attack_speed"])
 	if spin:
 		_spin_left = SPIN_DURATION  # immune until the attack finishes
@@ -372,6 +377,7 @@ func try_dodge(dir: Vector2 = Vector2.ZERO) -> bool:
 	_dodge_cd = dodge_cooldown
 	_spun = false
 	spend_stamina(dodge_cost)
+	Sfx.play("dodge")
 	return true
 
 
@@ -398,9 +404,27 @@ func _process(_delta: float) -> void:
 	camera.offset = Juice.offset()
 
 
+## Picks the art for where the hero faces (toward the aim) and walks it while moving. The art is
+## per class (player_<class>_<down|up|side>), then generic, then the old single picture.
+func _update_sprite() -> void:
+	var facing := "side"
+	if absf(aim_direction.y) > absf(aim_direction.x) * 1.1:
+		facing = "up" if aim_direction.y < 0.0 else "down"
+	var id := "player_%s_%s" % [Game.character.class_id, facing]
+	if not AssetDB.has_art(id):
+		id = "player_" + facing
+	if not AssetDB.has_art(id):
+		id = "player"
+	if _anim == null:
+		_anim = SpriteAnim.attach(sprite, id, 9.0, self)
+	_anim.set_art(id)
+	_anim.playing = velocity.length() > 8.0 or is_dodging()
+	sprite.flip_h = facing == "side" and aim_direction.x < 0.0
+
+
 func _physics_process(delta: float) -> void:
 	aim_direction = (Controls.aim_point(self, global_position) - global_position).normalized()
-	sprite.flip_h = aim_direction.x < 0.0
+	_update_sprite()
 
 	_dodge_cd = maxf(0.0, _dodge_cd - delta)
 	_hurt_cd = maxf(0.0, _hurt_cd - delta)

@@ -72,10 +72,10 @@ static func _read(path: String) -> Dictionary:
 	var text := FileAccess.get_file_as_string(path)
 	if text.is_empty() or text.length() > MAX_BYTES:
 		return {}
-	var parsed: Variant = JSON.parse_string(text)
-	if not (parsed is Dictionary):
+	var json := JSON.new()  # (an instance, so a damaged file is a quiet {} and not an engine error)
+	if json.parse(text) != OK or not (json.data is Dictionary):
 		return {}
-	return migrate(parsed)
+	return migrate(json.data)
 
 
 ## Brings a parsed save up to VERSION; {} if it is from a newer build or is missing what a save needs.

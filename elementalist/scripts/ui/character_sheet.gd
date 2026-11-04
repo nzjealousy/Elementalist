@@ -216,7 +216,7 @@ func _fill_gear() -> void:
 	left.add_child(_spacer())
 	left.add_child(_label(wallet, GOLD))
 
-	var gems := Elements.MAIN.filter(func(e): return inv.count(Items.gem_of(e)) > 0)
+	var gems := (Elements.MAIN + Elements.RARE).filter(func(e): return inv.count(Items.gem_of(e)) > 0)
 	if not gems.is_empty():
 		right.add_child(_label("Elemental gems (bosses drop them): use one to attune", GOLD))
 		for element in gems:
@@ -329,14 +329,12 @@ func _fill_passives() -> void:
 			shown += 1
 
 
-func _fill_combos() -> void:
-	var ch := Game.character
-	var col := _column(CONTENT_WIDTH)
-	col.add_child(_label("Combos: hit an enemy with a second element while the first still marks it (4s)", GOLD))
-	var keys := Elements.COMBOS.keys()
+## One line per combo in `combos`: lit when the character owns both elements, dim with what is missing.
+func _combo_rows(col: VBoxContainer, ch: CharacterData, combos: Dictionary) -> void:
+	var keys := combos.keys()
 	keys.sort()
 	for key in keys:
-		var combo: Dictionary = Elements.COMBOS[key]
+		var combo: Dictionary = combos[key]
 		var pair: Array = Array(String(key).split("+"))
 		var missing: Array = pair.filter(func(e): return not (e in ch.elements))
 		var text := "%s + %s = %s   %s" % [pair[0].capitalize(), pair[1].capitalize(), combo["name"], Elements.describe_combo(combo)]
@@ -344,6 +342,19 @@ func _fill_combos() -> void:
 			col.add_child(_label(text, combo["color"].lightened(0.35)))
 		else:
 			col.add_child(_label("%s   (needs %s)" % [text, ", ".join(missing.map(func(e): return String(e).capitalize()))], DIM))
+
+
+func _fill_combos() -> void:
+	var ch := Game.character
+	var col := _column(CONTENT_WIDTH)
+	col.add_child(_label("Combos: hit an enemy with a second element while the first still marks it (4s)", GOLD))
+	_combo_rows(col, ch, Elements.COMBOS)
+	if ch.elements.any(func(e): return e in Elements.RARE):
+		col.add_child(_spacer())
+		col.add_child(_label("Rare combos (Light and Dark)", GOLD))
+		_combo_rows(col, ch, Elements.RARE_COMBOS)
+	else:
+		col.add_child(_label("Light and Dark add %d more combos once you hold one of them." % Elements.RARE_COMBOS.size(), DIM))
 
 	col.add_child(_spacer())
 	col.add_child(_label("Resonance: %d hits of the same element in a row" % Elements.RESONANCE_HITS, GOLD))

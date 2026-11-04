@@ -31,8 +31,10 @@ var display_name := "Slime"
 var behavior := "chase"
 var variant := ""            # elemental variant: "" or a main element (see Monsters)
 var boss := false
+var rare_gem := ""    # a final boss of the second dungeon may drop this rare element's gem
 var mini := false     # a mini boss: a boss-style fight at the end of every third floor
 var enraged := false
+var anim: SpriteAnim
 var knock_resist := 0.0      # share of knockback ignored
 var attack_range := 0.0      # ranged: shoots from this far
 var keep_distance := 0.0     # ranged: tries to stay about this far away
@@ -83,6 +85,7 @@ func configure(id: String, variant_element: String = "", hp_scale: float = 1.0, 
 	level = monster_level
 	boss = def.get("boss", false)
 	mini = def.get("mini", false)
+	rare_gem = String(def.get("rare_gem", ""))
 	knock_resist = float(def.get("knock_resist", 0.0))
 	attack_range = float(def.get("attack_range", 0.0))
 	keep_distance = float(def.get("keep_distance", 0.0))
@@ -125,6 +128,7 @@ func _ready() -> void:
 	_attack_cd = randf_range(0.6, 1.6)
 	add_to_group("enemies")
 	sprite.texture = AssetDB.get_texture(sprite_id)
+	anim = SpriteAnim.attach(sprite, sprite_id, 10.0 if behavior == "flutter" else (7.0 if behavior == "ranged" else 5.0), self)
 	if variant != "":
 		_base_tint = Color.WHITE.lerp(Elements.color_of(variant), 0.5)
 	var circle := CircleShape2D.new()  # sized to the sprite (the scene's shape is shared, so not edited)
@@ -214,6 +218,9 @@ func take_hit(hit: Dictionary) -> void:
 
 	if juicy:
 		HitFx.burst(get_parent(), global_position, text_color)
+		Sfx.play_at("hit", global_position, 240.0, -2.0)
+		if not combo.is_empty():
+			Sfx.play_at("combo", global_position, 260.0, -3.0)
 		if not combo.is_empty():
 			Juice.shake(2.0, 0.2)
 			Juice.hit_stop(0.07)
@@ -302,6 +309,7 @@ func _damage(amount: float, color: Color, crit: bool = false) -> void:
 	if hp <= 0.0:
 		HitFx.burst(get_parent(), global_position, Color("9be88a"), 14, 80.0)
 		Juice.hit_stop(0.05)
+		Sfx.play_at("enemy_die", global_position, 260.0)
 		Game.on_enemy_killed(self)
 		died.emit(self)
 		queue_free()
@@ -316,6 +324,8 @@ func _physics_process(delta: float) -> void:
 	_age += delta
 	var target := get_tree().get_first_node_in_group("player") as Node2D
 	velocity = _desired_velocity(target) + _knock
+	if target and absf(target.global_position.x - global_position.x) > 2.0:
+		sprite.flip_h = target.global_position.x < global_position.x  # art faces right
 	_knock = _knock.move_toward(Vector2.ZERO, 300.0 * delta)
 	move_and_slide()
 
@@ -376,6 +386,7 @@ func _attack(delta: float, target: Node2D) -> void:
 	if slam_ready:  # up close a boss slams; farther away it shoots (when it has a shot)
 		_attack_cd = float(slam["cooldown"]) * _enrage_cooldown()
 		_telegraph = Telegraph.start(get_parent(), global_position, float(slam["radius"]), float(slam["telegraph"]), _land_slam)
+		Sfx.play_at("telegraph", global_position, 300.0, -4.0)
 	elif not shot.is_empty() and attack_type in ["ranged", "both"] and distance <= attack_range:
 		_attack_cd = float(shot["cooldown"]) * _enrage_cooldown()
 		EnemyProjectile.spawn(get_parent(), global_position, target.global_position - global_position,
@@ -415,6 +426,7 @@ func _land_slam() -> void:
 	SkillFx.ring(get_parent(), circle_centre, float(slam["radius"]), Color("ff6a4a"), 0.4, 2.0)
 	HitFx.burst(get_parent(), circle_centre, Color("ff6a4a"), 16, 90.0)
 	Juice.shake(3.0, 0.3)
+	Sfx.play_at("slam", circle_centre, 340.0)
 	var target := get_tree().get_first_node_in_group("player") as Node2D
 	if target and target.global_position.distance_to(circle_centre) <= float(slam["radius"]) and target.has_method("take_damage"):
 		target.take_damage(damage_out(float(slam["damage"])), circle_centre)
@@ -426,6 +438,8 @@ func _check_enrage() -> void:
 		enraged = true
 		speed *= 1.25
 		FloatText.spawn(get_parent(), global_position + Vector2(0, -16), "Enraged!", Color("ff5a4a"), 11)
+		Sfx.play("enrage")
+		Sfx.duck(1.0)
 		Juice.shake(3.0, 0.4)
 
 

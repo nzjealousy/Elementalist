@@ -46,6 +46,7 @@ func unlock() -> void:
 	for sprite in _sprites:
 		sprite.texture = AssetDB.get_texture("door_open")
 	SkillFx.ring(get_parent(), global_position, 16.0, Color("7fe88a"), 0.5, 1.5)
+	Sfx.play("door_open", &"SFX", -4.0)
 
 
 ## True when `point` (e.g. the player's position) is inside the doorway.

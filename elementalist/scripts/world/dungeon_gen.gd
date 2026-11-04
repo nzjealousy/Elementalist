@@ -179,4 +179,4 @@ static func _place_obstacles(rng: RandomNumberGenerator, room: Dictionary, count
 
 ## "Floor 2, room 3: combat" for banners.
 static func describe(room: Dictionary) -> String:
-	return "Floor %d - %s" % [room["floor"], {"combat": "Combat", "treasure": "Treasure room", "forge": "Forge and rest", "boss": "Boss"}[room["kind"]]]
+	return "Floor %d - %s" % [room["floor"], {"combat": "Combat", "treasure": "Treasure room", "forge": "Forge and rest", "boss": "Boss", "miniboss": "Guardian", "camp": "Camp"}[room["kind"]]]

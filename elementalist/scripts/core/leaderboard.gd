@@ -27,7 +27,8 @@ static func score_for(stats: Dictionary) -> int:
 
 static func entries() -> Array:
 	var text := FileAccess.get_file_as_string(path) if FileAccess.file_exists(path) else ""
-	var parsed: Variant = JSON.parse_string(text) if not text.is_empty() else null
+	var json := JSON.new()
+	var parsed: Variant = json.data if (not text.is_empty() and json.parse(text) == OK) else null
 	var out: Array = []
 	if parsed is Dictionary and parsed.get("entries") is Array:
 		for entry in parsed["entries"]:

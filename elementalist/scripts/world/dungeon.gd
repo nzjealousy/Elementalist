@@ -52,6 +52,9 @@ func _ready() -> void:
 		Game.run_kills = 0
 	Game.boss = null
 	Game.loot_dropped.connect(_on_loot_dropped)
+	if with_ui:
+		Game.character.leveled_up.connect(func(_level): _fanfare("level_up"))
+		Game.character.reward_ready.connect(func(_level): _fanfare("reward"))
 	var player := _player()
 	if player:
 		player.died.connect(_on_player_died)
@@ -191,7 +194,24 @@ func _load_room(floor_number: int, room_number: int) -> void:
 			goal = "A guardian blocks the way. Defeat it to open the door"
 		Game.say("%s\n%s" % [DungeonGen.describe(room), goal])
 	_update_run_text()
+	_play_music()
 	_autosave()
+
+
+func _fanfare(sound: String) -> void:
+	Sfx.play(sound)
+	Sfx.duck(0.9)
+
+
+## Music follows the place: the camp, the vault or the crypt; a boss track in a guardian's room.
+func _play_music() -> void:
+	if not with_ui:
+		return
+	var kind := String(room.get("kind", ""))
+	if kind in ["boss", "miniboss"] and state != "clear":
+		Sfx.music("boss")
+	else:
+		Sfx.music({"camp": "camp"}.get(_theme(), "crypt" if _theme() == "crypt" else "vault"))
 
 
 ## The camp: heal up, stand the forge, the notice board and the gate in the room.
@@ -229,9 +249,41 @@ func _centre() -> Vector2:
 	return Vector2(int(room["cols"]), int(room["rows"])) * TILE * 0.5
 
 
+## The look of the place: the camp, the first dungeon (vault) or the second (crypt).
+func _theme() -> String:
+	if room.get("kind", "") == "camp":
+		return "camp"
+	return "crypt" if tier >= 2 else "vault"
+
+
+## The ground picture for a tile: one of a few variants, chosen by position so the same room always
+## looks the same.
+func _tile_art(kind: String, tile: Vector2i, variants: int) -> Texture2D:
+	var theme := _theme()
+	var pick := absi(tile.x * 7 + tile.y * 13 + tile.x * tile.y) % variants
+	var id := "tile_%s_%s_%d" % [kind, theme, pick]
+	return AssetDB.get_texture(id if AssetDB.has_art(id) else "tile_" + kind)
+
+
+## The void around the room: a dark tiled picture under everything (tiles forever, so the camera
+## never shows the edge).
+func _add_background() -> void:
+	var id := "bg_" + _theme()
+	if not AssetDB.has_art(id):
+		return
+	var bg := Sprite2D.new()
+	bg.texture = AssetDB.get_texture(id)
+	bg.centered = false
+	bg.texture_repeat = CanvasItem.TEXTURE_REPEAT_ENABLED
+	bg.region_enabled = true
+	bg.region_rect = Rect2(-640, -640, 2048, 2048)
+	bg.position = Vector2(-640, -640)
+	bg.z_index = -20
+	_room_node.add_child(bg)
+
+
 func _build_room() -> void:
-	var floor_tex := AssetDB.get_texture("tile_floor")
-	var wall_tex := AssetDB.get_texture("tile_wall")
+	_add_background()
 	var sealed_tex := AssetDB.get_texture("door_sealed")
 	var cols: int = room["cols"]
 	var rows: int = room["rows"]
@@ -241,21 +293,23 @@ func _build_room() -> void:
 	var entry_rect := Rect2i()
 	if room["entry"] != "":
 		entry_rect = DungeonGen.door_rect(room, "entry")
+	var pillar_id := "tile_pillar_" + _theme()
 	for y in rows:
 		for x in cols:
 			var tile := Vector2i(x, y)
 			var boundary := x == 0 or y == 0 or x == cols - 1 or y == rows - 1
 			if boundary and exit_rect.has_point(tile):
-				_add_tile(floor_tex, tile, false)  # under the door
+				_add_tile(_tile_art("floor", tile, 4), tile, false)  # under the door
 				continue
 			if boundary:
-				_add_tile(sealed_tex if entry_rect.has_point(tile) else wall_tex, tile, true)
+				_add_tile(sealed_tex if entry_rect.has_point(tile) else _tile_art("wall", tile, 3), tile, true)
 			else:
-				_add_tile(floor_tex, tile, false)
+				_add_tile(_tile_art("floor", tile, 4), tile, false)
 	for rect in room["obstacles"]:
 		for y in range(rect.position.y, rect.end.y):
 			for x in range(rect.position.x, rect.end.x):
-				_add_tile(wall_tex, Vector2i(x, y), true)
+				var tile := Vector2i(x, y)
+				_add_tile(AssetDB.get_texture(pillar_id) if AssetDB.has_art(pillar_id) else _tile_art("wall", tile, 3), tile, true)
 	if room["exit"] != "":
 		_exit_door = Door.new()
 		_exit_door.setup(Rect2(Vector2(exit_rect.position) * TILE, Vector2(exit_rect.size) * TILE), String(room["exit"]))
@@ -354,6 +408,8 @@ func _spawn_boss() -> void:
 	Game.boss = boss
 	SkillFx.ring(_room_node, pos, 30.0, Color("ff6a4a"), 0.8, 2.0)
 	Game.say("%s awakens!" % boss.display_name)
+	Sfx.play("boss_roar")
+	Sfx.duck(1.4)
 
 
 ## How deep this room is overall (the second dungeon starts where the first ends).
@@ -383,6 +439,7 @@ func _spawn_point() -> Vector2:
 
 func _clear_room(message: String) -> void:
 	state = "clear"
+	_play_music()
 	if _exit_door:
 		_exit_door.unlock()
 	Game.say(message)

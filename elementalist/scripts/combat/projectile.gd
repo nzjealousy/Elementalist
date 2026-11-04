@@ -28,7 +28,10 @@ func _ready() -> void:
 	add_child(shape)
 	var sprite := Sprite2D.new()
 	sprite.texture = AssetDB.get_texture(texture_id)
+	sprite.offset = Vector2(-3.5, 0)  # the art's bright head sits in front of its centre
+	sprite.rotation = velocity.angle()  # the art points right
 	add_child(sprite)
+	SpriteAnim.attach(sprite, texture_id, 14.0, self)
 	z_index = 5
 	body_entered.connect(_on_body_entered)
 	SkillFx.trail(self, String(hit.get("element", "")))

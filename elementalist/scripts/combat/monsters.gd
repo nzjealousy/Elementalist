@@ -35,7 +35,9 @@ const VARIANT_XP := 1.5
 
 ## Each element is weak to the one that "beats" it (water douses fire, earth drinks water, fire
 ## burns earth, mineral grounds air, air erodes mineral).
-const WEAK_TO := {"fire": "water", "water": "earth", "earth": "fire", "air": "mineral", "mineral": "air"}
+const WEAK_TO := {"fire": "water", "water": "earth", "earth": "fire", "air": "mineral", "mineral": "air", "light": "dark", "dark": "light"}
+const RARE_VARIANT_DEPTH := 6      # from this depth (the second dungeon) light and dark variants can appear
+const RARE_VARIANT_CHANCE := 0.2   # of the variants rolled there
 
 const DEFS := {
 	"slime": {
@@ -121,14 +123,14 @@ const DEFS := {
 		"summon": {"id": "bat", "count": 4, "stages": [0.5]},
 	},
 	"crypt_lich": {
-		"name": "Crypt Lich", "sprite": "boss_lich", "hp": 900.0, "speed": 20.0, "contact": 16.0, "xp": 420, "tier": 2,
+		"name": "Crypt Lich", "sprite": "boss_lich", "hp": 900.0, "speed": 20.0, "contact": 16.0, "xp": 420, "tier": 2, "rare_gem": "dark",
 		"behavior": "boss", "attack": "both", "boss": true, "knock_resist": 0.9,
 		"attack_range": 135.0, "shot": {"damage": 11.0, "speed": 90.0, "cooldown": 1.4},
 		"slam": {"radius": 52.0, "damage": 34.0, "cooldown": 5.5, "telegraph": 0.9},
 		"summon": {"id": "wraith", "count": 3, "stages": [0.75, 0.5, 0.25]},
 	},
 	"tide_titan": {
-		"name": "Tide Titan", "sprite": "boss_titan", "hp": 1100.0, "speed": 17.0, "contact": 20.0, "xp": 460, "tier": 2,
+		"name": "Tide Titan", "sprite": "boss_titan", "hp": 1100.0, "speed": 17.0, "contact": 20.0, "xp": 460, "tier": 2, "rare_gem": "light",
 		"behavior": "boss", "attack": "both", "boss": true, "knock_resist": 0.95,
 		"attack_range": 100.0, "shot": {"damage": 10.0, "speed": 80.0, "cooldown": 1.8},
 		"dash": {"range": 110.0, "cooldown": 6.0, "windup": 0.6, "time": 0.3, "speed": 210.0, "damage_mult": 1.6},
@@ -180,6 +182,8 @@ static func roll_wave(rng: RandomNumberGenerator, floor_number: int, count: int)
 		var variant := ""
 		if rng.randf() < minf(VARIANT_CHANCE_PER_FLOOR * floor_number, VARIANT_CHANCE_MAX):
 			variant = Elements.MAIN[rng.randi_range(0, Elements.MAIN.size() - 1)]
+			if floor_number >= RARE_VARIANT_DEPTH and rng.randf() < RARE_VARIANT_CHANCE:
+				variant = Elements.RARE[rng.randi_range(0, Elements.RARE.size() - 1)]
 		out.append({"id": Loot.pick_weighted(rng, weights), "variant": variant})
 	return out
 

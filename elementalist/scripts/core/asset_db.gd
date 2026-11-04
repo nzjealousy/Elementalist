@@ -61,6 +61,33 @@ func get_texture(id: String) -> Texture2D:
 	return tex
 
 
+## True when real art (not the placeholder box) exists for `id`.
+func has_art(id: String) -> bool:
+	return ResourceLoader.exists(SPRITE_DIR + id + ".png")
+
+
+## The animation frames of `id`: its <id>_strip.png cut into frames as wide as the idle picture.
+## Without a strip it is just the one picture. Cached.
+func get_frames(id: String) -> Array:
+	var key := "frames:" + id
+	if _cache.has(key):
+		return _cache[key]
+	var idle := get_texture(id)
+	var out: Array = [idle]
+	var path := SPRITE_DIR + id + "_strip.png"
+	if ResourceLoader.exists(path):
+		var strip: Texture2D = load(path)
+		var count := maxi(1, roundi(float(strip.get_width()) / float(idle.get_width())))
+		out = []
+		for i in count:
+			var atlas := AtlasTexture.new()
+			atlas.atlas = strip
+			atlas.region = Rect2(i * idle.get_width(), 0, idle.get_width(), strip.get_height())
+			out.append(atlas)
+	_cache[key] = out
+	return out
+
+
 func _make_placeholder(id: String) -> Texture2D:
 	var spec: Array = PLACEHOLDERS.get(id, [Color.MAGENTA, Color.BLACK, Vector2i(16, 16)])
 	var fill: Color = spec[0]
