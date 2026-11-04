@@ -211,3 +211,20 @@ hard, and the choices that cost resources (more elements, more fusion, chained a
   looks a little toward where you aim.
 - **Look.** Medieval fantasy: dark stone panels with gold trim, leather and brass buttons, a serif face. The HUD is
   four small corner groups and scales with a setting.
+
+## 17. Phase 6: look, depth and play together
+
+* **Names.** A hero is named at creation (random suggestions); the name shows on the sheet, the board and to other players.
+* **Elements are different from one another.** Fire: heavy, bursts on impact. Water: cheap and fast, slows, wide pools. Air: the fastest bolt,
+  pierces two, shoves. Mineral: slowest and hardest, stuns. Earth: a fan of three thorns, wide root ring. Light: near-instant piercing lance.
+  Dark: slow homing bolt that drains life. The altar in the training grounds shows the numbers side by side.
+* **Melee range ring.** A wedge and ring around the hero show the reach and arc of the next slash (it glows on a target, dims without
+  stamina, becomes a full circle while dodging). Setting: Melee range ring.
+* **Look.** Heroes are drawn in a Stardew/Witchbrook-like chibi style from parts: the class sets outfit, hair, head gear and weapon; the subclass
+  adds an accent and may change the head gear and back item; equipped helm, armour, boots and weapon replace them. The class cards show each
+  class in the middle of a card with its own border, the name below; the character sheet shows a paper doll with six slots.
+* **Five dungeons**, each harder than the last: Ashen Vaults (5 floors), Drowned Crypts (10), Thornroot Hollow (12), Cinder Forge (15), Gloaming
+  Spire (20). Each opens when the one before is cleared.
+* **Isometric view.** The world is shown from an isometric camera with real walls, shadows and upright sprites (HD-2D).
+* **Multiplayer.** From the title screen: host or join (address and port), wait in the lobby, then a co-op dungeon (up to four heroes, each
+  keeps its XP and loot; a fallen hero returns after 5 s) or an arena duel (first to three kills).

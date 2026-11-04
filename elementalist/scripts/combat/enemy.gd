@@ -35,6 +35,13 @@ var rare_gem := ""    # a final boss of the second dungeon may drop this rare el
 var mini := false     # a mini boss: a boss-style fight at the end of every third floor
 var enraged := false
 var anim: SpriteAnim
+var net_id := 0              # multiplayer: the host's number for this monster
+var ghost := false           # multiplayer: a copy of the host's monster (or an opponent in the arena): no thinking, hits go to the host
+var pvp_peer := 0            # arena: the player this ghost stands for
+var net_pos := Vector2.ZERO  # where the host says it is
+var net_aim := Vector2.RIGHT
+var net_moving := false
+var net_dodging := false
 var knock_resist := 0.0      # share of knockback ignored
 var attack_range := 0.0      # ranged: shoots from this far
 var keep_distance := 0.0     # ranged: tries to stay about this far away
@@ -140,6 +147,9 @@ func _ready() -> void:
 
 
 func take_hit(hit: Dictionary) -> void:
+	if ghost:
+		_ghost_hit(hit)
+		return
 	if hp <= 0.0:
 		return  # already dead (e.g. a fused bolt's later hits): never reward or react twice
 	_text_offset = hit.get("text_offset", Vector2.ZERO)
@@ -235,6 +245,60 @@ func take_hit(hit: Dictionary) -> void:
 		FloatText.spawn(get_parent(), global_position + Vector2(0, -8) + _text_offset, label + "!", text_color)
 
 
+## A hit on a ghost: sent to the host (or, in the arena, to the player it stands for); a flash and a spark right here.
+func _ghost_hit(hit: Dictionary) -> void:
+	if pvp_peer != 0:
+		Net.send_pvp_hit(pvp_peer, hit)
+	else:
+		Net.send_hit(net_id, hit)
+	_flash = 0.12
+	HitFx.burst(get_parent(), global_position, Elements.color_of(String(hit.get("element", ""))))
+	Sfx.play_at("hit", global_position, 240.0, -2.0)
+
+
+## A ghost only follows the host's numbers.
+func _ghost_tick(delta: float) -> void:
+	if global_position.distance_to(net_pos) > 90.0:
+		global_position = net_pos
+	else:
+		global_position = global_position.lerp(net_pos, 1.0 - exp(-18.0 * delta))
+	if pvp_peer != 0 and has_meta("prefix"):
+		var look_dir := net_aim - global_position
+		if IsoView.active != null:
+			look_dir = IsoView.screen_dir(look_dir)
+		var facing := "side"
+		if absf(look_dir.y) > absf(look_dir.x) * 0.6:
+			facing = "up" if look_dir.y < 0.0 else "down"
+		anim.set_art("%s:%s" % [get_meta("prefix"), facing])
+		anim.playing = net_moving or net_dodging
+		sprite.flip_h = facing == "side" and look_dir.x < 0.0
+	else:
+		var target := get_tree().get_first_node_in_group("player") as Node2D
+		if target:
+			var toward := target.global_position - global_position
+			if IsoView.active != null:
+				toward = IsoView.screen_dir(toward)
+			if absf(toward.x) > 2.0:
+				sprite.flip_h = toward.x < 0.0
+		_status_fx(delta)
+	_update_tint(delta)
+
+
+## The player a monster goes for: the nearest of the local hero and the other players.
+func _nearest_target() -> Node2D:
+	var best := get_tree().get_first_node_in_group("player") as Node2D
+	var best_distance := best.global_position.distance_squared_to(global_position) if best else INF
+	for node in get_tree().get_nodes_in_group("net_players"):
+		var other := node as Node2D
+		if other == null or other.is_queued_for_deletion() or (other.has_method("is_down") and other.is_down()):
+			continue
+		var distance := other.global_position.distance_squared_to(global_position)
+		if distance < best_distance:
+			best = other
+			best_distance = distance
+	return best
+
+
 ## A dodging monster may sidestep a discrete hit (not burn ticks) and take nothing.
 func _try_dodge(hit: Dictionary) -> bool:
 	if dodge_ability.is_empty() or _dodge_cd > 0.0 or is_rooted() or not hit.get("juice", true):
@@ -316,13 +380,16 @@ func _damage(amount: float, color: Color, crit: bool = false) -> void:
 
 
 func _physics_process(delta: float) -> void:
+	if ghost:
+		_ghost_tick(delta)
+		return
 	_tick_status(delta)
 	if hp <= 0.0:
 		return
 	_status_fx(delta)
 
 	_age += delta
-	var target := get_tree().get_first_node_in_group("player") as Node2D
+	var target := _nearest_target()
 	velocity = _desired_velocity(target) + _knock
 	if target:
 		var toward := target.global_position - global_position
@@ -431,9 +498,11 @@ func _land_slam() -> void:
 	HitFx.burst(get_parent(), circle_centre, Color("ff6a4a"), 16, 90.0)
 	Juice.shake(3.0, 0.3)
 	Sfx.play_at("slam", circle_centre, 340.0)
-	var target := get_tree().get_first_node_in_group("player") as Node2D
-	if target and target.global_position.distance_to(circle_centre) <= float(slam["radius"]) and target.has_method("take_damage"):
-		target.take_damage(damage_out(float(slam["damage"])), circle_centre)
+	var targets: Array = get_tree().get_nodes_in_group("player") + get_tree().get_nodes_in_group("net_players")
+	for node in targets:
+		var target := node as Node2D
+		if target and target.global_position.distance_to(circle_centre) <= float(slam["radius"]) and target.has_method("take_damage"):
+			target.take_damage(damage_out(float(slam["damage"])), circle_centre)
 
 
 ## Below ENRAGE_AT of its health a boss (not a mini boss) moves faster and attacks more often.

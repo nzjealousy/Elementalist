@@ -151,6 +151,13 @@ func set_camera_limits(rect: Rect2i) -> void:
 
 
 ## The player's body rectangle in world space (full sprite), used for enemy contact hits.
+## What the other players are told about this hero: [x, y, aim_x, aim_y, hp, max_hp, flags] (flags: 1 moving, 2 dodging).
+func net_state() -> Array:
+	var aim_point := global_position + aim_direction * 40.0
+	return [global_position.x, global_position.y, aim_point.x, aim_point.y, hp, max_hp,
+		(1 if velocity.length() > 8.0 else 0) | (2 if is_dodging() else 0)]
+
+
 func hurtbox() -> Rect2:
 	var size := sprite.texture.get_size()
 	return Rect2(global_position - size * 0.5, size)

@@ -26,6 +26,7 @@ Game="*res://scripts/core/game.gd"
 Controls="*res://scripts/core/controls.gd"
 Settings="*res://scripts/core/settings.gd"
 Sfx="*res://scripts/core/sfx.gd"
+Net="*res://scripts/core/net.gd"
 
 [display]
 

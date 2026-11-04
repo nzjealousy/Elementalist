@@ -24,7 +24,7 @@ static func spawn(parent: Node, pos: Vector2, dir: Vector2, speed: float, dmg: f
 
 func _ready() -> void:
 	collision_layer = 0
-	collision_mask = 1  # walls and the player
+	collision_mask = 1 | 8  # walls and the player (8: the other players in a multiplayer game)
 	var shape := CollisionShape2D.new()
 	var circle := CircleShape2D.new()
 	circle.radius = 3.0

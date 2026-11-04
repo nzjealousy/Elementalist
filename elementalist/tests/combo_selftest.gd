@@ -82,6 +82,7 @@ func _ready() -> void:
 	await _test_phase6b()
 	_test_dungeons5()
 	await _test_iso()
+	await _test_net_world()
 	_test_items()
 	_test_inventory_and_gear_stats()
 	_test_forge()
@@ -3827,7 +3828,7 @@ func _p5_menus() -> void:
 	add_child(menu)
 	await get_tree().process_frame
 	var menu_texts := menu.find_children("*", "Button", true, false).map(func(b): return b.text)
-	_check("the title screen lists the five choices", menu_texts == ["Continue", "New game", "Hall of heroes", "Settings", "Quit"])
+	_check("the title screen lists the six choices", menu_texts == ["Continue", "New game", "Multiplayer", "Hall of heroes", "Settings", "Quit"])
 	_check("Continue is disabled with no saves", menu.find_children("*", "Button", true, false)[0].disabled)
 	menu.show_slots("new")
 	await get_tree().process_frame
@@ -4497,3 +4498,156 @@ func _test_iso() -> void:
 	await get_tree().process_frame
 	_check("closing the view gives the window its flat world back", IsoView.active == null and get_viewport().canvas_cull_mask == 0xFFFFFFFF)
 	world.queue_free()
+
+
+# ---------- Phase 6d: multiplayer, the parts that need no network ----------
+
+func _test_net_world() -> void:
+	var info := Net._clean_info({"name": "  Zed   Zed  ", "class": "ranger", "level": 999, "look": {"parts": {}}})
+	_check("a stranger's hello is cleaned", info["name"] == "Zed Zed" and info["level"] == 99 and info["class"] == "ranger")
+	var mine := Net.local_info()
+	_check("this hero describes itself for the others", mine["name"] == Game.character.display_name and mine["look"].has("parts") and mine["version"] == Net.PROTOCOL)
+	_check("offline is the default", Net.mode == "offline" and not Net.is_online() and Net.my_id() == 1)
+	var stats := Game.character.xp + Game.character.level * 100000
+	Game.reward_kill(60, 2)
+	_check("a kill reward gives xp", Game.character.xp + Game.character.level * 100000 > stats)
+
+	# a guest's world: ghosts and other players follow the host's snapshot
+	Net.session = {"kind": "coop"}
+	var guest_world := Node2D.new()
+	add_child(guest_world)
+	var hero = PLAYER.instantiate()
+	guest_world.add_child(hero)
+	var guest_dungeon := Dungeon.new()
+	guest_dungeon.with_ui = false
+	guest_dungeon.viewer = true
+	guest_world.add_child(guest_dungeon)
+	await get_tree().process_frame
+	await get_tree().process_frame
+	var client := guest_dungeon.coop_client
+	_check("a guest's dungeon builds the room and spawns nothing", client != null and guest_dungeon.state == "viewer" and get_tree().get_nodes_in_group("enemies").size() == 0)
+	Net.roster = {1: Net.local_info(), 5: {"name": "Pip", "class": "ranger", "level": 4, "look": HeroLook.for_class("ranger")}}
+	var snapshot := {"e": [[7, "slime", "fire", 100.0, 80.0, 30.0, 52.0, "water", 0, ["dot"]], [8, "grave_warden", "", 140.0, 90.0, 200.0, 300.0, "", 1, []]],
+		"p": [[5, 60.0, 70.0, 90.0, 70.0, 80.0, 100.0, 1]], "door": false, "t": "Floor 2/5", "boss": 8, "score": {}}
+	client.apply_snapshot(snapshot)
+	await get_tree().process_frame
+	var ghost: Enemy = client.ghosts.get(7)
+	_check("a ghost monster appears for each monster", client.ghosts.size() == 2 and ghost != null and ghost.ghost and ghost.net_id == 7 and ghost.monster_id == "slime" and ghost.variant == "fire")
+	_check("it takes the host's health and state", is_equal_approx(ghost.hp, 30.0) and is_equal_approx(ghost.max_hp, 52.0) and ghost.aura == "water" and ghost.effects.has("dot"))
+	_check("the boss bar follows the ghost boss", Game.boss == client.ghosts.get(8))
+	ghost.take_hit({"damage": 500.0, "element": "fire", "from": Vector2.ZERO})
+	_check("a hit on a ghost does not hurt it here (the host decides)", is_equal_approx(ghost.hp, 30.0) and not ghost.is_queued_for_deletion())
+	await get_tree().physics_frame
+	await get_tree().physics_frame
+	_check("a ghost glides toward the host's position", ghost.global_position.distance_to(Vector2(100, 80)) < ghost.global_position.distance_to(Vector2(0, 0)) or ghost.global_position.distance_to(Vector2(100, 80)) < 40.0)
+	var avatar: RemoteAvatar = client.others.get(5)
+	_check("another player appears as an avatar with their name", avatar != null and avatar.peer == 5 and avatar.hero_name == "Pip" and avatar.is_in_group("net_players") and avatar.net_pos == Vector2(60, 70) and avatar.moving)
+	_check("the avatar is a hurtbox for monsters", avatar.hurtbox().size.x > 4.0 and not avatar.is_down())
+	client.apply_snapshot({"e": [], "p": [], "door": false, "t": "", "boss": 0, "score": {}})
+	await get_tree().process_frame
+	await get_tree().process_frame
+	_check("what the host stops sending goes away", client.ghosts.is_empty() and client.others.is_empty())
+	Game.boss = null
+
+	# the monster picks the nearer of the hero and the other players
+	var near_avatar := RemoteAvatar.new()
+	near_avatar.setup(5, Net.roster[5])
+	guest_world.add_child(near_avatar)
+	near_avatar.global_position = Vector2(500, 500)
+	hero.global_position = Vector2(0, 0)
+	var chaser := Monsters.spawn(guest_dungeon._room_node, "slime", Vector2(480, 490), "", Vector2.ONE, 1)
+	await get_tree().process_frame
+	_check("a monster goes for the nearest player", chaser._nearest_target() == near_avatar)
+	near_avatar.apply_state([500.0, 500.0, 0.0, 0.0, 0.0, 100.0, 0])
+	_check("but not for a fallen one", chaser._nearest_target() == hero)
+	chaser.queue_free()
+	near_avatar.queue_free()
+	guest_world.queue_free()
+
+	# arena opponents are ghost Enemies wearing the other hero's picture
+	Net.session = {"kind": "arena"}
+	var arena_world := Node2D.new()
+	add_child(arena_world)
+	var arena_hero = PLAYER.instantiate()
+	arena_world.add_child(arena_hero)
+	var arena_dungeon := Dungeon.new()
+	arena_dungeon.with_ui = false
+	arena_dungeon.viewer = true
+	arena_dungeon.layout = [[DungeonGen.arena_room()]]
+	arena_world.add_child(arena_dungeon)
+	await get_tree().process_frame
+	await get_tree().process_frame
+	var arena_client := arena_dungeon.coop_client
+	arena_client.apply_snapshot({"e": [], "p": [[5, 80.0, 90.0, 120.0, 90.0, 60.0, 100.0, 3]], "door": false, "t": "", "boss": 0, "score": {5: 1}})
+	await get_tree().process_frame
+	var rival: Enemy = arena_client.others.get(5)
+	_check("an arena opponent is a ghost enemy for the player it stands for", rival != null and rival.ghost and rival.pvp_peer == 5 and is_equal_approx(rival.hp, 60.0) and rival.net_moving and rival.net_dodging)
+	_check("it wears their hero's picture", String(rival.sprite_id).begins_with("hero:") and rival.has_meta("prefix"))
+	_check("and is reported back the way it came", PvpGhost.state_of(5, rival)[1] == 80.0 and PvpGhost.state_of(5, rival)[5] == 60.0)
+	_check("the scoreboard shows in the run text", true if arena_dungeon.room["kind"] != "arena" else arena_dungeon.scores == {5: 1})
+	arena_world.queue_free()
+
+	# the host's side: snapshot, hits and wipe
+	Net.mode = "host"
+	Net.session = {"kind": "coop"}
+	Net.roster = {1: Net.local_info(), 5: {"name": "Pip", "class": "ranger", "level": 4, "look": HeroLook.for_class("ranger")}}
+	var host_world := Node2D.new()
+	add_child(host_world)
+	var host_hero = PLAYER.instantiate()
+	host_world.add_child(host_hero)
+	var host_dungeon := Dungeon.new()
+	host_dungeon.with_ui = false
+	host_dungeon.layout = [[DungeonGen.camp_room()]]
+	host_world.add_child(host_dungeon)
+	await get_tree().process_frame
+	var host := CoopHost.attach(host_dungeon)
+	await get_tree().process_frame
+	var target := Monsters.spawn(host_dungeon._room_node, "slime", Vector2(120, 100), "", Vector2.ONE, 1)
+	await get_tree().process_frame
+	var shot := host.snapshot()
+	_check("the host's snapshot lists monsters and every player", shot["e"].size() == 1 and shot["e"][0][1] == "slime" and int(shot["e"][0][0]) > 0 and shot["p"].size() == 2 and int(shot["p"][0][0]) == 1)
+	_check("a guest's avatar is on the host", host.avatars.has(5) and host.avatars[5] is RemoteAvatar)
+	host.on_client_state(5, [30.0, 40.0, 50.0, 40.0, 70.0, 100.0, 2])
+	_check("a guest's position update moves their avatar", host.avatars[5].net_pos == Vector2(30, 40) and host.avatars[5].dodging)
+	host.on_client_state(5, [1.0])
+	_check("a broken update is ignored", host.avatars[5].net_pos == Vector2(30, 40))
+	var net_id := int(shot["e"][0][0])
+	var before := target.hp
+	host.on_client_hit(5, net_id, {"damage": 12.0, "element": "", "from": Vector2.ZERO, "knockback": 10.0})
+	_check("a guest's hit lands on the real monster", is_equal_approx(before - target.hp, 12.0))
+	host.on_client_hit(5, 99999, {"damage": 12.0})
+	_check("a hit on a monster that is gone is ignored", true)
+	host.on_client_hit(5, net_id, {"damage": 99999.0, "element": "", "from": Vector2.ZERO})
+	await get_tree().process_frame
+	_check("a guest's damage is capped but still kills a weak monster", not is_instance_valid(target) or target.hp <= 0.0 or target.is_queued_for_deletion())
+	_check("the party is not wiped while somebody stands", not host.wiped())
+	host_hero.hp = 0.0
+	_check("... nor while a guest stands", not host.wiped())
+	host.avatars[5].hp = 0.0
+	_check("everyone down is a wipe", host.wiped())
+	host_world.queue_free()
+	Net.mode = "offline"
+	Net.roster = {}
+	Net.session = {}
+	Net.host_node = null
+
+	# the arena room and its spawn corners
+	var room := DungeonGen.arena_room()
+	_check("the arena is an open room with pillars", room["kind"] == "arena" and room["exit"] == "" and room["obstacles"].size() >= 4 and DungeonGen.describe(room) == "Floor 0 - Arena")
+	Game.mode = "arena"
+	Net.roster = {1: Net.local_info(), 5: {"name": "Pip", "class": "ranger", "level": 4, "look": HeroLook.for_class("ranger")}}
+	var duel_world := Node2D.new()
+	add_child(duel_world)
+	var duel_hero = PLAYER.instantiate()
+	duel_world.add_child(duel_hero)
+	var duel := Dungeon.new()
+	duel.with_ui = false
+	duel_world.add_child(duel)
+	await get_tree().process_frame
+	await get_tree().process_frame
+	_check("the arena mode builds the arena, with no monsters", duel.room["kind"] == "arena" and duel.state == "arena" and get_tree().get_nodes_in_group("enemies").is_empty())
+	_check("the first player starts on the west side, in the middle", duel_hero.global_position.x < 80.0 and absf(duel_hero.global_position.y - float(duel.room["rows"]) * 8.0) < 12.0)
+	_check("the scoreboard starts at nil for everybody", duel.scores == {1: 0, 5: 0})
+	duel_world.queue_free()
+	Game.mode = "camp"
+	Net.roster = {}

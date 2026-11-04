@@ -84,7 +84,7 @@ func _build() -> void:
 	if Game.mode == "dungeon" and not Game.run.is_empty():
 		var retreat_text := "Really retreat? (-30% gold)" if _confirm == "retreat" else "Retreat to camp"
 		buttons.append(UiKit.button(retreat_text, _retreat, 110.0))
-	buttons.append(UiKit.button("Save and quit to menu", _save_and_leave, 110.0))
+	buttons.append(UiKit.button("Leave the game" if Net.is_online() else "Save and quit to menu", _save_and_leave, 110.0))
 	buttons.append(UiKit.button("Quit to desktop", _quit, 110.0))
 	for b in buttons:
 		column.add_child(b)

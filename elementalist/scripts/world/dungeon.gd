@@ -44,9 +44,18 @@ var _fade: ColorRect
 var _end_screen: RunEndScreen
 var _text_timer := 0.0
 var _dummy_timer := 0.0
+var viewer := false             # a guest in someone else's multiplayer game: builds the host's rooms, spawns nothing
+var coop_host: CoopHost         # the host's side of a multiplayer session
+var coop_client: CoopClient     # a guest's side
+var scores: Dictionary = {}     # arena: kills per player
+const REVIVE_TIME := 5.0
+var _revive_left := 0.0
+var _last_attacker := 0         # arena: who hit this hero last
+var _net_over := false
 
 
 func _ready() -> void:
+	viewer = viewer or (Net.is_client() and with_ui)
 	var start := Vector2i.ZERO  # floor, room to begin in (a resumed run starts where it was saved)
 	if layout.is_empty():
 		start = _make_layout()
@@ -56,6 +65,15 @@ func _ready() -> void:
 	if with_ui and bool(Settings.get_value("iso_view")):
 		iso_view = IsoView.attach(self)
 	Game.loot_dropped.connect(_on_loot_dropped)
+	if with_ui and Net.is_host():
+		coop_host = CoopHost.attach(self)
+		Net.pvp_damage_received.connect(_on_host_pvp_damage)
+		Net.end_received.connect(on_net_end)
+	elif viewer:
+		coop_client = CoopClient.attach(self)
+		Net.room_received.connect(_on_net_room)
+		Net.end_received.connect(on_net_end)
+		Net.disconnected.connect(func(_reason): _leave_session("Connection lost"))
 	if with_ui:
 		Game.character.leveled_up.connect(func(_level): _fanfare("level_up"))
 		Game.character.reward_ready.connect(func(_level): _fanfare("reward"))
@@ -91,6 +109,15 @@ func _ready() -> void:
 
 ## Builds the layout for the current Game.mode. Returns the (floor, room) to start in.
 func _make_layout() -> Vector2i:
+	if viewer:
+		var data := Net.room_data
+		layout = [[data["room"] if data.has("room") else DungeonGen.camp_room()]]
+		Game.run_kills = 0
+		return Vector2i.ZERO
+	if Game.mode == "arena":
+		layout = [[DungeonGen.arena_room()]]
+		Game.run_kills = 0
+		return Vector2i.ZERO
 	if Game.mode == "training":
 		layout = [[DungeonGen.training_room()]]
 		Game.run_kills = 0
@@ -115,7 +142,7 @@ func _player() -> Node2D:
 # ---------- debug keys ----------
 
 func _unhandled_input(event: InputEvent) -> void:
-	if not (event is InputEventKey and event.pressed and not event.echo):
+	if not (event is InputEventKey and event.pressed and not event.echo) or Net.is_online():
 		return
 	match event.keycode:
 		KEY_F5:
@@ -180,7 +207,15 @@ func _load_room(floor_number: int, room_number: int) -> void:
 		if camera and camera.is_inside_tree():
 			camera.reset_smoothing()
 
+	if viewer:  # a guest: the host runs the room
+		state = "viewer"
+		if String(room["kind"]) == "arena":
+			_place_in_arena()
+		_play_music()
+		return
 	match String(room["kind"]):
+		"arena":
+			_build_arena()
 		"camp":
 			_build_camp()
 		"training":
@@ -208,6 +243,8 @@ func _load_room(floor_number: int, room_number: int) -> void:
 		Game.say("%s\n%s" % [DungeonGen.describe(room), goal])
 	_update_run_text()
 	_play_music()
+	if coop_host:
+		Net.send_room(room, floor_index, room_index, Game.run_text)
 	_autosave()
 
 
@@ -385,6 +422,11 @@ func _add_tile(texture: Texture2D, tile: Vector2i, solid: bool) -> void:
 # ---------- fighting ----------
 
 func _physics_process(delta: float) -> void:
+	if viewer:
+		_tick_net(delta)
+		return
+	if coop_host:
+		_tick_net(delta)
 	if state in ["fighting", "clear"] and room.get("kind", "") != "camp":
 		run_time += delta
 	match state:
@@ -397,6 +439,8 @@ func _physics_process(delta: float) -> void:
 			_tick_fight(delta)
 		"clear":
 			_tick_exit()
+		"arena":
+			pass
 	_text_timer -= delta
 	if _text_timer <= 0.0:
 		_text_timer = 0.25
@@ -480,14 +524,22 @@ func _spawn_point() -> Vector2:
 	var player := _player()
 	var size := Vector2(int(room["cols"]), int(room["rows"])) * TILE
 	var pos := _centre()
+	var best := pos
+	var best_distance := -1.0
 	for attempt in 30:
 		pos = Vector2(randf_range(3.0 * TILE, size.x - 3.0 * TILE), randf_range(3.0 * TILE, size.y - 3.0 * TILE))
 		var blocked := false
 		for rect in room["obstacles"]:
 			blocked = blocked or Rect2(Vector2(rect.position) * TILE, Vector2(rect.size) * TILE).grow(8.0).has_point(pos)
-		if not blocked and (player == null or pos.distance_to(player.global_position) >= MIN_SPAWN_DISTANCE):
-			break
-	return pos
+		if blocked:
+			continue
+		var distance := pos.distance_to(player.global_position) if player else INF
+		if distance >= MIN_SPAWN_DISTANCE:
+			return pos
+		if distance > best_distance:  # no good spot yet: keep the farthest free one as the fallback
+			best = pos
+			best_distance = distance
+	return best
 
 
 func _clear_room(message: String) -> void:
@@ -514,6 +566,12 @@ func _tick_exit() -> void:
 	var player := _player()
 	if _exit_door and _exit_door.open and player and _exit_door.contains(player.global_position):
 		_go_next()
+	elif _exit_door and _exit_door.open and coop_host:  # in a multiplayer game anyone at the door takes the party through
+		for peer in coop_host.avatars:
+			var avatar: Node2D = coop_host.avatars[peer]
+			if is_instance_valid(avatar) and _exit_door.contains(avatar.global_position):
+				_go_next()
+				return
 
 
 ## Fades out, loads the next room (or the next floor's first) and fades back in.
@@ -562,6 +620,8 @@ func _win() -> void:
 	_vacuum_loot()
 	if with_ui and Game.slot >= 0 and Game.mode == "dungeon":
 		_finish_run(true)
+	if coop_host:
+		Net.end_session({"kind": "coop", "won": true, "tier": tier, "bonus": run_bonus})
 	Game.say("The dungeon is cleared!")
 	get_tree().create_timer(2.0).timeout.connect(_end.bind(true))  # tied to this node, so freeing it cancels the screen
 
@@ -574,6 +634,9 @@ func _on_player_died() -> void:
 		if player:
 			player.hp = player.max_hp
 			player.stamina = player.max_stamina
+		return
+	if with_ui and Net.is_online():  # multiplayer: a fallen hero waits a moment, then comes back (no penalty)
+		_net_player_down()
 		return
 	state = "dead"
 	death = Game.character.die()
@@ -641,6 +704,9 @@ func summary_lines(won: bool) -> Array:
 
 
 func _update_run_text() -> void:
+	if room.get("kind", "") == "arena":
+		set_net_scores(scores)
+		return
 	if room.get("kind", "") == "camp":
 		Game.run_text = "Camp"
 		return
@@ -655,3 +721,141 @@ func _update_run_text() -> void:
 	elif state == "clear" and room.get("kind", "") in ["combat", "boss", "miniboss"]:
 		text += "  Door open"
 	Game.run_text = text
+
+
+# ---------- multiplayer ----------
+
+## The arena: no monsters, everybody fights everybody. Each hero starts in their own corner.
+func _build_arena() -> void:
+	state = "arena"
+	scores = {}
+	for peer in Net.roster:
+		scores[int(peer)] = 0
+	_place_in_arena()
+	_heal_player(1.0)
+	Game.say("The arena. First to %d kills wins." % Net.ARENA_KILLS)
+
+
+func _place_in_arena() -> void:
+	var player := _player()
+	if player == null:
+		return
+	var ids: Array = Net.roster.keys()
+	ids.sort()
+	var index := maxi(ids.find(Net.my_id()), 0)
+	var cols := int(room["cols"])
+	var rows := int(room["rows"])
+	var corners := [Vector2(3, rows * 0.5), Vector2(cols - 4, rows * 0.5), Vector2(cols * 0.5, 3), Vector2(cols * 0.5, rows - 4)]
+	player.global_position = corners[index % corners.size()] * TILE + Vector2(TILE, TILE) * 0.5
+
+
+## The host's room reached a guest.
+func _on_net_room(data: Dictionary) -> void:
+	if not viewer:
+		return
+	layout = [[data["room"]]]
+	_load_room(0, 0)
+	Game.run_text = String(data.get("run_text", ""))
+
+
+## Guests: the host says whether the exit is open.
+func set_net_door(open: bool) -> void:
+	if _exit_door and open and not _exit_door.open:
+		_exit_door.unlock()
+
+
+## Arena scoreboard in the run text.
+func set_net_scores(new_scores: Dictionary) -> void:
+	scores = new_scores
+	if room.get("kind", "") != "arena":
+		return
+	var parts: Array[String] = []
+	for peer in scores:
+		parts.append("%s %d" % [String(Net.roster.get(int(peer), {}).get("name", "?")), int(scores[peer])])
+	Game.run_text = "Arena  " + "  ".join(parts)
+
+
+func note_attacker(peer: int) -> void:
+	_last_attacker = peer
+
+
+func _on_host_pvp_damage(hit: Dictionary, attacker: int) -> void:
+	var hero := _player() as Player
+	if hero == null:
+		return
+	_last_attacker = attacker
+	hero.take_damage(float(hit.get("damage", 0.0)) * Net.PVP_DAMAGE, hit.get("from", hero.global_position + Vector2.UP))
+
+
+## This hero fell in a multiplayer game: report it and sit out a few seconds.
+func _net_player_down() -> void:
+	var hero := _player() as Player
+	if hero == null:
+		return
+	if String(room.get("kind", "")) == "arena":
+		Net.send_pvp_down(_last_attacker)
+		_last_attacker = 0
+	elif viewer:
+		Net.send_down()
+	hero.process_mode = Node.PROCESS_MODE_DISABLED
+	hero.visible = false
+	_revive_left = REVIVE_TIME if String(room.get("kind", "")) != "arena" else 2.5
+	Game.say("You fell. Back in %d..." % int(_revive_left))
+
+
+func _tick_net(delta: float) -> void:
+	var hero := _player() as Player
+	if _revive_left > 0.0 and hero:
+		_revive_left -= delta
+		if _revive_left <= 0.0:
+			hero.process_mode = Node.PROCESS_MODE_INHERIT
+			hero.visible = true
+			hero.hp = hero.max_hp * (1.0 if String(room.get("kind", "")) == "arena" else 0.5)
+			if String(room.get("kind", "")) == "arena":
+				_place_in_arena()
+			else:
+				var tile := DungeonGen.spawn_tile(room)
+				hero.global_position = Vector2(tile) * TILE + Vector2(TILE, TILE) * 0.5
+			FloatText.spawn(get_parent(), hero.global_position + Vector2(0, -10), "Back!", Color("7fe88a"), 9)
+	if coop_host and not _net_over and String(room.get("kind", "")) != "arena" and coop_host.wiped() and state in ["fighting", "clear"]:
+		var info := {"kind": "coop", "won": false}
+		Net.end_session(info)
+		on_net_end(info)
+
+
+## The session is over: a result for everybody, then back to the menu (guests) or the camp (the host).
+func on_net_end(info: Dictionary) -> void:
+	if _net_over:
+		return
+	_net_over = true
+	var text := ""
+	if String(info.get("kind", "")) == "arena":
+		text = "%s wins the arena!" % String(info.get("winner_name", "Somebody"))
+	elif bool(info.get("won", false)):
+		text = "The dungeon is cleared! Together."
+		if viewer:  # a guest earns the clear bonus too
+			var bonus := int(info.get("bonus", 0))
+			Game.character.inventory.gold += bonus
+			Game.meta["tier_cleared"] = maxi(int(Game.meta.get("tier_cleared", 0)), int(info.get("tier", 0)))
+			Game.character.inventory.changed.emit()
+	else:
+		text = "The party fell."
+	Game.say(text)
+	var timer := get_tree().create_timer(4.0)
+	timer.timeout.connect(func(): _leave_session(text))
+
+
+func _leave_session(_text: String) -> void:
+	if not is_inside_tree():
+		return
+	var was_guest := Net.is_client()
+	Net.leave()
+	if was_guest or viewer:
+		Game.save_game()
+		Game.go_to_menu()
+	else:
+		Game.return_to_camp()
+
+
+func on_net_peer_left(_peer: int) -> void:
+	pass

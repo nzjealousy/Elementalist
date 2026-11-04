@@ -11,6 +11,7 @@ var _layer: CanvasLayer
 var _view: Control
 var _settings: SettingsMenu
 var _board: LeaderboardScreen
+var _multiplayer: MultiplayerMenu
 var _confirm := ""   # "slot<N>" or "delete<N>": a risky button waiting for its second press
 var _pending_slot := -1
 
@@ -29,6 +30,9 @@ func _ready() -> void:
 	_board = LeaderboardScreen.new()
 	add_child(_board)
 	_board.closed.connect(show_main)
+	_multiplayer = MultiplayerMenu.new()
+	add_child(_multiplayer)
+	_multiplayer.closed.connect(show_main)
 	Sfx.music("menu")
 	show_main()
 
@@ -107,6 +111,7 @@ func show_main() -> void:
 	continue_button.disabled = not any_save
 	buttons.append(continue_button)
 	buttons.append(UiKit.button("New game", func(): show_slots("new"), 110.0))
+	buttons.append(UiKit.button("Multiplayer", func(): _multiplayer.open(), 110.0))
 	buttons.append(UiKit.button("Hall of heroes", func(): _board.open(), 110.0))
 	buttons.append(UiKit.button("Settings", func(): _settings.open(0), 110.0))
 	buttons.append(UiKit.button("Quit", func(): get_tree().quit(), 110.0))

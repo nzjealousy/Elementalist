@@ -283,7 +283,7 @@ func _classify(node: Node) -> int:
 
 func _stands_up(owner: Node) -> bool:
 	return owner is Enemy or owner is Pickup or owner is Interactable or owner is Projectile or owner is EnemyProjectile \
-		or owner is Player
+		or owner is Player or owner is RemoteAvatar
 
 
 func _make_mirror(node: CanvasItem) -> Node3D:

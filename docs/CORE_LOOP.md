@@ -58,3 +58,11 @@ the open questions at the end are the ones worth your call.
    the resource game. The generator is linear for now.
 4. **Daily/seeded runs.** Because runs are rebuilt from a seed, a shared "seed of the day" leaderboard is cheap to add.
 5. **Hub life (Phase 6).** The camp is a single room; NPCs, dialogue and the ceremony cutscene would live here.
+
+## Phase 6 additions
+
+* The gate now offers **five dungeons** (5, 10, 12, 15 and 20 floors); the camp has a sign to the **training grounds** (altar of elements,
+  dummies, a controls checklist) that never touches the save.
+* **Together:** from the title screen a hero can join a friend's dungeon (the host picks the dungeon; everyone earns XP, loot and the clear bonus)
+  or duel in the arena. A fallen hero in co-op comes back after five seconds with half health; the run is lost only when all fall at once.
+* Open question: should co-op scale monsters with the party size (today it does not), and should the arena have rewards (ranked score)?

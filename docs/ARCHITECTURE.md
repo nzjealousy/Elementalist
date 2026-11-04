@@ -418,3 +418,38 @@ buttons call `show_tab.call_deferred(...)`, so tests `await` a frame after click
   editor can write a stale in-memory copy back over the file. Re-check the file after saving
   scenes if you edit scripts programmatically.
 - Godot's `ClassDB` is a built-in, which is why the class table is called `Classes`.
+
+## Phase 6: look, depth and multiplayer
+
+**Heroes are parts, not pictures.** `tools/art/gen_heroes.py` writes interchangeable parts (body, boots, outfit, hair, head gear, back item,
+accent, weapon) per facing as strips of four frames in `assets/sprites/hero/`. A pixel stores a *region* (skin, hair, outfit, trim ...) and a
+*shade*, not a colour. `HeroLook` (data in `data/hero_looks.json`, shared with `tools/art/preview_heroes.py`) works out which parts and palette
+a hero wears from class, subclass and equipped items; `HeroComposer` stacks the parts, traces a soft outline and paints them through a ramp
+(warm highlights, cool shadows). Results are cached by look and registered in `AssetDB` as `hero:<n>:<facing>` so `SpriteAnim` plays them.
+`HeroDoll`, `CardFrame` (class borders) and the equipment paper doll in the character sheet reuse the same pictures.
+
+**The isometric view (`IsoView`).** Gameplay stays 2D. `IsoView` (a child of the Dungeon) draws it in 3D: the 2D world is shared with a
+SubViewport that renders the floor and every flat effect onto a plane; walls and pillars are 3D boxes built from the room's solid tiles
+(`Dungeon._add_tile` calls `add_wall`); creatures, pickups, props and projectiles are mirrored by upright billboard `Sprite3D`s with blob
+shadows, text by `Label3D`, health bars by quads. Canvas items are sorted by `visibility_layer`: layer 2 = ground (drawn into the plane),
+layer 4 = mirrored (hidden from both viewports); the main window's `canvas_cull_mask` hides both so the HUD (layer 1) is all that draws in 2D.
+`Controls.aim_point` casts a ray from the camera to the ground; movement and facing use `IsoView.world_dir` / `screen_dir`. The setting
+`iso_view` (off: the flat top-down picture) applies from the next scene.
+
+**Multiplayer (`Net`, `CoopHost`, `CoopClient`).** ENet, up to four players, host-authoritative for the world. Every player (host too) plays
+their own `Player` locally. The host's monsters are mirrored on guests as *ghost* `Enemy` nodes (`ghost = true`: no AI, `take_hit` forwards
+the hit to the host with `Net.send_hit`); the host sends snapshots 15 times a second (monsters, players, door, run text) and reliable
+messages for rooms, loot, kills and damage; guests send their position, aim and health. Other players appear as `RemoteAvatar`s (group
+`net_players`, which monsters target like the local hero). In the **arena** the other players are ghost Enemies wearing their hero's picture
+(`PvpGhost`), so every attack already aimed at monsters works on them; a hit on one is sent to that player (`Net.send_pvp_hit`), who takes 70%
+as damage. A guest's `Dungeon` runs in `viewer` mode: it builds the host's rooms and spawns nothing. `tests/net_selftest.tscn` plus
+`tools/run_net_test.ps1` run a real host and guest over loopback; `combo_selftest.gd` covers snapshots, ghosts, avatars and the arena offline.
+
+**Five dungeons.** `Game.TIERS` holds five dungeons (floors 5, 10, 12, 15, 20; depth offsets 0, 5, 15, 27, 42) with themes (`vault`, `crypt`,
+`hollow`, `ember`, `spire`) for tiles and music. `Monsters.band_of(depth)` picks one of nine weight bands; `floor_scale` climbs steeply to depth
+10 and gently after. New monsters: Thornling, Dire Wolf, Magma Slug, Gloom Shade; new final bosses: Thorn Matriarch, Cinder Tyrant, Gloaming
+Sovereign.
+
+**Training grounds.** `Game.begin_training()` swaps in a sandbox copy of the hero (every element, nothing saved); the grounds hold three
+dummies, the `AltarScreen` (compares every element's mana, speed, area and damage) and a `TutorialGuide` checklist that ticks off controls as
+they are used.

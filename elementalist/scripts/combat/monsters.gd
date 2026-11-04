@@ -106,6 +106,11 @@ const DEFS := {
 		"shot": {"damage": 11.0, "speed": 90.0, "cooldown": 1.6},
 		"dodge": {"chance": 0.4, "cooldown": 1.8},
 	},
+	# Another player in the arena (a ghost Enemy wearing their hero's picture, see PvpGhost).
+	"pvp_avatar": {
+		"name": "Duelist", "sprite": "enemy_dummy", "hp": 100.0, "speed": 0.0, "contact": 0.0, "xp": 0,
+		"behavior": "idle", "attack": "ranged", "training": true,
+	},
 	# The training dummy ("training": true) stands in the training grounds: it never moves or hurts,
 	# so elements and combos can be tried on it. It is not part of any wave.
 	"dummy": {

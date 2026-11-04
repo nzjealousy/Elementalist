@@ -108,6 +108,20 @@ func continue_game(save_slot: int) -> bool:
 	return true
 
 
+## Makes the hero in a save slot the current one without starting the game (the multiplayer menu uses this).
+func use_hero(save_slot: int) -> bool:
+	var data := SaveStore.load_slot(save_slot)
+	if data.is_empty():
+		return false
+	slot = save_slot
+	character = CharacterData.from_dict(data["character"])
+	meta = data["meta"]
+	run = {}
+	mode = "camp"
+	boss = null
+	return true
+
+
 ## Writes the current hero to its slot. Does nothing without a slot (sandbox, tests).
 func save_game() -> Error:
 	if slot < 0 or mode == "training":
@@ -125,6 +139,8 @@ func go_to_game() -> void:
 
 
 func go_to_menu() -> void:
+	if Net.is_online():
+		Net.leave()
 	_restore_hero()
 	get_tree().paused = false
 	slot = -1
@@ -137,12 +153,43 @@ func begin_run(tier: int) -> void:
 	run = {"tier": tier, "seed": randi(), "floor": 0, "room": 0, "kills": 0, "time": 0.0, "hp": 1.0, "floors": int(spec["floors"])}
 	mode = "dungeon"
 	save_game()
+	_load_game_scene()
+
+
+## Loads the game scene whether we are in it (camp, dungeon: rebuild it) or in a menu (change to it).
+func _load_game_scene() -> void:
 	get_tree().paused = false
-	get_tree().reload_current_scene()
+	var current := get_tree().current_scene
+	if current != null and current.scene_file_path == GAME_SCENE:
+		get_tree().reload_current_scene()
+	else:
+		get_tree().change_scene_to_file(GAME_SCENE)
+
+
+## Multiplayer: the host starts the arena (a duel room, no monsters). Nothing is saved.
+func begin_arena() -> void:
+	run = {}
+	mode = "arena"
+	_load_game_scene()
+
+
+## Multiplayer: a joining player plays the host's world as a guest ("coop") or in the arena. Their hero
+## is kept (and saved when they leave); the dungeon itself is the host's.
+func begin_net_client(kind: String) -> void:
+	run = {}
+	mode = "coop" if kind == "coop" else "arena"
+	_load_game_scene()
+
+
+## True while a multiplayer session (or its lobby handshake) owns the world, so nothing is saved mid-way.
+func in_net_session() -> bool:
+	return mode in ["coop", "arena"] or (mode == "dungeon" and has_node("/root/Net") and get_node("/root/Net").is_online())
 
 
 ## Back to camp: the run ends (won, fallen or abandoned) and the hero is saved.
 func return_to_camp() -> void:
+	if Net.is_online():
+		Net.leave()
 	_restore_hero()
 	run = {}
 	mode = "camp"
@@ -283,13 +330,22 @@ func attune_random() -> String:
 	return gained
 
 
-func on_enemy_killed(enemy: Node) -> void:
+## What a kill gives this hero: XP, class XP and the recovery on a kill. A guest in a multiplayer game earns
+## it from the host's kill message, too.
+func reward_kill(xp: int, class_xp: int) -> void:
 	run_kills += 1
-	character.gain_xp(maxi(1, roundi(float(enemy.xp_reward) * reward_mult())))
-	character.add_class_xp(1 + floori(float(enemy.xp_reward) / 10.0))
+	character.gain_xp(maxi(1, roundi(float(xp) * reward_mult())))
+	character.add_class_xp(class_xp)
 	var player := get_tree().get_first_node_in_group("player")
 	if player and player.has_method("restore_on_kill"):
 		player.restore_on_kill()
+
+
+func on_enemy_killed(enemy: Node) -> void:
+	var class_xp := 1 + floori(float(enemy.xp_reward) / 10.0)
+	reward_kill(enemy.xp_reward, class_xp)
+	if Net.is_host():
+		Net.send_kill(enemy.xp_reward, class_xp)
 	var drops: Array[Dictionary]
 	if enemy.boss and enemy.mini:
 		drops = Loot.mini_boss_drops(loot_rng, loot_level(), loot_bonus(), loot_allows_spell())
