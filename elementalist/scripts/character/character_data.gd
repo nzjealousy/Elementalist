@@ -47,8 +47,9 @@ var unspent_points := 0
 var attributes: Dictionary = {}
 var elements: Array[String] = []
 var element_mastery: Dictionary = {}   # element id -> {"level": int, "xp": int}
-var weapon_type := "sword"
+var weapon_type := "sword"             # the wielded weapon's type (the class's default if none is equipped)
 var weapon_masteries: Dictionary = {}  # weapon type -> {"level": int, "xp": int}
+var inventory := Inventory.new()       # gold, materials, bag and equipped gear (Phase 4)
 var traits: Array[String] = []         # innate passives: rolled at creation or chosen as rewards
 var skill_uses: Dictionary = {}        # skill id -> times used (unlocks skill mastery passives)
 var learned_specials: Array[String] = []  # special (R) skills earned as rewards
@@ -89,9 +90,30 @@ func _setup(char_name: String, cls: String, aff: String) -> void:
 	class_id = cls
 	affinity = aff
 	attributes = Classes.CLASSES[cls]["base"].duplicate()
-	weapon_type = Classes.CLASSES[cls]["weapon"]
-	weapon_masteries[weapon_type] = {"level": 1, "xp": 0}
+	inventory.equipped["weapon"] = _starter_weapon(Classes.CLASSES[cls]["weapon"])
+	inventory.changed.connect(_on_inventory_changed)
+	_refresh_weapon()
 	reward_rng.randomize()
+
+
+# ---------- gear ----------
+
+static func _starter_weapon(type: String) -> Dictionary:
+	return Items.make(Items.starter_for(type), "common", 1, RandomNumberGenerator.new())
+
+
+## The weapon type follows the equipped weapon; with none equipped it is the class's own.
+## Each type trains its own mastery, so swapping weapons swaps which mastery grows.
+func _refresh_weapon() -> void:
+	var wielded := inventory.weapon_type()
+	weapon_type = wielded if wielded != "" else String(Classes.CLASSES[class_id]["weapon"])
+	if not weapon_masteries.has(weapon_type):
+		weapon_masteries[weapon_type] = {"level": 1, "xp": 0}
+
+
+func _on_inventory_changed() -> void:
+	_refresh_weapon()
+	changed.emit()
 
 
 # ---------- class (chosen at level 3) ----------
@@ -111,9 +133,11 @@ func choose_class(id: String) -> bool:
 		var spent: int = int(attributes[attr]) - int(novice_base[attr])
 		attributes[attr] = int(cls["base"][attr]) + spent + int(cls["per_level"].get(attr, 0)) * (level - 1)
 	class_id = id
-	weapon_type = cls["weapon"]
-	if not weapon_masteries.has(weapon_type):
-		weapon_masteries[weapon_type] = {"level": 1, "xp": 0}
+	# A worn starter weapon is swapped for the new class's own; anything better you found stays.
+	var current: Dictionary = inventory.equipped.get("weapon", {})
+	if current.is_empty() or Items.is_starter(current):
+		inventory.equipped["weapon"] = _starter_weapon(cls["weapon"])
+	_refresh_weapon()
 	class_chosen.emit(id)
 	changed.emit()
 	return true
@@ -311,6 +335,12 @@ func stat_mods() -> Dictionary:
 				mods[key] = float(mods.get(key, 1.0)) * pow(float(passive_mods[key]), stacks)
 			else:
 				mods[key] = float(mods.get(key, 0.0)) + float(passive_mods[key]) * stacks
+	var gear := inventory.mods()  # already in passive format
+	for key in gear:
+		if String(key).ends_with("_mult"):
+			mods[key] = float(mods.get(key, 1.0)) * float(gear[key])
+		else:
+			mods[key] = float(mods.get(key, 0.0)) + float(gear[key])
 	return mods
 
 
@@ -459,6 +489,7 @@ func to_dict() -> Dictionary:
 		"skill_uses": skill_uses.duplicate(),
 		"learned_specials": Array(learned_specials),
 		"pending_rewards": pending_rewards.duplicate(true),
+		"inventory": inventory.to_dict(),
 	}
 
 
@@ -489,6 +520,8 @@ static func from_dict(d: Dictionary) -> CharacterData:
 		for option in offer:
 			options.append({"type": String(option["type"]), "id": String(option["id"])})
 		c.pending_rewards.append(options)
+	if d.has("inventory"):
+		c.inventory.load_dict(d["inventory"])  # also re-derives the weapon type
 	return c
 
 

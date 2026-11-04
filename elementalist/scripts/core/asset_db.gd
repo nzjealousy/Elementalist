@@ -17,6 +17,12 @@ const PLACEHOLDERS := {
 	"proj_air": [Color("d9f2ff"), Color("8fb7cc"), Vector2i(6, 6)],
 	"proj_martial": [Color("c9c9d2"), Color("55555f"), Vector2i(6, 4)],
 	"proj_mineral": [Color("b5a58a"), Color("5c4f3a"), Vector2i(6, 6)],
+	"pickup_gold": [Color("ffd84a"), Color("8a6a10"), Vector2i(5, 5)],
+	"pickup_material": [Color("ffffff"), Color("303038"), Vector2i(5, 5)],  # tinted per material
+	"pickup_item": [Color("ffffff"), Color("202028"), Vector2i(7, 7)],      # tinted per rarity
+	"chest": [Color("a8742c"), Color("3b2610"), Vector2i(14, 12)],
+	"chest_open": [Color("6b4a1c"), Color("3b2610"), Vector2i(14, 12)],
+	"forge": [Color("5b5f6e"), Color("e86a2b"), Vector2i(18, 14)],
 }
 
 var _cache: Dictionary = {}

@@ -1,0 +1,90 @@
+class_name Loot
+extends RefCounted
+## Drop tables. Everything takes a RandomNumberGenerator so drops are reproducible in tests.
+##
+## A drop list is an Array of Dictionaries, each one of:
+##   {"kind": "gold", "amount": n}
+##   {"kind": "material", "id": "scrap", "amount": n}
+##   {"kind": "item", "item": <item dictionary>}
+## The world turns these into Pickups; nothing is added to the inventory until it is collected.
+##
+## `bonus` is a luck value (the game uses 0.1 per wave): it shifts rarity weights toward the
+## better rarities (each tier's weight is multiplied by 1 + bonus x tier).
+
+const GOLD_CHANCE := 0.7
+const GEL_CHANCE := 0.35
+const SCRAP_CHANCE := 0.25
+const ESSENCE_CHANCE := 0.25  # of the element that last hit the enemy
+const GEAR_CHANCE := 0.08
+
+
+## Picks a key of `weights` (key -> weight) at random.
+static func pick_weighted(rng: RandomNumberGenerator, weights: Dictionary) -> String:
+	var total := 0.0
+	for key in weights:
+		total += float(weights[key])
+	var roll := rng.randf() * total
+	for key in weights:
+		roll -= float(weights[key])
+		if roll < 0.0:
+			return String(key)
+	return String(weights.keys()[-1])
+
+
+## Rarity weights after luck and a minimum rarity ("common" for none).
+static func rarity_weights(bonus: float, floor_rarity: String = "common") -> Dictionary:
+	var out: Dictionary = {}
+	var floor_index := Items.RARITIES.find(floor_rarity)
+	for i in Items.RARITIES.size():
+		if i < floor_index:
+			continue
+		var id: String = Items.RARITIES[i]
+		out[id] = float(Items.RARITY[id]["weight"]) * (1.0 + maxf(bonus, 0.0) * i)
+	return out
+
+
+static func roll_rarity(rng: RandomNumberGenerator, bonus: float = 0.0, floor_rarity: String = "common") -> String:
+	return pick_weighted(rng, rarity_weights(bonus, floor_rarity))
+
+
+## A random piece of gear for `slot` ("" = any slot) at item level `ilvl`. {} if nothing fits.
+static func roll_item(rng: RandomNumberGenerator, ilvl: int, bonus: float = 0.0, slot: String = "",
+		floor_rarity: String = "common", allow_spell: bool = true) -> Dictionary:
+	var bases := Items.droppable_bases(slot, ilvl, allow_spell)
+	if bases.is_empty():
+		return {}
+	var base_id: String = bases[rng.randi_range(0, bases.size() - 1)]
+	return Items.make(base_id, roll_rarity(rng, bonus, floor_rarity), ilvl, rng, allow_spell)
+
+
+## What a slain enemy drops. `last_element` is the element that last hit it ("" = physical).
+static func enemy_drops(rng: RandomNumberGenerator, ilvl: int, bonus: float = 0.0, last_element: String = "",
+		allow_spell: bool = true) -> Array[Dictionary]:
+	var out: Array[Dictionary] = []
+	if rng.randf() < GOLD_CHANCE:
+		out.append({"kind": "gold", "amount": rng.randi_range(2, 6) + ilvl})
+	if rng.randf() < GEL_CHANCE:
+		out.append({"kind": "material", "id": "slime_gel", "amount": 1})
+	if rng.randf() < SCRAP_CHANCE:
+		out.append({"kind": "material", "id": "scrap", "amount": rng.randi_range(1, 2)})
+	if last_element != "" and Items.ENCHANTS.has(last_element) and rng.randf() < ESSENCE_CHANCE:
+		out.append({"kind": "material", "id": Items.essence_of(last_element), "amount": 1})
+	if rng.randf() < GEAR_CHANCE:
+		var item := roll_item(rng, ilvl, bonus, "", "common", allow_spell)
+		if not item.is_empty():
+			out.append({"kind": "item", "item": item})
+	return out
+
+
+## A chest: gold, scrap and two pieces of gear, the first at least uncommon.
+static func chest_drops(rng: RandomNumberGenerator, ilvl: int, bonus: float = 0.0, allow_spell: bool = true) -> Array[Dictionary]:
+	var out: Array[Dictionary] = []
+	out.append({"kind": "gold", "amount": rng.randi_range(20, 40) + ilvl * 2})
+	out.append({"kind": "material", "id": "scrap", "amount": rng.randi_range(3, 6)})
+	var first := roll_item(rng, ilvl, bonus, "", "uncommon", allow_spell)
+	if not first.is_empty():
+		out.append({"kind": "item", "item": first})
+	var second := roll_item(rng, ilvl, bonus + 0.5, "", "common", allow_spell)
+	if not second.is_empty():
+		out.append({"kind": "item", "item": second})
+	return out

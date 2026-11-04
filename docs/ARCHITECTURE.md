@@ -18,7 +18,7 @@ How the code is organised and how to extend it. Everything lives in `elementalis
 | `Elements` | `elements.gd` | Element colours, the ten combos, `resolve(a, b)` |
 | `SkillDB` | `skill_db.gd` | All skill definitions, per-element loadouts, melee, cost helpers |
 | `Juice` | `juice.gd` | Camera shake and hit-stop (`Juice.enabled = false` in tests) |
-| `Game` | `game.gd` | The current `CharacterData`, new-game and sandbox helpers, kill XP, banner |
+| `Game` | `game.gd` | The current `CharacterData`, new-game and sandbox helpers, kill XP and loot drops, banner |
 
 Autoloads are **not** instantiated by the editor's own test runner, which is why the self-tests
 run as a scene (`tests/combo_selftest.tscn`).
@@ -177,6 +177,50 @@ growth attribute +1. A level-up heals 40% of max HP (`LEVEL_UP_HEAL_FRACTION`).
 **Saving:** `to_dict()` / `from_dict()` survive a JSON round trip (JSON turns ints into
 floats; `from_dict` converts them back). There is no save file or UI yet (Phase 5).
 
+## Items, loot and crafting (`scripts/items/`)
+
+All `RefCounted` rules over plain data, so they are saved and tested without any scene.
+
+| File | Responsibility |
+|---|---|
+| `Items` | The tables (rarities, gear bases, affixes, enchants, materials) and item maths |
+| `Inventory` | Gold, materials, the 24-slot bag and the six equipped slots; `mods()` for the stat system |
+| `Forge` | Craft, upgrade, enchant, salvage (each has a `*_problem()` that says why it can't be done) |
+| `Loot` | Rarity weights, drop tables for enemies and chests |
+
+**An item** is a JSON-safe dictionary: `{base, rarity, ilvl, plus, affixes: [{mod, value}], enchant}`.
+Rarity decides the number of random affixes (0 to 4) and scales the base stats. Stats use the
+**same mod names as passives** (`max_hp_add`, `melee_damage_mult`, ...), so gear feeds the one
+aggregator, `CharacterData.stat_mods()`. In an item a `*_mult` value is the bonus fraction (0.10 =
++10%); `Inventory.mods()` turns the worn gear into passive format (`1 + sum`, floored at 0.4) and
+`stat_mods()` multiplies/adds it in. Stat size = base x level scale (`LEVEL_STEP` 8% per item
+level) x rarity scale x upgrade scale (`UPGRADE_STEP` 10% per +).
+
+**Weapon type follows the wielded weapon.** `CharacterData._refresh_weapon()` sets `weapon_type`
+from the equipped weapon (the class's own type if none is held), and each type trains its own
+mastery. A new character wears a worn starter weapon of their class's type; choosing a class at
+level 3 swaps a *starter* weapon for the new class's, but keeps anything better you found.
+
+**Loot** (`Loot`): kills drop gold (70%), slime gel (35%), scrap (25%), **essence of the element that
+last hit the enemy** (25%, `Enemy.last_element`) and gear (8%). Chests (every third arena wave)
+always hold gold, scrap and two items, the first at least uncommon. `Game.on_enemy_killed` rolls the
+drops and emits `Game.loot_dropped(drops, position)`; the arena turns each entry into a `Pickup`.
+Depth (`Game.danger`, the wave) raises item level and a luck bonus that shifts rarity weights.
+Sealed characters are never dropped spell-only gear or spell affixes (`Items.SPELL_MODS`).
+
+**Forge** (`ForgeScreen`, opened at the `ForgeStation` with G): *Craft* (gold + materials, rarity
+rolled up to rare), *Upgrade* (+1 to +10, always succeeds, cost grows with level and rarity),
+*Enchant* (one essence of a main element + gold; replaces an earlier enchant) and *Salvage* (bag
+items to scrap + gold). Upgrading or enchanting edits the item dictionary in place and emits
+`Inventory.changed`, which `CharacterData` forwards as `changed`, so the player's stats refresh.
+
+**World objects** (`scripts/world/`): `Interactable` (G within `radius`, shows a prompt) is the base
+of `Chest` and `ForgeStation`; `Pickup` drifts to the player and is collected on touch (gear waits
+while the bag is full; everything vanishes after 120 s).
+
+**UI:** the sheet's *Gear* tab (`I` opens it) lists worn gear (click to take off) and the bag
+(click to wear; hover for details). `Inventory.summary()` is the one-line wallet text.
+
 ## Combat scripts (`scripts/combat/`, `scripts/player/`)
 
 - `Player` - movement, dodge (stamina, i-frames), melee, HP. Reads its stats from
@@ -212,6 +256,14 @@ caster (`spell_damage_mult`, `spell_cooldown_mult`, `projectile_speed_mult`, `bu
 **A new combo effect kind.** Handle the kind in `Enemy` (movement, tick or damage), and add it to
 the list in `Elements.describe_combo` and the self-test.
 
+**A new piece of gear.** Add an entry to `Items.BASES` (slot, `mods` at item level 1, optional
+`weapon` type, `min_ilvl`, `craft` cost). It drops and is craftable automatically. A new weapon
+type also needs a `Classes.WEAPON_PASSIVES` entry and a worn starter base.
+
+**A new affix, material or enchant.** Add it to `Items.AFFIXES` / `MATERIALS` / `ENCHANTS`; an
+affix's `mod` must be a stat `derived()` or the caster reads. A new element's essence is
+`"essence_" + element` and needs an `ENCHANTS` entry to be droppable.
+
 **A new enemy.** Duplicate `scenes/enemies/slime.tscn`, point `sprite_id` at a new placeholder in
 `AssetDB.PLACEHOLDERS`, and set its exports (HP, speed, contact damage, `xp_reward`).
 
@@ -220,7 +272,9 @@ the list in `Elements.describe_combo` and the self-test.
 `tests/combo_selftest.gd` (run `tests/combo_selftest.tscn`) covers the combat rules, the
 character model, the ceremony statistics, gating, scaling, balance budgets, saving, and builds
 every UI screen. A test that fails prints `FAIL <name>`. Tests seed their own RNGs; the player is
-tested with a neutral character (`_neutral_character()`) so the tuned numbers stay meaningful.
+tested with a neutral character (`_neutral_character()`, which also takes the starter weapon off;
+`_bare(character)` does the same for other characters) so the tuned numbers stay meaningful. UI
+buttons call `show_tab.call_deferred(...)`, so tests `await` a frame after clicking one.
 
 ## UI notes
 

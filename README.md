@@ -7,9 +7,10 @@ people *elements*; skills are something else entirely, learned from others.
 Inspirations: The Mageseeker (action magic), Witchbrook (a cozy, lived-in hub), Lies of P
 (weighty bosses). Single player, PC.
 
-> **Status:** early development. Phases 0-3 of [the roadmap](docs/ROADMAP.md) are done: a playable
+> **Status:** early development. Phases 0-4 of [the roadmap](docs/ROADMAP.md) are done: a playable
 > combat arena with the element/combo system, four classes, a ceremony, leveling and
-> mastery. There is no story, inventory or world yet. All art is generated placeholder.
+> mastery, and now gear, loot and a forge. There is no story or world yet. All art is generated
+> placeholder.
 
 ## Run it
 
@@ -30,12 +31,14 @@ Inspirations: The Mageseeker (action magic), Witchbrook (a cozy, lived-in hub), 
 | `1`-`5` or mouse wheel | Select element (or the martial set) |
 | `E` | Toggle **imbue** (no cooldown, no timer). Slashes then carry the locked/selected elements for a little mana each, and ranged classes can shoot with RMB |
 | `Space` | Dodge roll (stamina, short i-frames). **Dodge + RMB = a 360 degree spin**: costs more stamina, can be imbued, and you take no damage until it finishes |
-| `TAB` | Character sheet (tabs: Stats, Skills, Elements, Passives, Combos, Rewards) |
+| `G` | Use what you stand next to: open a chest, use the forge |
+| `I` | Gear: open the character sheet on the Gear tab (click a bag item to wear it, a worn item to take it off) |
+| `TAB` | Character sheet (tabs: Stats, Gear, Skills, Elements, Passives, Combos, Rewards) |
 | `N` | New character: pick how they are born |
 | `Esc` | Close a menu |
 
-**Debug keys (arena only):** `F5` sandbox (all elements, level 10) - `F10` stand-in for an
-attunement item: gain a random element.
+**Debug keys (arena only):** `F5` sandbox (all elements, level 10, some gold, materials and gear) -
+`F6` open the forge from anywhere - `F10` stand-in for an attunement item: gain a random element.
 
 ## How it plays
 
@@ -67,6 +70,21 @@ attunement item: gain a random element.
   rewards), rare element passives (mastery level 5) and rare skill passives (many uses of one
   skill).
 
+## Gear, loot and the forge
+
+- **Six slots:** weapon, head, body, feet, ring, amulet. Gear gives the same stats passives do
+  (HP, mana, speed, damage, damage taken, ...). Items come in five **rarities**; the better the
+  rarity the more random bonuses (0-4) and the stronger the base stats. Item level comes from the
+  level you found it at and how deep you are.
+- **The weapon you hold sets your weapon type** (sword, staff, bow, rod) and which weapon mastery
+  grows. You start with a worn weapon for your class; any class can wield any weapon.
+- **Loot:** enemies drop gold, scrap, slime gel and sometimes gear. Kill an enemy **with an element**
+  and it may drop that element's *essence*. Every third wave a chest appears: walk up and press `G`.
+  Pick things up by walking over them (gear waits on the floor if your 24-slot bag is full).
+- **The forge** (the grey block at the top of the arena, `G` to use) can **craft** gear, **upgrade** it
+  (+1 to +10, +10% of its stats each, never fails), **enchant** it with an essence for an extra
+  bonus, and **salvage** bag items into scrap and gold.
+
 ## Tests
 
 The game has an in-game self-test suite (it needs the autoloads, so it runs as a scene rather
@@ -88,10 +106,11 @@ elementalist/             the Godot project
   scripts/
     core/                 autoloads: Game, Elements, SkillDB, AssetDB, Juice
     character/            CharacterData, Classes (tables), Ceremony
+    items/                Items (tables), Inventory, Forge, Loot
     combat/               Enemy, Projectile, AoeEffect, health bar, hit effects
     player/               Player, SkillCaster, AimMarker
-    ui/                   HUD, CharacterSheet, RewardCards, NewCharacterMenu, UiTheme
-    world/                the test arena
+    ui/                   HUD, CharacterSheet, ForgeScreen, RewardCards, NewCharacterMenu, UiTheme
+    world/                the test arena, Pickup, Chest, ForgeStation
   tests/                  in-game self-tests
   addons/godot_ai/        development tooling (MIT, see its LICENSE)
 ```

@@ -39,10 +39,12 @@ func _draw_hud() -> void:
 	var xp_frac := float(character.xp) / float(CharacterData.xp_to_next(character.level))
 	_bar(Vector2(4, 24), Vector2(80, 3), xp_frac, Color("ffd84a"))
 	_draw_status(font, caster, character)
+	var inv := character.inventory
+	_ctrl.draw_string(font, Vector2(4, 34), "%d gold   %d scrap" % [inv.gold, inv.count("scrap")], HORIZONTAL_ALIGNMENT_LEFT, -1, 6, Color("ffd84a"))
 	if Game.banner_time > 0.0:
 		var alpha := clampf(Game.banner_time, 0.0, 1.0)
 		_ctrl.draw_multiline_string(font, Vector2(0, 62), Game.banner_text, HORIZONTAL_ALIGNMENT_CENTER, 320.0, 8, -1, Color(1, 0.95, 0.7, alpha))
-	_ctrl.draw_string(font, Vector2(0, 8), "TAB sheet  N new  E imbue  Q lock  LMB fuse  RMB attack  F area  R special", HORIZONTAL_ALIGNMENT_RIGHT, 316.0, 5, Color(1, 1, 1, 0.45))
+	_ctrl.draw_string(font, Vector2(0, 8), "TAB sheet  I gear  G use  E imbue  Q lock  LMB fuse  RMB attack  F area  R special", HORIZONTAL_ALIGNMENT_RIGHT, 316.0, 5, Color(1, 1, 1, 0.45))
 
 	# Layout: [1..5] element tabs, gap, LMB, RMB, Q, F, R (just RMB if no castable set)
 	var count := caster.elements.size()

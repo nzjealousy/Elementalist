@@ -1,14 +1,35 @@
 extends Node
-## Global game state: the current character and a short on-screen banner.
+## Global game state: the current character, loot drops and a short on-screen banner.
 ## A fresh game starts with a real ceremony roll; the sandbox grants every element for testing.
+
+## Emitted when a kill drops loot (see Loot): the world spawns Pickups at `position`.
+signal loot_dropped(drops: Array, position: Vector2)
 
 var character: CharacterData
 var banner_text := ""
 var banner_time := 0.0
+var danger := 0  # how deep the player is (the arena's wave): raises item level and rarity luck
+var loot_rng := RandomNumberGenerator.new()  # tests may seed it
 
 
 func _ready() -> void:
+	loot_rng.randomize()
 	start_new(Classes.NEUTRAL_CLASS)
+
+
+## Item level of drops: the character's level plus a little for depth.
+func loot_level() -> int:
+	return character.level + floori(danger / 3.0)
+
+
+## Luck: each wave of depth shifts drops toward better rarities.
+func loot_bonus() -> float:
+	return 0.1 * danger
+
+
+## Sealed characters can never use spells, so they are not given spell-only gear or affixes.
+func loot_allows_spell() -> bool:
+	return character.affinity != CharacterData.SEALED
 
 
 ## Fresh character: class chosen, then born through the ceremony (elementalists roll their
@@ -33,7 +54,21 @@ func start_new(class_id: String, affinity: String = CharacterData.ELEMENTALIST) 
 ## Every main element and enough levels that all skills are learned. For combat testing.
 func start_sandbox(class_id: String = "channeler") -> void:
 	character = CharacterData.create_sandbox(class_id, Elements.MAIN, Classes.SUBCLASS_LEVEL)
+	_stock_sandbox_inventory()
 	_show_banner("Sandbox: all elements, level %d %s (subclass unlocked)" % [character.level, Classes.CLASSES[class_id]["name"]])
+
+
+## Gold, materials and a handful of random gear so the forge and gear tab can be tried at once.
+func _stock_sandbox_inventory() -> void:
+	var inv := character.inventory
+	inv.gold = 500
+	for id in Items.MATERIALS:
+		inv.materials[id] = 12
+	for i in 6:
+		var item := Loot.roll_item(loot_rng, character.level, 1.0)
+		if not item.is_empty():
+			inv.add_item(item)
+	inv.changed.emit()
 
 
 ## Debug stand-in for an attunement item or story event: grants a random element not yet owned.
@@ -50,6 +85,9 @@ func attune_random() -> String:
 
 func on_enemy_killed(enemy: Node) -> void:
 	character.gain_xp(int(enemy.xp_reward))
+	var drops := Loot.enemy_drops(loot_rng, loot_level(), loot_bonus(), String(enemy.last_element), loot_allows_spell())
+	if not drops.is_empty():
+		loot_dropped.emit(drops, enemy.global_position)
 
 
 func _show_banner(text: String) -> void:

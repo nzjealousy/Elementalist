@@ -132,3 +132,23 @@ Coming-of-age ceremony · 1 village hub · 1 dungeon with 3–4 room types · 3 
   governing attribute that scales its status effects, and individual skills scale their size,
   speed, knockback or cooldown from an attribute.
 - **Level-ups heal 40% of max HP**, not all of it.
+
+## 13. Design updates (Phase 4: items, loot, crafting)
+
+- **Six gear slots:** weapon, head, body, feet, ring, amulet. Gear stats are the same stats
+  passives and attributes give, so everything stacks through one system.
+- **Rarity** (common, uncommon, rare, epic, legendary) decides how many random bonuses an item
+  has (0 to 4) and scales its base stats. Items also have an **item level** (from the level you
+  found them at, plus depth) and an **upgrade level** (+0 to +10, +10% of its stats each).
+- **The weapon you hold sets your weapon type**, and each type trains its own mastery. A new
+  character holds a worn starter weapon for their class; a better weapon you found is never
+  swapped away when you pick a class at level 3. Any class can wield any weapon.
+- **Loot:** kills drop gold, scrap, slime gel and sometimes gear. **Finish an enemy with an element
+  and it can drop that element's essence**, so which elements you fight with decides what you can
+  enchant with. Chests appear every third wave of the arena.
+- **The forge** (one station) crafts gear from gold and materials (rarity is rolled), upgrades it,
+  **enchants** it with an essence for an extra bonus (re-enchanting replaces), and salvages
+  unwanted gear into scrap and gold. Nothing fails or breaks.
+- **Sealed characters** are never dropped gear or bonuses that only help spellcasting.
+- Not yet: a shop, a safe stash, gear sets, item-granted elements (an attunement item is still the
+  F10 debug key). Those belong with the run structure and story phases.

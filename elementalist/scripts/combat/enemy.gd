@@ -23,6 +23,7 @@ const CONTACT_MARGIN := 1.0  # px; bodies this close count as touching
 var hp := 0.0
 var aura := ""
 var aura_time := 0.0
+var last_element := ""  # the element that most recently hit it (decides essence drops)
 var aura_stacks := 0   # consecutive discrete hits of the aura's element (resonance)
 var chain_count := 0   # consecutive physical hits (martial combo)
 var chain_time := 0.0
@@ -54,6 +55,8 @@ func take_hit(hit: Dictionary) -> void:
 	var element: String = hit.get("element", "")
 	var text_color := Elements.color_of(element)
 	var label := ""
+	if element != "":
+		last_element = element
 
 	var juicy: bool = hit.get("juice", true)
 	if effects.has("vuln"):

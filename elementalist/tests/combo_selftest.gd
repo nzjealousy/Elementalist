@@ -60,14 +60,23 @@ func _ready() -> void:
 	await _test_special_skill()
 	await _test_spin_attack()
 	_test_jack_of_all_trades()
+	_test_items()
+	_test_inventory_and_gear_stats()
+	_test_forge()
+	_test_loot()
+	await _test_world_loot()
 	await _test_reward_cards()
 	await _test_ui_screens()
+	await _test_gear_screens()
 	print("SELFTEST %d passed, %d failed" % [_pass, _fail])
 
 
 ## Neutral baseline: attributes all 5, no class growth or passives, owns Fire/Water/Earth.
 func _neutral_character() -> void:
 	Game.character = CharacterData.create_sandbox(Classes.NEUTRAL_CLASS, ["fire", "water", "earth"], 1)
+	# Strip the starter weapon too: the combat numbers are checked against bare stats.
+	Game.character.inventory.equipped.clear()
+	Game.character.inventory.changed.emit()
 
 
 func _rng(seed_value: int) -> RandomNumberGenerator:
@@ -987,7 +996,7 @@ func _test_special_skill() -> void:
 
 func _test_spin_attack() -> void:
 	var saved := Game.character
-	var player: Node2D = await _player_with(CharacterData.create_sandbox(Classes.NEUTRAL_CLASS, ["fire"], 1))
+	var player: Node2D = await _player_with(_bare(CharacterData.create_sandbox(Classes.NEUTRAL_CLASS, ["fire"], 1)))
 	var front := _dummy(Vector2(15, 0))
 	var behind := _dummy(Vector2(-15, 0))
 	var far := _dummy(Vector2(80, 0))
@@ -1510,3 +1519,559 @@ func _test_melee() -> void:
 	front.queue_free()
 	behind.queue_free()
 	far.queue_free()
+
+
+# ---------- Phase 4: items, loot, crafting ----------
+
+## The character with no gear on, so combat numbers can be checked against bare stats.
+func _bare(character: CharacterData) -> CharacterData:
+	character.inventory.equipped.clear()
+	character.inventory.changed.emit()
+	return character
+
+
+func _item(base: String, rarity: String = "common", ilvl: int = 1, seed_value: int = 1) -> Dictionary:
+	return Items.make(base, rarity, ilvl, _rng(seed_value))
+
+
+func _test_items() -> void:
+	var valid := true
+	for id in Items.BASES:
+		var base: Dictionary = Items.BASES[id]
+		valid = valid and base["slot"] in Items.SLOTS and not base["mods"].is_empty()
+		for key in base["mods"]:
+			valid = valid and Items.MOD_NAMES.has(key) and (String(key).ends_with("_add") or String(key).ends_with("_mult"))
+		if base["slot"] == "weapon":
+			valid = valid and Classes.WEAPON_PASSIVES.has(base["weapon"])
+		for cost_id in base.get("craft", {}):
+			valid = valid and (cost_id == "gold" or Items.MATERIALS.has(cost_id))
+	_check("every gear base has a slot, valid stats and known craft materials", valid)
+	var starters := true
+	for cls in Classes.CLASSES:
+		starters = starters and Items.starter_for(Classes.CLASSES[cls]["weapon"]) != ""
+	_check("every class weapon type has a starter weapon", starters)
+	var mods_ok := true
+	for affix in Items.AFFIXES:
+		mods_ok = mods_ok and Items.MOD_NAMES.has(affix["mod"]) and float(affix["min"]) < float(affix["max"])
+	_check("every affix names a real stat and a valid range", mods_ok)
+	var enchants_ok := true
+	for element in Items.ENCHANTS:
+		enchants_ok = enchants_ok and Items.MATERIALS.has(Items.essence_of(element)) and Elements.MAIN.has(element)
+	_check("every enchant has an essence material", enchants_ok)
+	_check("gear is never a starter", Items.gear_bases().all(func(id): return not Items.BASES[id].get("starter", false)))
+
+	var counts_ok := true
+	var distinct := true
+	var in_range := true
+	for rarity in Items.RARITIES:
+		for seed_value in 30:
+			var item := _item("iron_helm", rarity, 1, seed_value)
+			counts_ok = counts_ok and item["affixes"].size() == Items.RARITY[rarity]["affixes"]
+			var seen: Array = []
+			for affix in item["affixes"]:
+				distinct = distinct and not (affix["mod"] in seen)
+				seen.append(affix["mod"])
+				var def := Items.affix_def(affix["mod"])
+				in_range = in_range and float(affix["value"]) >= float(def["min"]) - 0.01 and float(affix["value"]) <= float(def["max"]) + 0.01
+	_check("rarity decides how many affixes an item has (0 to 4)", counts_ok)
+	_check("an item never rolls the same affix twice", distinct)
+	_check("affix values stay inside their range", in_range)
+	_check("the same seed makes the same item", _item("iron_sword", "epic", 5, 9) == _item("iron_sword", "epic", 5, 9))
+	_check("different seeds make different epics", _item("iron_sword", "epic", 5, 9) != _item("iron_sword", "epic", 5, 10))
+
+	var plain := _item("leather_cap")
+	_check("a plain item's stats are its base stats", is_equal_approx(Items.mods_of(plain)["max_hp_add"], 6.0))
+	_check("higher item level means bigger stats", Items.mods_of(_item("leather_cap", "common", 6))["max_hp_add"] > 6.0)
+	_check("better rarity means bigger base stats", Items.mods_of(_item("leather_cap", "legendary"))["max_hp_add"] > Items.mods_of(_item("leather_cap", "rare"))["max_hp_add"])
+	var up := _item("leather_cap")
+	up["plus"] = 5
+	_check("each + adds 10 percent of the stats", is_equal_approx(Items.mods_of(up)["max_hp_add"], 6.0 * 1.5))
+	var rolled := _item("leather_cap", "uncommon", 1, 4)
+	var total := float(Items.mods_of(rolled).get("max_hp_add", 0.0))
+	var affix_hp := 0.0
+	for affix in rolled["affixes"]:
+		if affix["mod"] == "max_hp_add":
+			affix_hp += float(affix["value"])
+	_check("an item's stats are its base (by rarity) plus its affixes", is_equal_approx(total, 6.0 * 1.15 + affix_hp))
+	var enchanted := _item("leather_cap")
+	enchanted["enchant"] = "fire"
+	_check("an enchant adds its stats", is_equal_approx(Items.mods_of(enchanted)["melee_damage_mult"], 0.06) and is_equal_approx(Items.mods_of(enchanted)["burn_time_mult"], 0.2))
+	_check("mods read as +12 Max HP / +8% Melee damage / -3% Damage taken", Items.format_mod("max_hp_add", 12.0) == "+12 Max HP" and Items.format_mod("melee_damage_mult", 0.08) == "+8% Melee damage" and Items.format_mod("damage_taken_mult", -0.03) == "-3% Damage taken")
+	_check("a fractional stat keeps a decimal", Items.format_mod("hp_regen_add", 0.3) == "+0.3 HP regen")
+	var named := _item("iron_sword", "rare", 3, 2)
+	_check("a rare item is named with a prefix and a suffix", Items.display_name(named).contains("Iron Sword") and Items.display_name(named).split(" ").size() >= 4)
+	named["plus"] = 3
+	_check("the name shows the upgrade level", Items.display_name(named).ends_with("+3"))
+	_check("the description lists the stats, rarity and upgrade", Items.describe(named).contains("Rare") and Items.describe(named).contains("Upgrade +3/10") and Items.describe(named).contains("Sword"))
+
+	var spell_free := true
+	for seed_value in 200:
+		var item := Items.make("iron_helm", "legendary", 4, _rng(seed_value), false)
+		for affix in item["affixes"]:
+			spell_free = spell_free and not (affix["mod"] in Items.SPELL_MODS)
+	_check("characters who can't use spells never roll spell affixes", spell_free)
+	_check("and are never dropped spell-only gear", not Items.droppable_bases("", 9, false).any(func(id): return Items.is_spell_only(id)))
+	_check("staffs and robes are spell-only, swords are not", Items.is_spell_only("oak_staff") and Items.is_spell_only("mage_robe") and not Items.is_spell_only("iron_sword"))
+	_check("high-level bases wait for their item level", not Items.droppable_bases("weapon", 1, true).has("iron_sword") and Items.droppable_bases("weapon", 2, true).has("iron_sword"))
+
+	var common := _item("iron_sword")
+	var epic := _item("iron_sword", "epic")
+	_check("rarer items are worth and salvage for more", Items.value_of(epic) > Items.value_of(common) and Items.salvage_yield(epic)["scrap"] > Items.salvage_yield(common)["scrap"])
+	var plus3 := _item("iron_sword")
+	plus3["plus"] = 3
+	_check("upgrading raises the salvage yield", Items.salvage_yield(plus3)["scrap"] == Items.salvage_yield(common)["scrap"] + 3)
+
+
+func _test_inventory_and_gear_stats() -> void:
+	var inv := Inventory.new()
+	_check("a new inventory is empty", inv.gold == 0 and inv.bag.is_empty() and inv.equipped.is_empty() and inv.mods().is_empty())
+	var sword := _item("iron_sword")
+	var cap := _item("leather_cap")
+	inv.add_item(sword)
+	inv.add_item(cap)
+	_check("equipping moves an item from the bag to its slot", inv.equip(0) and inv.equipped["weapon"] == sword and inv.bag.size() == 1)
+	var other := _item("hunter_bow")
+	inv.add_item(other)
+	_check("equipping over a worn item puts the old one back in the bag", inv.equip(inv.bag.size() - 1) and inv.equipped["weapon"] == other and inv.bag.has(sword))
+	_check("a bad bag index is refused", not inv.equip(99) and not inv.equip(-1))
+	_check("taking an item off returns it to the bag", inv.unequip("weapon") and not inv.equipped.has("weapon") and inv.bag.has(other))
+	_check("an empty slot can't be unequipped", not inv.unequip("ring"))
+
+	var full := Inventory.new()
+	for i in Inventory.BAG_SIZE:
+		full.add_item(_item("copper_ring"))
+	_check("the bag holds a fixed number of items", full.bag_full() and not full.add_item(_item("copper_ring")))
+	full.equipped["ring"] = _item("silver_ring")
+	_check("taking off needs a free bag slot", not full.unequip("ring") and full.equipped.has("ring"))
+
+	var wallet := Inventory.new()
+	wallet.add_gold(50)
+	wallet.add_material("scrap", 3)
+	_check("gold and materials are counted", wallet.gold == 50 and wallet.count("scrap") == 3 and wallet.count("slime_gel") == 0)
+	_check("a cost that can't be paid takes nothing", not wallet.pay({"gold": 10, "scrap": 5}) and wallet.gold == 50 and wallet.count("scrap") == 3)
+	_check("a cost that can be paid is taken", wallet.pay({"gold": 10, "scrap": 2}) and wallet.gold == 40 and wallet.count("scrap") == 1)
+	_check("the shortfall names what is missing", wallet.shortfall({"scrap": 4}) == "Need 4 Scrap" and wallet.shortfall({"gold": 99}) == "Need 99 gold" and wallet.shortfall({"gold": 1}) == "")
+
+	var worn := Inventory.new()
+	worn.equipped["feet"] = _item("travel_boots")
+	worn.equipped["ring"] = _item("silver_ring")
+	var mods := worn.mods()
+	_check("bonus fractions become multipliers (1 + sum)", is_equal_approx(mods["move_speed_mult"], 1.04) and is_equal_approx(mods["melee_damage_mult"], 1.03))
+	var two := Inventory.new()
+	two.equipped["feet"] = _item("travel_boots")
+	two.equipped["ring"] = _item("travel_boots")
+	_check("the same stat on two items adds up", is_equal_approx(two.mods()["move_speed_mult"], 1.08))
+	var tank := Inventory.new()
+	for slot in ["head", "body", "feet", "ring", "amulet", "weapon"]:
+		var heavy := _item("iron_helm", "legendary", 30)
+		heavy["affixes"] = [{"mod": "damage_taken_mult", "value": -0.2}]
+		tank.equipped[slot] = heavy
+	_check("stacked damage reduction can never reach zero", tank.mods()["damage_taken_mult"] >= 0.4)
+
+	# Gear feeds the character's stats.
+	_neutral_character()
+	var ch := Game.character
+	var hp_before: float = ch.derived()["max_hp"]
+	var melee_before: float = ch.derived()["melee_damage_mult"]
+	ch.inventory.add_item(_item("leather_cap"))
+	ch.inventory.equip(0)
+	_check("equipped gear raises derived stats", is_equal_approx(ch.derived()["max_hp"], hp_before + 6.0))
+	ch.inventory.add_item(_item("iron_sword"))
+	ch.inventory.equip(0)
+	_check("a weapon raises melee damage", is_equal_approx(ch.derived()["melee_damage_mult"], melee_before * 1.18))
+	_check("and widens melee reach", is_equal_approx(ch.derived()["melee_range_mult"], 1.05))
+	ch.inventory.unequip("head")
+	_check("taking gear off removes its stats", is_equal_approx(ch.derived()["max_hp"], hp_before))
+	var signalled := [false]
+	ch.changed.connect(func(): signalled[0] = true, CONNECT_ONE_SHOT)
+	ch.inventory.unequip("weapon")
+	_check("changing gear tells the rest of the game (stats refresh)", signalled[0])
+	ch.traits.append("keen_edge")
+	ch.inventory.add_item(_item("iron_sword"))
+	ch.inventory.equip(ch.inventory.bag.size() - 1)
+	_check("gear multipliers stack with passives", is_equal_approx(ch.stat_mods()["melee_damage_mult"], 1.06 * 1.18))
+	ch.traits.erase("keen_edge")
+	ch.inventory.add_item(_item("iron_helm"))
+	ch.inventory.equip(ch.inventory.bag.size() - 1)
+	_check("armour reduces damage taken", ch.derived()["damage_taken_mult"] < 1.0)
+
+	# The wielded weapon decides the weapon type and which mastery grows.
+	_neutral_character()
+	ch = Game.character
+	_check("with no weapon the class's own type applies", ch.weapon_type == "sword")
+	ch.inventory.add_item(_item("worn_staff"))
+	ch.inventory.equip(0)
+	_check("wielding a staff makes you a staff user", ch.weapon_type == "staff" and ch.weapon_masteries.has("staff"))
+	ch.add_weapon_xp(20)
+	_check("the wielded weapon's mastery grows, not the old one's", ch.weapon_level() == 2 and ch.weapon_masteries["sword"]["level"] == 1)
+	ch.inventory.unequip("weapon")
+	_check("taking the weapon off returns to the class's own type", ch.weapon_type == "sword")
+	ch.inventory.equip(0)
+	_check("swapping back keeps the earlier mastery", ch.weapon_type == "staff" and ch.weapon_masteries["staff"]["level"] == 2)
+
+	# Starting gear.
+	var born := CharacterData.create("T", "channeler", CharacterData.ELEMENTALIST, _rng(5))
+	_check("a new character holds a worn weapon of their class's type", born.inventory.equipped["weapon"]["base"] == "worn_staff" and born.weapon_type == "staff")
+	var novice := CharacterData.create_sandbox(Classes.NEUTRAL_CLASS, ["fire"], 3)
+	_check("the Novice starts with a worn sword", novice.inventory.equipped["weapon"]["base"] == "worn_sword")
+	novice.choose_class("channeler")
+	_check("choosing a class swaps the worn starter weapon for the class's own", novice.inventory.equipped["weapon"]["base"] == "worn_staff" and novice.weapon_type == "staff")
+	var found := CharacterData.create_sandbox(Classes.NEUTRAL_CLASS, ["fire"], 3)
+	found.inventory.add_item(_item("iron_sword"))
+	found.inventory.equip(0)
+	found.choose_class("ranger")
+	_check("a better weapon you found is kept when you choose a class", found.inventory.equipped["weapon"]["base"] == "iron_sword" and found.weapon_type == "sword")
+
+	# Saving.
+	var hero := CharacterData.create_sandbox("vanguard", ["fire"], 5)
+	hero.inventory.gold = 321
+	hero.inventory.add_material("scrap", 7)
+	var epic := _item("chain_mail", "epic", 6, 11)
+	epic["plus"] = 2
+	epic["enchant"] = "earth"
+	hero.inventory.add_item(epic)
+	hero.inventory.equip(0)
+	hero.inventory.add_item(_item("silver_ring", "rare", 3, 3))
+	var back := CharacterData.from_dict(JSON.parse_string(JSON.stringify(hero.to_dict())))
+	_check("gold, materials and the bag survive a JSON save", back.inventory.gold == 321 and typeof(back.inventory.gold) == TYPE_INT and back.inventory.count("scrap") == 7 and back.inventory.bag.size() == hero.inventory.bag.size())
+	_check("equipped gear keeps its rolls, upgrades and enchant", back.inventory.equipped["body"]["plus"] == 2 and back.inventory.equipped["body"]["enchant"] == "earth" and back.inventory.equipped["body"]["affixes"] == hero.inventory.equipped["body"]["affixes"] and typeof(back.inventory.equipped["body"]["ilvl"]) == TYPE_INT)
+	_check("a reloaded character has identical derived stats with gear on", back.derived() == hero.derived())
+	_check("and the same weapon type", back.weapon_type == hero.weapon_type)
+	var old_save := hero.to_dict()
+	old_save.erase("inventory")
+	_check("a save from before items existed still loads", CharacterData.from_dict(old_save).inventory != null)
+	_neutral_character()
+
+
+func _test_forge() -> void:
+	var inv := Inventory.new()
+	var poor := Forge.craft(inv, "leather_cap", 1, _rng(1))
+	_check("crafting without the materials does nothing", poor.is_empty() and inv.bag.is_empty() and Forge.craft_problem(inv, "leather_cap") != "")
+	_check("the problem says what is missing", Forge.craft_problem(inv, "leather_cap").begins_with("Need"))
+	_check("starter gear can't be crafted", Forge.craft_problem(inv, "worn_sword") == "Can't be crafted")
+	inv.gold = 100
+	inv.materials = {"scrap": 10, "slime_gel": 5}
+	var made := Forge.craft(inv, "leather_cap", 4, _rng(2))
+	_check("crafting pays the cost and adds the item", not made.is_empty() and inv.bag.size() == 1 and inv.gold == 85 and inv.count("scrap") == 6 and inv.count("slime_gel") == 3)
+	_check("crafted gear has the character's item level", made["ilvl"] == 4)
+	var best := 0
+	for seed_value in 200:
+		var probe := Inventory.new()
+		probe.gold = 100
+		probe.materials = {"scrap": 10, "slime_gel": 5}
+		var item := Forge.craft(probe, "leather_cap", 1, _rng(seed_value))
+		best = maxi(best, Items.RARITIES.find(item["rarity"]))
+	_check("crafted gear is never better than rare, but can be", best == 2)
+	var full := Inventory.new()
+	full.gold = 100
+	full.materials = {"scrap": 10, "slime_gel": 5}
+	for i in Inventory.BAG_SIZE:
+		full.add_item(_item("copper_ring"))
+	_check("crafting needs room in the bag", Forge.craft_problem(full, "leather_cap") == "Bag full" and Forge.craft(full, "leather_cap", 1, _rng(1)).is_empty() and full.gold == 100)
+
+	# Upgrading.
+	var up := Inventory.new()
+	var sword := _item("iron_sword")
+	up.gold = 100000
+	up.materials = {"scrap": 1000}
+	var base_damage: float = Items.mods_of(sword)["melee_damage_mult"]
+	var cost := Forge.upgrade_cost(sword)
+	_check("upgrading pays gold and scrap and adds a level", Forge.upgrade(up, sword) and sword["plus"] == 1 and up.gold == 100000 - int(cost["gold"]) and up.count("scrap") == 1000 - int(cost["scrap"]))
+	_check("each + makes the item stronger", is_equal_approx(Items.mods_of(sword)["melee_damage_mult"], base_damage * 1.1))
+	_check("later upgrades cost more", int(Forge.upgrade_cost(sword)["gold"]) > int(cost["gold"]) and int(Forge.upgrade_cost(sword)["scrap"]) > int(cost["scrap"]))
+	_check("better rarities cost more to upgrade", int(Forge.upgrade_cost(_item("iron_sword", "legendary"))["gold"]) > int(Forge.upgrade_cost(_item("iron_sword"))["gold"]))
+	while sword["plus"] < Items.MAX_PLUS:
+		Forge.upgrade(up, sword)
+	_check("an item stops at +10", sword["plus"] == Items.MAX_PLUS and not Forge.upgrade(up, sword) and Forge.upgrade_problem(up, sword) == "Fully upgraded")
+	var broke := Inventory.new()
+	var plain := _item("iron_sword")
+	_check("upgrading needs the funds", not Forge.upgrade(broke, plain) and plain["plus"] == 0)
+
+	# Enchanting.
+	var ench := Inventory.new()
+	var cap := _item("leather_cap")
+	_check("enchanting needs the element's essence", not Forge.enchant(ench, cap, "fire") and cap["enchant"] == "")
+	ench.gold = 200
+	ench.materials = {"essence_fire": 1, "essence_water": 2}
+	_check("enchanting spends the essence and the gold", Forge.enchant(ench, cap, "fire") and cap["enchant"] == "fire" and ench.count("essence_fire") == 0 and ench.gold < 200)
+	_check("the same enchant twice is refused", Forge.enchant_problem(ench, cap, "fire") == "Already enchanted")
+	_check("a new enchant replaces the old one", Forge.enchant(ench, cap, "water") and cap["enchant"] == "water" and not Items.mods_of(cap).has("burn_time_mult"))
+	_check("only main elements can be enchanted", Forge.enchant_problem(ench, cap, "light") == "Unknown element")
+	_check("higher item levels need more essence", int(Forge.enchant_cost(_item("leather_cap", "common", 20), "fire")["essence_fire"]) > int(Forge.enchant_cost(cap, "fire")["essence_fire"]))
+
+	# Upgrading or enchanting worn gear changes the character live.
+	_neutral_character()
+	var ch := Game.character
+	ch.inventory.gold = 500
+	ch.inventory.materials = {"scrap": 20, "essence_earth": 3}
+	ch.inventory.add_item(_item("leather_cap"))
+	ch.inventory.equip(0)
+	var hp_worn: float = ch.derived()["max_hp"]
+	Forge.upgrade(ch.inventory, ch.inventory.equipped["head"])
+	_check("upgrading worn gear raises the character's stats at once", is_equal_approx(ch.derived()["max_hp"], hp_worn + 0.6))
+	var hp_up: float = ch.derived()["max_hp"]
+	Forge.enchant(ch.inventory, ch.inventory.equipped["head"], "earth")
+	_check("so does enchanting it", is_equal_approx(ch.derived()["max_hp"], hp_up + 8.0 * 1.1))
+
+	# Salvage.
+	var yard := Inventory.new()
+	var scrapped := _item("iron_sword", "rare", 3)
+	yard.add_item(scrapped)
+	var expected := Items.salvage_yield(scrapped)
+	var gain := Forge.salvage(yard, 0)
+	_check("salvaging removes the item and pays scrap and gold", yard.bag.is_empty() and gain == expected and yard.count("scrap") == expected["scrap"] and yard.gold == expected["gold"])
+	_check("salvaging nothing does nothing", Forge.salvage(yard, 0).is_empty())
+	yard.equipped["weapon"] = _item("iron_sword")
+	_check("worn gear can't be salvaged", Forge.salvage(yard, 0).is_empty() and yard.equipped.has("weapon"))
+	_neutral_character()
+
+
+func _test_loot() -> void:
+	var w0 := Loot.rarity_weights(0.0)
+	var w1 := Loot.rarity_weights(1.0)
+	_check("without luck the weights are the base weights", w0["common"] == 60.0 and w0["legendary"] == 0.5)
+	_check("luck leaves common alone and boosts every better tier more", w1["common"] == 60.0 and w1["rare"] > w0["rare"] and w1["legendary"] / w0["legendary"] > w1["rare"] / w0["rare"])
+	_check("a rarity floor drops the lower tiers", not Loot.rarity_weights(0.0, "rare").has("common") and not Loot.rarity_weights(0.0, "rare").has("uncommon") and Loot.rarity_weights(0.0, "rare").has("legendary"))
+	var rng := _rng(77)
+	var counts := {}
+	for i in 3000:
+		var r := Loot.roll_rarity(rng)
+		counts[r] = int(counts.get(r, 0)) + 1
+	_check("common drops most, then uncommon, and legendaries are rare", counts["common"] > counts["uncommon"] and counts["uncommon"] > counts["rare"] and counts["rare"] > int(counts.get("legendary", 0)) and counts["common"] > 1500)
+	var lucky := _rng(77)
+	var lucky_rare := 0
+	for i in 3000:
+		if Items.RARITIES.find(Loot.roll_rarity(lucky, 2.0)) >= 2:
+			lucky_rare += 1
+	_check("luck gives noticeably more rare-or-better drops", lucky_rare > int(counts["rare"]) + int(counts.get("epic", 0)) + int(counts.get("legendary", 0)))
+	_check("a floor is respected", Loot.roll_rarity(_rng(1), 0.0, "epic") in ["epic", "legendary"])
+
+	var drops_rng := _rng(42)
+	var gold := 0
+	var gear := 0
+	var fire_essence := 0
+	var plain_essence := 0
+	var total := 4000
+	for i in total:
+		for entry in Loot.enemy_drops(drops_rng, 3, 0.0, "fire"):
+			if entry["kind"] == "gold":
+				gold += 1
+			elif entry["kind"] == "item":
+				gear += 1
+			elif entry["id"] == "essence_fire":
+				fire_essence += 1
+		for entry in Loot.enemy_drops(drops_rng, 3, 0.0, ""):
+			if entry["kind"] == "material" and String(entry["id"]).begins_with("essence"):
+				plain_essence += 1
+	_check("about 70 percent of kills drop gold", absf(float(gold) / total - Loot.GOLD_CHANCE) < 0.04)
+	_check("about 8 percent drop gear", absf(float(gear) / total - Loot.GEAR_CHANCE) < 0.03)
+	_check("killing with an element drops that essence about a quarter of the time", absf(float(fire_essence) / total - Loot.ESSENCE_CHANCE) < 0.04)
+	_check("physical kills drop no essence", plain_essence == 0)
+	_check("light and dark leave no essence (nothing to enchant yet)", Loot.enemy_drops(_rng(1), 3, 0.0, "light").all(func(e): return e["kind"] != "material" or not String(e["id"]).begins_with("essence")))
+	_check("the same seed drops the same loot", Loot.enemy_drops(_rng(5), 3, 0.5, "water") == Loot.enemy_drops(_rng(5), 3, 0.5, "water"))
+	var shapes_ok := true
+	for i in 300:
+		for entry in Loot.enemy_drops(_rng(i), 4, 0.3, "earth"):
+			match entry["kind"]:
+				"gold": shapes_ok = shapes_ok and int(entry["amount"]) > 0
+				"material": shapes_ok = shapes_ok and Items.MATERIALS.has(entry["id"]) and int(entry["amount"]) > 0
+				"item": shapes_ok = shapes_ok and Items.BASES.has(entry["item"]["base"])
+				_: shapes_ok = false
+	_check("every drop is valid gold, a known material or real gear", shapes_ok)
+	var chest_ok := true
+	for i in 100:
+		var chest := Loot.chest_drops(_rng(i), 5, 0.2)
+		var items := chest.filter(func(e): return e["kind"] == "item")
+		chest_ok = chest_ok and items.size() == 2 and chest.any(func(e): return e["kind"] == "gold") and chest.any(func(e): return e["kind"] == "material" and e["id"] == "scrap")
+		chest_ok = chest_ok and Items.RARITIES.find(items[0]["item"]["rarity"]) >= 1
+	_check("a chest always holds gold, scrap and two items (the first at least uncommon)", chest_ok)
+	var sealed_ok := true
+	for i in 200:
+		for entry in Loot.chest_drops(_rng(i), 6, 1.0, false):
+			if entry["kind"] == "item":
+				sealed_ok = sealed_ok and not Items.is_spell_only(entry["item"]["base"]) and entry["item"]["affixes"].all(func(a): return not (a["mod"] in Items.SPELL_MODS))
+	_check("sealed characters' drops hold nothing they can't use", sealed_ok)
+	_check("a slot can be asked for", Loot.roll_item(_rng(1), 5, 0.0, "ring")["base"] in Items.gear_bases("ring"))
+
+
+func _test_world_loot() -> void:
+	_neutral_character()
+	var ch := Game.character
+	Game.danger = 0
+	var drops_seen: Array = []
+	var listener := func(drops: Array, _pos: Vector2): drops_seen.append_array(drops)
+	Game.loot_dropped.connect(listener)
+	Game.loot_rng.seed = 123
+	var dummy := _dummy(Vector2(200, 200))
+	dummy.last_element = "fire"
+	for i in 300:
+		Game.on_enemy_killed(dummy)
+	Game.loot_dropped.disconnect(listener)
+	_check("a kill announces its drops", not drops_seen.is_empty() and drops_seen.any(func(e): return e["kind"] == "gold"))
+	_check("the element that killed it decides the essence", drops_seen.any(func(e): return e["kind"] == "material" and e["id"] == "essence_fire") and not drops_seen.any(func(e): return e["kind"] == "material" and e["id"] == "essence_water"))
+	_check("drops do nothing until they are picked up", ch.inventory.gold == 0 and ch.inventory.bag.is_empty())
+	var fresh := _dummy(Vector2(10, 10))
+	fresh.take_hit({"damage": 1.0, "element": "water", "from": Vector2.ZERO})
+	fresh.take_hit({"damage": 1.0, "element": "", "from": Vector2.ZERO})
+	_check("an enemy remembers the last element that hit it", fresh.last_element == "water")
+	Game.danger = 6
+	_check("depth raises item level and luck", Game.loot_level() == ch.level + 2 and Game.loot_bonus() > 0.5)
+	Game.danger = 0
+	_check("only sealed characters are denied spell gear", Game.loot_allows_spell())
+
+	# Pickups.
+	var player = await _player_with(ch)
+	player.global_position = Vector2.ZERO
+	var gold_drop := Pickup.spawn(self, Vector2(60, 0), {"kind": "gold", "amount": 12})
+	gold_drop._age = 1.0
+	gold_drop.global_position = Vector2(30, 0)
+	var before := gold_drop.global_position.distance_to(player.global_position)
+	gold_drop._physics_process(0.1)
+	_check("loot drifts toward a nearby player", gold_drop.global_position.distance_to(player.global_position) < before)
+	var far_drop := Pickup.spawn(self, Vector2(90, 0), {"kind": "gold", "amount": 1})
+	far_drop._age = 1.0
+	far_drop.global_position = Vector2(90, 0)
+	far_drop._physics_process(0.1)
+	_check("loot far away stays put", far_drop.global_position.x == 90.0)
+	gold_drop.global_position = Vector2(2, 0)
+	gold_drop._physics_process(0.016)
+	_check("touching gold collects it", ch.inventory.gold == 12 and gold_drop.is_queued_for_deletion())
+	var scrap_drop := Pickup.spawn(self, Vector2(1, 0), {"kind": "material", "id": "scrap", "amount": 2})
+	scrap_drop._age = 1.0
+	scrap_drop.global_position = Vector2(1, 0)
+	scrap_drop._physics_process(0.016)
+	_check("materials are collected too", ch.inventory.count("scrap") == 2)
+	var fresh_drop := Pickup.spawn(self, Vector2(1, 0), {"kind": "gold", "amount": 5})
+	fresh_drop._physics_process(0.016)
+	_check("a fresh drop can't be collected until it has landed", ch.inventory.gold == 12 and not fresh_drop.is_queued_for_deletion())
+	var gear_drop := Pickup.spawn(self, Vector2(1, 0), {"kind": "item", "item": _item("iron_helm", "rare", 3)})
+	gear_drop._age = 1.0
+	gear_drop.global_position = Vector2(1, 0)
+	gear_drop._physics_process(0.016)
+	_check("gear goes into the bag", ch.inventory.bag.size() == 1 and ch.inventory.bag[0]["base"] == "iron_helm")
+	while not ch.inventory.bag_full():
+		ch.inventory.add_item(_item("copper_ring"))
+	var blocked := Pickup.spawn(self, Vector2(1, 0), {"kind": "item", "item": _item("iron_helm")})
+	blocked._age = 1.0
+	blocked.global_position = Vector2(1, 0)
+	blocked._physics_process(0.016)
+	_check("gear stays on the floor while the bag is full", ch.inventory.bag.size() == Inventory.BAG_SIZE and not blocked.is_queued_for_deletion())
+	var expired := Pickup.spawn(self, Vector2(150, 150), {"kind": "gold", "amount": 1})
+	expired._age = Pickup.LIFETIME
+	expired._physics_process(0.016)
+	_check("old loot disappears", expired.is_queued_for_deletion())
+
+	# Chests and the forge station.
+	var chest := Chest.new()
+	chest.position = Vector2(5, 0)
+	add_child(chest)
+	await get_tree().process_frame
+	var pickups_before := get_children().filter(func(n): return n is Pickup).size()
+	_check("a closed chest can be used when close", chest.can_interact() and chest.is_near())
+	chest.interact()
+	var pickups_after := get_children().filter(func(n): return n is Pickup).size()
+	_check("opening a chest spills loot", pickups_after >= pickups_before + 4)
+	_check("a chest opens only once", not chest.can_interact())
+	var far_chest := Chest.new()
+	far_chest.position = Vector2(500, 500)
+	add_child(far_chest)
+	await get_tree().process_frame
+	_check("a chest out of reach can't be used", not far_chest.is_near())
+	var screen := ForgeScreen.new()
+	add_child(screen)
+	await get_tree().process_frame
+	var station := ForgeStation.new()
+	station.position = Vector2(5, 0)
+	add_child(station)
+	await get_tree().process_frame
+	station.interact()
+	_check("the forge station opens the forge screen", screen.is_open())
+	screen.close()
+	_check("closing it unpauses the game", not get_tree().paused and not screen.is_open())
+	player.queue_free()
+	for node in get_children():
+		if node is Pickup or node is Interactable or node is Enemy or node is ForgeScreen:
+			node.queue_free()
+	await get_tree().process_frame
+	_neutral_character()
+	await get_tree().process_frame
+
+
+func _test_gear_screens() -> void:
+	_check("I is bound to the gear tab", InputMap.has_action("inventory") and InputMap.action_get_events("inventory").any(func(e): return e is InputEventKey and (e.keycode == KEY_I or e.physical_keycode == KEY_I)))
+	var saved := Game.character
+	var ch := CharacterData.create_sandbox("vanguard", Elements.MAIN, 5)
+	ch.inventory.gold = 500
+	ch.inventory.materials = {"scrap": 30, "slime_gel": 10, "essence_fire": 2}
+	for i in 5:
+		ch.inventory.add_item(Loot.roll_item(_rng(i), 5, 1.0))
+	Game.character = ch
+	var sheet := CharacterSheet.new()
+	add_child(sheet)
+	await get_tree().process_frame
+	sheet.show_tab("gear")
+	await get_tree().process_frame
+	var buttons := sheet._content.find_children("*", "Button", true, false)
+	_check("the gear tab has a button for each worn item and each bagged item", buttons.size() == ch.inventory.equipped.size() + ch.inventory.bag.size())
+	var first_bag := ch.inventory.bag[0]
+	var slot := Items.slot_of(first_bag)
+	var worn_before: Dictionary = ch.inventory.equipped.get(slot, {})
+	sheet._equip(0)
+	await get_tree().process_frame
+	_check("clicking a bag item wears it", ch.inventory.equipped[slot] == first_bag)
+	if not worn_before.is_empty():
+		_check("what it replaced goes back in the bag", ch.inventory.bag.has(worn_before))
+	sheet._unequip(slot)
+	await get_tree().process_frame
+	_check("clicking a worn item takes it off", not ch.inventory.equipped.has(slot))
+	sheet.free()
+
+	var forge := ForgeScreen.new()
+	add_child(forge)
+	await get_tree().process_frame
+	var tabs_ok := true
+	for tab in ForgeScreen.TABS:
+		forge.show_tab(tab)
+		await get_tree().process_frame
+		tabs_ok = tabs_ok and forge._content.get_child_count() > 0
+	_check("every forge tab builds", tabs_ok)
+	forge.show_tab("craft")
+	await get_tree().process_frame
+	var craft_buttons := forge._content.find_children("*", "Button", true, false)
+	_check("the craft tab lists every craftable base", craft_buttons.size() == Items.gear_bases().size())
+	var bag_before := ch.inventory.bag.size()
+	forge._craft("leather_cap")
+	await get_tree().process_frame
+	_check("crafting from the screen adds the item", ch.inventory.bag.size() == bag_before + 1 and forge._status.begins_with("Crafted"))
+	forge.show_tab("upgrade")
+	await get_tree().process_frame
+	_check("the upgrade tab lists worn and bagged gear", forge._content.find_children("*", "Button", true, false).size() == ch.inventory.equipped.size() + ch.inventory.bag.size())
+	var target: Dictionary = ch.inventory.bag[0]
+	forge._upgrade(target)
+	await get_tree().process_frame
+	_check("upgrading from the screen works", target["plus"] == 1)
+	forge.show_tab("enchant")
+	await get_tree().process_frame
+	forge._pick_enchant_target(target)  # clicked on the enchant tab, like the real thing
+	await get_tree().process_frame
+	_check("the enchant tab then offers each element", forge._content.find_children("*", "Button", true, false).size() == Items.ENCHANTS.size() + 1)
+	forge._enchant("fire")
+	await get_tree().process_frame
+	_check("enchanting from the screen works and returns to the list", target["enchant"] == "fire" and forge._enchant_target.is_empty())
+	forge.show_tab("salvage")
+	await get_tree().process_frame
+	var bag_size := ch.inventory.bag.size()
+	forge._salvage(0)
+	await get_tree().process_frame
+	_check("salvaging from the screen works", ch.inventory.bag.size() == bag_size - 1)
+	var view := Vector2(ProjectSettings.get_setting("display/window/size/viewport_width"), ProjectSettings.get_setting("display/window/size/viewport_height"))
+	var fits := true
+	for tab in ForgeScreen.TABS:
+		forge.show_tab(tab)
+		await get_tree().process_frame
+		var rect: Rect2 = forge.get_child(forge.get_child_count() - 1).get_global_rect()
+		fits = fits and rect.position.x >= 0.0 and rect.position.y >= 0.0 and rect.end.x <= view.x and rect.end.y <= view.y
+	_check("every forge tab stays inside the game screen", fits)
+	forge.free()
+	Game.character = saved
+	await get_tree().process_frame

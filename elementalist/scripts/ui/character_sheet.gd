@@ -3,6 +3,7 @@ extends CanvasLayer
 ## Character screen (TAB, Esc to close). Pauses the game while open. Tabs:
 ##   Stats      level, attributes (spend points), derived stats, class choice (level 3),
 ##              subclass choice (level 10), affinity, traits
+##   Gear       equipped items and the bag (I opens the sheet here): click to equip / take off
 ##   Skills     skills by set with cost, cooldown and damage after the character's stats
 ##   Elements   mastery, and which attribute governs each element's potency
 ##   Passives   class / trait / element / skill passives, and progress toward the rare ones
@@ -10,7 +11,7 @@ extends CanvasLayer
 ##   Rewards    milestone level rewards waiting to be claimed (pick one option per offer)
 ## Everything is built from Game.character each time a tab opens; nothing is cached.
 
-const TABS := ["stats", "skills", "elements", "passives", "combos", "rewards"]
+const TABS := ["stats", "gear", "skills", "elements", "passives", "combos", "rewards"]
 const PANEL_SIZE := Vector2i(304, 172)  # fits inside the 320x180 game view
 ## Column widths: a tab's columns plus gaps must fit in this (scroll area minus its scrollbar).
 const CONTENT_WIDTH := 284.0
@@ -40,8 +41,22 @@ func _exit_tree() -> void:
 ## _input (not _unhandled_input) so TAB still closes the sheet while a button has focus:
 ## Godot would otherwise use TAB to move GUI focus.
 func _input(event: InputEvent) -> void:
+	var forge := get_tree().get_first_node_in_group("forge_screen")
+	if forge and forge.is_open():
+		return  # one menu at a time
 	if event.is_action_pressed("character_sheet") or (_open and event.is_action_pressed("pause")):
 		toggle()
+		get_viewport().set_input_as_handled()
+	elif event.is_action_pressed("inventory"):
+		# I: open on the Gear tab; if already looking at it, close.
+		if _open and _tab == "gear":
+			toggle()
+		else:
+			_tab = "gear"
+			if _open:
+				show_tab("gear")
+			else:
+				toggle()
 		get_viewport().set_input_as_handled()
 
 
@@ -81,7 +96,7 @@ func show_tab(tab: String) -> void:
 		button.button_pressed = id == _tab
 		button.pressed.connect(show_tab.bind(id))
 		tab_row.add_child(button)
-	var close_hint := _label("  TAB / Esc to close", Color(1, 1, 1, 0.45))
+	var close_hint := _label(" TAB: close", Color(1, 1, 1, 0.45))
 	close_hint.autowrap_mode = TextServer.AUTOWRAP_OFF  # a wrapping label here would stretch the whole row
 	tab_row.add_child(close_hint)
 
@@ -96,6 +111,7 @@ func show_tab(tab: String) -> void:
 	scroll.add_child(_content)
 	match _tab:
 		"stats": _fill_stats()
+		"gear": _fill_gear()
 		"skills": _fill_skills()
 		"elements": _fill_elements()
 		"passives": _fill_passives()
@@ -168,6 +184,53 @@ func _fill_stats() -> void:
 	elif ch.subclass_id == "" and not Classes.is_starter(ch.class_id) and ch.level < Classes.SUBCLASS_LEVEL:
 		right.add_child(_spacer())
 		right.add_child(_label("Subclass at level %d" % Classes.SUBCLASS_LEVEL, DIM))
+
+
+## Equipped gear on the left (click to take off), the bag on the right (click to equip), and a
+## detail box that shows whatever item the mouse is over.
+func _fill_gear() -> void:
+	var ch := Game.character
+	var inv := ch.inventory
+	var left := _column(136)
+	var right := _column(136)
+	var detail := _label("Hover an item for details.", DIM)
+
+	left.add_child(_label("Equipped  (%s)" % ch.weapon_type.capitalize(), GOLD))
+	for slot in Items.SLOTS:
+		var label: String = Items.SLOT_NAMES[slot]
+		if inv.equipped.has(slot):
+			var item: Dictionary = inv.equipped[slot]
+			var button := _item_button("%s: %s" % [label, Items.display_name(item)], item, detail)
+			button.disabled = inv.bag_full()
+			button.pressed.connect(_unequip.bind(slot))
+			left.add_child(button)
+		else:
+			left.add_child(_label("%s: -" % label, DIM))
+	var wallet := inv.summary()
+	left.add_child(_spacer())
+	detail.add_theme_font_size_override("font_size", 6)  # a full item description has to fit under the slots
+	left.add_child(detail)
+	left.add_child(_spacer())
+	left.add_child(_label(wallet, GOLD))
+
+	right.add_child(_label("Bag  %d/%d" % [inv.bag.size(), Inventory.BAG_SIZE], GOLD))
+	if inv.bag.is_empty():
+		right.add_child(_label("Empty. Enemies and chests drop gear; the forge (G) makes more.", DIM))
+	for index in inv.bag.size():
+		var item := inv.bag[index]
+		var button := _item_button(Items.display_name(item), item, detail)
+		button.pressed.connect(_equip.bind(index))
+		right.add_child(button)
+
+
+## A button for an item, tinted by rarity; hovering it fills the detail label.
+func _item_button(text: String, item: Dictionary, detail: Label) -> Button:
+	var button := _button(text)
+	button.alignment = HORIZONTAL_ALIGNMENT_LEFT
+	button.clip_text = true
+	button.add_theme_color_override("font_color", Items.rarity_color(item))
+	button.mouse_entered.connect(func(): detail.text = Items.describe(item))
+	return button
 
 
 func _fill_skills() -> void:
@@ -330,6 +393,16 @@ func _choose_class(id: String) -> void:
 
 func _choose_subclass(id: String) -> void:
 	Game.character.choose_subclass(id)
+	show_tab.call_deferred(_tab)
+
+
+func _equip(index: int) -> void:
+	Game.character.inventory.equip(index)
+	show_tab.call_deferred(_tab)
+
+
+func _unequip(slot: String) -> void:
+	Game.character.inventory.unequip(slot)
 	show_tab.call_deferred(_tab)
 
 

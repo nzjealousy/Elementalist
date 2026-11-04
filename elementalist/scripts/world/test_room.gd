@@ -16,9 +16,15 @@ func _ready() -> void:
 	if player:
 		player.set_camera_limits(Rect2i(0, 0, COLS * TILE, ROWS * TILE))
 	_build_room()
+	var forge := ForgeStation.new()
+	forge.position = Vector2(COLS * TILE * 0.5, 3.0 * TILE)
+	add_child(forge)
+	Game.loot_dropped.connect(_on_loot_dropped)
+	Game.danger = 0
 	_spawn_wave()
 	get_parent().add_child.call_deferred(NewCharacterMenu.new())
 	get_parent().add_child.call_deferred(RewardCards.new())
+	get_parent().add_child.call_deferred(ForgeScreen.new())
 
 
 ## Debug shortcuts for trying characters in the arena (the story/menu comes in a later phase).
@@ -31,6 +37,10 @@ func _unhandled_input(event: InputEvent) -> void:
 			get_tree().reload_current_scene()
 		KEY_F10:
 			Game.attune_random()  # no restart: the player picks up the new element live
+		KEY_F6:
+			var screen := get_tree().get_first_node_in_group("forge_screen")  # the forge from anywhere
+			if screen:
+				screen.open()
 
 
 func _build_room() -> void:
@@ -56,8 +66,26 @@ func _build_room() -> void:
 				add_child(body)
 
 
+func _on_loot_dropped(drops: Array, pos: Vector2) -> void:
+	for entry in drops:
+		Pickup.spawn(self, pos, entry)
+
+
+## Every third wave a chest appears somewhere in the room.
+func _spawn_chest() -> void:
+	var chest := Chest.new()
+	chest.position = Vector2(randf_range(40.0, COLS * TILE - 40.0), randf_range(56.0, ROWS * TILE - 40.0))
+	add_child(chest)
+	var player := get_parent().get_node_or_null("Player") as Node2D
+	if player:
+		FloatText.spawn(self, player.global_position + Vector2(0, -24), "A chest appeared!", Color("ffd84a"))
+
+
 func _spawn_wave() -> void:
 	wave += 1
+	Game.danger = wave
+	if wave % 3 == 0:
+		_spawn_chest()
 	var player := get_parent().get_node_or_null("Player") as Node2D
 	var count := 3 + wave
 	for i in count:
