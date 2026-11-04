@@ -7,15 +7,24 @@ people *elements*; skills are something else entirely, learned from others.
 Inspirations: The Mageseeker (action magic), Witchbrook (a cozy, lived-in hub), Lies of P
 (weighty bosses). Single player, PC.
 
-> **Status:** early development. Phases 0-4 of [the roadmap](docs/ROADMAP.md) are done: a randomly
-> generated three-floor dungeon with a boss, the element/combo system, eight classes, a ceremony,
-> leveling and mastery, gear, loot and a forge. There is no story, hub or save file yet. All art is
-> generated placeholder.
+> **Status:** early development, but a complete loop is playable. Phases 0-5 of
+> [the roadmap](docs/ROADMAP.md) are done: title screen, three save slots, a camp hub, two randomly
+> generated dungeons (5 floors, then 10) with mini bosses and bosses, seven elements (Light and Dark
+> included), eight classes, gear and a forge, settings and gamepad support, a runs leaderboard, and
+> generated pixel art and audio. There is no story or NPCs yet (Phase 6). See
+> [the core loop](docs/CORE_LOOP.md) for how it fits together.
 
 ## Run it
 
 1. Install [Godot 4.7](https://godotengine.org/download) (developed on 4.7.2; 4.4+ should work).
-2. Open `elementalist/project.godot` in Godot and press **F5** (the main scene is `scenes/main.tscn`).
+2. Open `elementalist/project.godot` in Godot and press **F5**. The game starts at the title screen
+   (`scenes/menu/main_menu.tscn`): **New game** (pick a slot, swear an oath = difficulty, create your
+   hero), then you wake in the **camp**. The gate in the north leads to the dungeons.
+
+Your hero is saved automatically (in camp, and at every room of a dungeon) to
+`user://saves/` (on Windows `%APPDATA%\Godot\app_userdata\Elementalist\`), settings to `settings.cfg`
+and the leaderboard to `leaderboard.json` in the same folder. Dying with no element left to lose
+deletes that hero's save: it is permadeath.
 
 ## Controls
 
@@ -36,10 +45,28 @@ Inspirations: The Mageseeker (action magic), Witchbrook (a cozy, lived-in hub), 
 | `TAB` | Character sheet (tabs: Stats, Gear, Skills, Elements, Passives, Combos, Rewards) |
 | `N` | New character: pick how they are born |
 | `V` | Support skill (unlocks at level 7): a buff on yourself or a debuff on enemies |
-| `Esc` | Close a menu |
+| `Esc` | Pause menu (settings, controls, the ways out); closes any open menu first |
 
 The bottom of the screen: the element tabs (1-5) at the **bottom left**; the actions at the **bottom
 right**: Fuse (LMB), Slash/Bolt (RMB, tinted with the imbued element), Q, then the abilities F, V, R.
+
+**Gamepad** (any pad Godot recognises; the game switches to pad prompts and the right stick aims the
+moment you touch it, and back to the mouse when you move that). Everything is rebindable under
+*Settings > Controls*, keyboard and pad separately.
+
+| Pad | Action |
+|---|---|
+| Left stick | Move |
+| Right stick | Aim (aim assist is a setting) |
+| `RT` | Fuse / main attack |
+| `RB` | Slash or bolt |
+| `A` | Dodge (with `RB`: spin) |
+| `X` / `Y` / `B` | Area / support / special skill |
+| `LB` | Lock element |
+| D-pad left / right | Previous / next element |
+| D-pad up / down | Gear / imbue |
+| `LT` | Interact |
+| `Back` / `Start` | Character sheet / pause |
 
 **Debug keys (dungeon):** `[` clear the room, `]` jump to the boss.
 
@@ -96,18 +123,30 @@ right**: Fuse (LMB), Slash/Bolt (RMB, tinted with the imbued element), Q, then t
 - **Monsters** are melee, ranged or both; imps and duelists **dash** (after a warning flash), wraiths and
   duelists **dodge**. Both get sharper on deeper floors.
 
-## The dungeon
+## The camp and the dungeons
 
-Each run is a random dungeon of **three floors**: rooms of monster waves, a treasure room or a forge
-(which also heals you) on every floor, and a boss at the end of the last. A room's exit door is **locked
-until you defeat its wave(s)**; walking through it fades to the next room (loot on the floor is picked up
-as you leave). Beat the boss, or die, and Enter starts a new dungeon with the same character.
+You live in the **camp**: heal and save there, use the **forge** (craft, upgrade, enchant, salvage), read
+the **notice board** (the leaderboard of the best runs) and walk through the **gate** to choose a
+dungeon. **The Ashen Vaults** has **5 floors**; clearing it opens **The Drowned Crypts** with **10**.
+Each floor is three rooms (monster waves, a treasure room or a forge, then more waves); **every third
+floor ends in a mini boss**, and the last floor in the boss. A room's exit door is **locked until you
+defeat its wave(s) or its guardian**. The run is rebuilt from a seed and saved at every room, so you can
+quit and *Continue* where you left off.
+
+**Falling** (dying with elements left) costs elements (1, then 2, then 3 ... random ones, their mastery
+restarts) and 30% of your gold, and sends you back to camp. Retreating from the pause menu costs the run
+and the same gold. Your **oath** (Squire / Knight / Warlord, chosen once) scales monster toughness and the
+XP, gold and drop luck you earn.
 
 - **Monsters:** slimes, cave bats, skeleton archers, wisps and stone brutes get tougher (and more
   elemental) each floor. An **elemental variant** shrugs off its own element and is weak to the one that
   beats it (water beats fire, earth beats water, fire beats earth, mineral beats air, air beats mineral).
-- **Bosses** (Slime King, Stone Colossus) slam where a red circle warns you, and summon minions. They drop
-  great loot and sometimes an **elemental gem**: use it on the Gear tab to attune to a new element.
+- **Mini bosses** (Grave Warden, Ember Matron, Bog Hulk) guard every third floor; **bosses** (Slime King,
+  Stone Colossus; Crypt Lich, Tide Titan) slam where a red circle warns you, shoot, summon minions and
+  enrage when nearly dead. They drop great loot and sometimes an **elemental gem**: use it on the Gear tab
+  to attune to a new element. The Crypts' bosses can drop the rare **Light** and **Dark** gems.
+- **Seven elements:** Fire, Water, Air, Mineral, Earth, and the rare **Light** (blinds, heals) and **Dark**
+  (drains, curses), each with four skills and eleven extra combos (Twilight is Light + Dark).
 - **Attributes:** Strength, Agility, Intellect, Vitality, **Wisdom** (mana regen, cooldowns, buff length)
   and **Luck** (crits, loot). **Eight classes**, each with two subclasses.
 - **Support skills (`V`, level 7):** Blazing Might, Tidal Mending, Stone Skin, Tailwind (buffs),
@@ -137,6 +176,12 @@ than in the editor test runner):
 2. Read the Output panel: one `PASS`/`FAIL` line per check and a final
    `SELFTEST <n> passed, <n> failed`.
 
+From a terminal (for CI) the same suite runs headless and exits non-zero on a failure:
+
+```bash
+godot --headless --path elementalist res://tests/combo_selftest.tscn
+```
+
 ## Project layout
 
 ```
@@ -147,22 +192,34 @@ docs/                     design and planning
 elementalist/             the Godot project
   scenes/                 main scene, player, enemies
   scripts/
-    core/                 autoloads: Game, Elements, SkillDB, AssetDB, Juice
+    core/                 autoloads: Game, Elements, SkillDB, AssetDB, Juice, Controls, Settings, Sfx;
+                          SaveStore, Leaderboard, SpriteAnim
     character/            CharacterData, Classes (tables), Ceremony
     items/                Items (tables), Inventory, Forge, Loot
     combat/               Enemy, Monsters, SkillFx, Projectile, AoeEffect, Telegraph, hit effects
     player/               Player, SkillCaster, AimMarker
-    ui/                   HUD, CharacterSheet, ForgeScreen, RewardCards, NewCharacterMenu, UiTheme
-    world/                Dungeon, DungeonGen, Door, Pickup, Chest, ForgeStation
+    ui/                   MainMenu, SettingsMenu, PauseMenu, LeaderboardScreen, DungeonSelect, HUD,
+                          CharacterSheet, ForgeScreen, RewardCards, ClassCards, UiTheme, UiKit
+    world/                Dungeon (camp and dungeon rooms), DungeonGen, Door, Pickup, Chest, ForgeStation,
+                          CampGate, CampBoard
+  assets/                 generated sprites (assets/sprites), UI frames (assets/ui) and audio (assets/audio)
   tests/                  in-game self-tests
   addons/godot_ai/        development tooling (MIT, see its LICENSE)
+tools/
+  art/                    pixel-art generators (gen_sprites, gen_tiles, gen_vfx, gen_ui) and previews
+  audio/                  gen_audio.py: sound effects and music loops
 ```
 
-## Art
+## Art and audio
 
-There is no art yet. `AssetDB` generates a coloured placeholder for any sprite id, and uses
-`res://assets/sprites/<id>.png` instead if that file exists, so final art can be dropped in
-without code changes.
+All art and audio is **generated by the scripts in `tools/`** (pure Python, no packages), so it is
+reproducible and has no third-party licence: heroes per class and facing, 16 monsters and bosses, three
+tile sets (camp, vault, crypt), effects, medieval UI frames, 41 sound effects and 5 music loops. Run
+`python tools/art/gen_sprites.py` (and `gen_tiles`, `gen_vfx`, `gen_ui`) and `python tools/audio/gen_audio.py`
+to regenerate, then let Godot re-import. `AssetDB` still falls back to a coloured placeholder for any
+sprite id with no file, and `Sfx` skips missing sounds, so real art or audio can replace these file by file.
+They are stand-ins in the sense that a human artist will want to redo them; they are not stand-ins in
+the sense that the game needs them replaced to be playable.
 
 ## Third-party
 

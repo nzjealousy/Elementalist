@@ -164,11 +164,10 @@ func _card(id: String, index: int) -> Control:
 		lines.append("Passive: %s" % Classes.passive_info(sub["passives"][0])["name"])
 		info = String(sub["desc"])
 		panel.custom_minimum_size = SUBCLASS_CARD
-	var box := StyleBoxFlat.new()
-	box.bg_color = Color(0.1, 0.11, 0.16, 0.98)
-	box.border_color = color
-	box.set_border_width_all(2)
-	box.set_content_margin_all(4)
+	var box := UiTheme.frame("panel", 8, 4)  # the gold frame, tinted by melee (orange) or ranged (blue)
+	var tint := Color.WHITE.lerp(color, 0.5)
+	if box is StyleBoxTexture:
+		box.modulate_color = tint
 	panel.add_theme_stylebox_override("panel", box)
 	var content := VBoxContainer.new()
 	content.add_theme_constant_override("separation", 1)
@@ -180,8 +179,11 @@ func _card(id: String, index: int) -> Control:
 		content.add_child(_label(line, Color(0.85, 0.88, 0.95), 5))
 	panel.mouse_entered.connect(func():
 		_detail.text = info
-		box.bg_color = Color(0.16, 0.18, 0.26, 0.98))
-	panel.mouse_exited.connect(func(): box.bg_color = Color(0.1, 0.11, 0.16, 0.98))
+		if box is StyleBoxTexture:
+			box.modulate_color = tint.lightened(0.35))
+	panel.mouse_exited.connect(func():
+		if box is StyleBoxTexture:
+			box.modulate_color = tint)
 	panel.gui_input.connect(func(event: InputEvent):
 		if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
 			_choose(index))

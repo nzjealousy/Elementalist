@@ -18,7 +18,12 @@ How the code is organised and how to extend it. Everything lives in `elementalis
 | `Elements` | `elements.gd` | Element colours, the ten combos, `resolve(a, b)` |
 | `SkillDB` | `skill_db.gd` | All skill definitions, per-element loadouts, melee, cost helpers |
 | `Juice` | `juice.gd` | Camera shake and hit-stop (`Juice.enabled = false` in tests) |
-| `Game` | `game.gd` | The current `CharacterData`, new-game and sandbox helpers, kill XP and loot drops, banner, run text, hit indicator |
+| `Game` | `game.gd` | The current `CharacterData`, new-game and sandbox helpers, kill XP and loot drops, banner, run text, hit indicator; **the flow between scenes**: save slot, `meta`, `run`, `mode` (camp/dungeon), difficulty, `new_game`, `continue_game`, `begin_run`, `return_to_camp`, `save_game` |
+| `Controls` | `controls.gd` | Gamepad defaults, rebinding, pad/keyboard device tracking, `aim_point()` (mouse or right stick with aim assist) |
+| `Settings` | `settings.gd` | Preferences in `user://settings.cfg` (audio sliders, fullscreen, shake, damage numbers, HUD size, aim assist, deadzone) and the bindings; applies them |
+| `Sfx` | `sfx.gd` | Audio: Music/SFX/UI buses, `play`, `play_at`, `music` (crossfade), `duck`; missing files are skipped |
+
+Plain classes (not autoloads): `SaveStore` (slots on disk), `Leaderboard`, `SpriteAnim` (strip animation node).
 
 Autoloads are **not** instantiated by the editor's own test runner, which is why the self-tests
 run as a scene (`tests/combo_selftest.tscn`).
@@ -359,18 +364,46 @@ Put it in a loadout's `support` slot.
 
 **A new class.** Also give it the two newer attributes (31 points in all) and a starter weapon.
 
+## Saves, flow and the shell (Phase 5)
+
+- **`SaveStore`** writes `user://saves/slot_N.json` atomically (temp file, previous file kept as `.bak`,
+  rename) and loads defensively (file, then backup; parse errors give `{}`; `migrate()` brings old
+  versions up and refuses newer ones). A slot is `{version, saved_at, character, meta, run}`: plain data
+  only, never objects. `run` is the dungeon in progress (`tier, seed, floor, room, kills, time, hp`); the layout
+  is rebuilt from the seed with `DungeonGen.generate(rng, floors, tier, depth_offset)`.
+- **Game flow:** title (`MainMenu`) -> `Game.new_game` / `continue_game` -> `scenes/main.tscn`, where
+  `Dungeon._make_layout` builds the **camp** (`DungeonGen.camp_room`) or the saved dungeon from `Game.mode`.
+  The gate (`CampGate` -> `DungeonSelect`) calls `Game.begin_run(tier)`; a finished run calls
+  `Dungeon._finish_run` (meta, leaderboard, gold) and `RunEndScreen` returns to camp or the menu.
+  Tests build a `Dungeon` with `with_ui = false` and a preset `layout`, which skips all of this.
+- **Difficulty** (`Game.DIFFICULTIES`) scales monsters (`hardness_mult`) and rewards (`reward_mult`: XP, gold, drop luck).
+- **Controls:** every aim in the game goes through `Controls.aim_point(node, origin)`. Pad defaults are added
+  to the InputMap at start-up; `Settings` persists user rebinds in `[bindings]`.
+- **UI kit:** `UiTheme` (9-slice frames from `assets/ui`, serif `SystemFont`) and `UiKit` (centred panels,
+  buttons with click/tick sounds, `focus_first`, `wrap_focus`) are the only places screens get their look.
+  Every menu opens with a button focused so a gamepad works. `HUD` draws in four scaled corner groups.
+- **Art pipeline:** `tools/art/*.py` write `assets/sprites/<id>.png` (idle frame) and `<id>_strip.png` (frames side
+  by side). `AssetDB.get_frames(id)` slices a strip; `SpriteAnim` plays it. Players look up
+  `player_<class>_<down|up|side>`; tiles are `tile_<floor|wall>_<theme>_<n>`, themes camp / vault / crypt.
+- **Audio pipeline:** `tools/audio/gen_audio.py` writes `assets/audio/sfx/<name>[_2..5].wav` (variations are picked
+  at random) and `music/<track>.wav` (looped). `Sfx.music()` is called by `Dungeon._play_music`.
+
 ## Testing
 
 `tests/combo_selftest.gd` (run `tests/combo_selftest.tscn`) covers the combat rules, the
 character model, the ceremony statistics, gating, scaling, balance budgets, saving, and builds
-every UI screen. A test that fails prints `FAIL <name>`. Tests seed their own RNGs; the player is
+every UI screen, settings, bindings, saves, the leaderboard, the camp and the tiered dungeons. A test that fails
+prints `FAIL <name>`. Run it headless for CI with
+`godot --headless --path elementalist res://tests/combo_selftest.tscn` (exit code 1 on any failure). Tests seed their own RNGs; the player is
 tested with a neutral character (`_neutral_character()`, which also takes the starter weapon off;
 `_bare(character)` does the same for other characters) so the tuned numbers stay meaningful. UI
 buttons call `show_tab.call_deferred(...)`, so tests `await` a frame after clicking one.
 
 ## UI notes
 
-- Screens share `UiTheme`. Buttons use `focus_mode = FOCUS_NONE` so TAB/WASD stay with the game.
+- Screens share `UiTheme`. In-game screens (character sheet, forge) use `focus_mode = FOCUS_NONE` buttons so
+  TAB/WASD stay with the game; the shell menus (`MainMenu`, `SettingsMenu`, `PauseMenu`, ...) use `UiKit.button`,
+  which takes focus, because they are navigated by keyboard and gamepad.
 - `CharacterSheet` keeps every tab inside the 320x180 view: the body sits in a fixed-size
   `ScrollContainer`, and a tab's columns plus gaps must fit `CONTENT_WIDTH` (a self-test checks
   this and that the panel stays on screen even when stuffed with content).

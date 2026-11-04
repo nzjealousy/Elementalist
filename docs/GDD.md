@@ -190,3 +190,24 @@ hard, and the choices that cost resources (more elements, more fusion, chained a
 - **Sealed characters** are never dropped gear or bonuses that only help spellcasting.
 - Not yet: a shop, a safe stash, gear sets, item-granted elements (an attunement item is still the
   F10 debug key). Those belong with the run structure and story phases.
+
+## 16. Design updates (Phase 5: the shell, the camp and the world)
+
+- **Structure.** Camp (hub) -> dungeon -> camp. See [CORE_LOOP.md](CORE_LOOP.md). The camp is one safe room
+  with the forge, a notice board (the leaderboard) and the gate; it heals and saves.
+- **Dungeons.** Dungeon I has 5 floors, Dungeon II has 10 (each opens when the one before is cleared). Every third
+  floor ends in a mini boss, the last floor in a boss. Depth carries across dungeons, so the second starts
+  where the first ends (monster level 6 to 15). Dungeon I looks like a burned vault, Dungeon II like a flooded crypt.
+- **Difficulty is an oath**, chosen once per hero: Squire, Knight (the intended game), Warlord. Harder oaths
+  multiply monster toughness and also XP, gold, drop luck and the leaderboard score.
+- **Punishing but rewarding.** Failing costs elements and 30% of gold; retreating costs the same gold; there is no
+  free exit. In return the boss drops two gear pieces and maybe an element gem, a cleared dungeon pays a bonus,
+  and a harder oath pays more.
+- **Light and Dark** (the rare elements) now have four skills each, eleven combos with the main elements and with
+  each other (Twilight), a resonance and monster variants from the second dungeon. They are gained from the
+  second dungeon's bosses (Crypt Lich: Dark gem, Tide Titan: Light gem) or, rarely, at the ceremony.
+- **Saves.** Three slots, autosave at the camp and every dungeon room, permadeath deletes the slot.
+- **Controls.** Keyboard + mouse and a full gamepad layout; rebinding for both; right-stick aim with assist; the camera
+  looks a little toward where you aim.
+- **Look.** Medieval fantasy: dark stone panels with gold trim, leather and brass buttons, a serif face. The HUD is
+  four small corner groups and scales with a setting.

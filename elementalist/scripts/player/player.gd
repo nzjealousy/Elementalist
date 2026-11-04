@@ -17,6 +17,8 @@ extends CharacterBody2D
 signal died
 
 const STAMINA_REGEN_DELAY := 0.8
+const CAMERA_LOOK := 0.25       # the camera drifts this share of the way toward the aim point
+const CAMERA_LOOK_MAX := 60.0   # ... measured from the hero, at most this far
 const DODGE_BUFFER := 0.15  # a dodge pressed this early still fires once it becomes possible
 const IMBUE_SWING_COST := 4.0    # mana per element per imbued slash
 const SPIN_STAMINA_MULT := 1.8   # a spin costs this many slashes' worth of stamina
@@ -63,6 +65,7 @@ var _imbue_fx: CPUParticles2D
 @onready var sprite: Sprite2D = $Sprite2D
 var _anim: SpriteAnim
 @onready var camera: Camera2D = $Camera2D
+var _look := Vector2.ZERO   # the camera look-ahead, smoothed
 
 
 func _ready() -> void:
@@ -400,8 +403,12 @@ func _on_element_changed(element: String) -> void:
 	FloatText.spawn(get_parent(), global_position + Vector2(0, 2), element.capitalize(), Elements.color_of(element))
 
 
-func _process(_delta: float) -> void:
-	camera.offset = Juice.offset()
+func _process(delta: float) -> void:
+	# Look ahead: the camera drifts a quarter of the way toward the aim point (with a gamepad, toward the
+	# stick), so you see more of where you are shooting. Smoothed, and shake rides on top.
+	var look := (Controls.aim_point(self, global_position) - global_position).limit_length(CAMERA_LOOK_MAX) * CAMERA_LOOK
+	_look = _look.lerp(look, 1.0 - exp(-6.0 * delta))
+	camera.offset = _look.round() + Juice.offset()
 
 
 ## Picks the art for where the hero faces (toward the aim) and walks it while moving. The art is

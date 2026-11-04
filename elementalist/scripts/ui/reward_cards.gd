@@ -119,11 +119,9 @@ func _card(option: Dictionary, index: int) -> Control:
 	panel.theme = _theme
 	panel.custom_minimum_size = CARD_SIZE
 	var type: String = option["type"]
-	var box := StyleBoxFlat.new()
-	box.bg_color = Color(0.1, 0.11, 0.16, 0.98)
-	box.border_color = TYPE_COLORS[type]
-	box.set_border_width_all(2)
-	box.set_content_margin_all(6)
+	var box := UiTheme.frame("panel", 8, 6)  # the gold frame, tinted toward the card's kind
+	if box is StyleBoxTexture:
+		box.modulate_color = Color.WHITE.lerp(TYPE_COLORS[type], 0.5)
 	panel.add_theme_stylebox_override("panel", box)
 
 	var content := VBoxContainer.new()

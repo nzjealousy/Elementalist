@@ -129,8 +129,33 @@ func _fill_stats() -> void:
 	var title := "%s  Lv %d  %s" % [ch.display_name, ch.level, cls["name"]]
 	if ch.subclass_id != "":
 		title += " / " + String(Classes.SUBCLASSES[ch.subclass_id]["name"])
-	left.add_child(_label(title, GOLD))
-	left.add_child(_label("XP %d / %d" % [ch.xp, CharacterData.xp_to_next(ch.level)]))
+	var head := HBoxContainer.new()
+	head.add_theme_constant_override("separation", 5)
+	var portrait_id := "player_%s_down" % ch.class_id
+	var portrait := TextureRect.new()
+	portrait.texture = AssetDB.get_texture(portrait_id if AssetDB.has_art(portrait_id) else "player")
+	portrait.custom_minimum_size = portrait.texture.get_size() * 2.0
+	portrait.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	portrait.stretch_mode = TextureRect.STRETCH_SCALE
+	head.add_child(portrait)
+	var who := VBoxContainer.new()
+	who.add_theme_constant_override("separation", 1)
+	who.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	who.add_child(_label(title, GOLD))
+	var xp_need := CharacterData.xp_to_next(ch.level)
+	var xp_bar := ProgressBar.new()
+	xp_bar.min_value = 0.0
+	xp_bar.max_value = float(xp_need)
+	xp_bar.value = float(ch.xp)
+	xp_bar.show_percentage = false
+	xp_bar.custom_minimum_size = Vector2(0, 4)
+	xp_bar.add_theme_stylebox_override("background", UiTheme._flat(Color("120d0a"), Color("4a3512"), 1, 0))
+	xp_bar.add_theme_stylebox_override("fill", UiTheme._flat(Color("a98fe8"), Color("a98fe8"), 0, 0))
+	who.add_child(xp_bar)
+	who.add_child(_label("XP %d / %d" % [ch.xp, xp_need], DIM))
+	head.add_child(who)
+	left.add_child(head)
+	left.add_child(UiTheme.divider())
 	if not Classes.is_starter(ch.class_id):
 		var mastery: Dictionary = ch.class_mastery.get(ch.class_id, {"level": 1, "xp": 0})
 		var need := CharacterData.class_mastery_xp_to_next(int(mastery["level"]))

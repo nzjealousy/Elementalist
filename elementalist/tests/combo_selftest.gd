@@ -89,6 +89,8 @@ func _ready() -> void:
 	if not _failed.is_empty():
 		print("FAILED: ", " | ".join(_failed))
 	print("SELFTEST %d passed, %d failed" % [_pass, _fail])
+	if DisplayServer.get_name() == "headless":  # `godot --headless --path elementalist res://tests/combo_selftest.tscn` for CI
+		get_tree().quit(1 if _fail > 0 else 0)
 
 
 ## Neutral baseline: attributes all 5, no class growth or passives, owns Fire/Water/Earth.
@@ -1047,11 +1049,15 @@ func _test_spin_attack() -> void:
 	player._hurt_cd = 0.0
 	var hp_before_hit: float = player.hp
 	_check("immune to damage mid-spin even after the dodge ends", player.is_invulnerable() and not player.take_damage(10.0, Vector2(40, 0)) and player.hp == hp_before_hit)
+	for lingering in get_tree().get_nodes_in_group("enemies"):
+		if is_instance_valid(lingering) and not lingering.is_queued_for_deletion():
+			lingering.queue_free()  # (the dummies beside the player would otherwise touch and hurt it)
 	player._spin_left = 0.04
 	for i in 60:  # until the spin has run out (a slow machine takes more frames)
 		await get_tree().physics_frame
 		if not player.is_spinning():
 			break
+	player._hurt_cd = 0.0
 	_check("the spin ends and immunity with it", not player.is_spinning() and not player.is_invulnerable() and player.take_damage(5.0, Vector2(40, 0)))
 	player._dodge_left = 0.0
 	player._dodge_cd = 0.0
@@ -1071,7 +1077,8 @@ func _test_spin_attack() -> void:
 	player.try_spin()
 	_check("an imbued spin carries the element all around", imbued_hit.aura == "fire" and player.caster.mana < mana_before)
 	for node in [front, behind, far, imbued_hit, player]:
-		node.queue_free()
+		if is_instance_valid(node) and not node.is_queued_for_deletion():
+			node.queue_free()
 	Game.character = saved
 	await get_tree().process_frame
 
@@ -3517,6 +3524,7 @@ func _test_phase5() -> void:
 	await _p5_bosses()
 	await _p5_menus()
 	await _p5_camp_and_runs()
+	await _p5_finish_run()
 	_neutral_character()
 
 
@@ -3964,3 +3972,82 @@ func _test_light_dark() -> void:
 	_check("and never again once you hold that element", gems.is_empty())
 	holder.queue_free()
 	_neutral_character()
+
+
+## Booking a finished run: meta, gold, leaderboard and the save.
+func _p5_finish_run() -> void:
+	var real_dir: String = SaveStore.dir
+	var real_board: String = Leaderboard.path
+	var real_slot: int = Game.slot
+	var real_meta: Dictionary = Game.meta
+	var real_run: Dictionary = Game.run
+	SaveStore.dir = "user://test_saves"
+	Leaderboard.path = "user://test_leaderboard.json"
+	Leaderboard.clear()
+	SaveStore.delete_slot(1)
+
+	Game.character = _bare(CharacterData.create_sandbox("vanguard", ["fire", "water"], 5))
+	Game.slot = 1
+	Game.meta = SaveStore.new_meta("warlord")
+	Game.run = {"tier": 1, "seed": 5, "floor": 4, "room": 2}
+	Game.character.inventory.gold = 1000
+	var world := Node2D.new()
+	add_child(world)
+	var player = PLAYER.instantiate()
+	world.add_child(player)
+	var run := Dungeon.new()
+	run.with_ui = false
+	run.layout = DungeonGen.generate(_rng(2), 5, 1, 0)
+	world.add_child(run)
+	await get_tree().process_frame
+	run.debug_goto(4, 2)
+	Game.run_kills = 12
+
+	run._finish_run(true)
+	_check("clearing a dungeon books it in the hero's record", Game.meta["tier_cleared"] == 1 and Game.meta["runs"] == 1)
+	_check("and pays a clear bonus scaled by the oath", run.run_bonus == roundi(150.0 * 1.6) and Game.character.inventory.gold == 1000 + run.run_bonus)
+	var board := Leaderboard.entries()
+	_check("and puts the run on the leaderboard as cleared", board.size() == 1 and board[0]["outcome"] == "cleared" and board[0]["cleared"] == true and int(board[0]["kills"]) == 12)
+	_check("the hero is saved, in camp", SaveStore.exists(1) and SaveStore.load_slot(1)["run"].is_empty() and Game.run.is_empty())
+	_check("and the leaderboard rank was recorded", run.rank == 1)
+
+	Game.run = {"tier": 1, "seed": 5, "floor": 1, "room": 0}
+	Game.character.inventory.gold = 1000
+	run.death = {"final": false, "lost": ["fire"]}
+	run.gold_lost = 0
+	run._finish_run(false)
+	_check("falling costs 30% of the gold", run.gold_lost == 300 and Game.character.inventory.gold == 700)
+	_check("and is recorded as a fall", Leaderboard.entries().any(func(e): return e["outcome"] == "fell"))
+	_check("the hero survives a fall: the save is still there", SaveStore.exists(1) and Game.meta["runs"] == 2)
+
+	Game.run = {"tier": 1, "seed": 5, "floor": 0, "room": 0}
+	run.death = {"final": true, "lost": []}
+	run._finish_run(false)
+	_check("a death with nothing left to lose deletes the save", not SaveStore.exists(1))
+	_check("and is recorded as a death", Leaderboard.entries().any(func(e): return e["outcome"] == "died"))
+
+	# resuming from a save rebuilds the same dungeon
+	Game.run = {"tier": 2, "seed": 99, "floor": 3, "room": 1, "kills": 7, "time": 123.0}
+	Game.mode = "dungeon"
+	var resumed := Dungeon.new()
+	resumed.with_ui = false
+	var start: Vector2i = resumed._make_layout()
+	_check("a saved run resumes on the saved floor and room", start == Vector2i(3, 1) and resumed.layout.size() == 10 and resumed.tier == 2)
+	_check("and keeps its kills and time", Game.run_kills == 7 and is_equal_approx(resumed.run_time, 123.0))
+	var twin := Dungeon.new()
+	twin.with_ui = false
+	twin._make_layout()
+	_check("the same seed rebuilds the same dungeon", resumed.layout == twin.layout)
+	_check("the second dungeon's monsters start deeper", resumed.layout[0][0]["depth"] == 6)
+	resumed.free()
+	twin.free()
+	Game.mode = "camp"
+
+	world.queue_free()
+	SaveStore.delete_slot(1)
+	Leaderboard.clear()
+	SaveStore.dir = real_dir
+	Leaderboard.path = real_board
+	Game.slot = real_slot
+	Game.meta = real_meta
+	Game.run = real_run
