@@ -23,6 +23,7 @@ extends Node
 ## status potency) is resolved here at cast time from CharacterData.
 
 signal cast(skill_id: String)
+signal cancelled(skill_id: String)  # a charging skill was interrupted
 signal element_changed(element: String)  # also fires for the martial set
 signal lock_changed
 
@@ -43,6 +44,10 @@ var locked: Array[String] = []    # elements locked together for fusion (any num
 var _chain_element := ""          # element of the last ability cast
 var _chain_left := 0.0            # seconds left in which a different-element ability is discounted
 var cooldowns: Dictionary = {}    # skill id (or fusion id) -> seconds left
+## Wind-ups (SkillDB.WINDUPS) can be switched off for tests that want an area to land the moment it is cast.
+static var windups_enabled := true
+const WINDUP_SLOW := 0.5       # the hero moves at this share of their speed while charging a skill
+var _windup: Dictionary = {}   # {"id", "left", "total", "fx"} while a skill is charging
 
 
 func _ready() -> void:
@@ -190,6 +195,7 @@ func _unhandled_input(event: InputEvent) -> void:
 
 
 func _process(delta: float) -> void:
+	tick_windup(delta)
 	mana = minf(max_mana, mana + mana_regen * delta)
 	_chain_left = maxf(0.0, _chain_left - delta)
 	for id in cooldowns.keys():
@@ -295,7 +301,7 @@ func cooldown_fraction(id: String) -> float:
 
 
 func try_cast(id: String) -> bool:
-	if not can_cast(id):
+	if is_winding_up() or not can_cast(id):
 		return false
 	var cost := costs(id)
 	mana -= cost.x
@@ -305,6 +311,15 @@ func try_cast(id: String) -> bool:
 	if is_ability(id):
 		_chain_element = String(SkillDB.DEFS[id]["element"])
 		_chain_left = CHAIN_WINDOW
+	var delay := SkillDB.windup_of(id) if windups_enabled and not is_fusion(id) else 0.0
+	if delay > 0.0:  # an area or a special: it charges first and lands when the charge is full
+		_begin_windup(id, delay)
+		return true
+	_release(id)
+	return true
+
+
+func _release(id: String) -> void:
 	if is_fusion(id):
 		_spawn_fusion(components(id))
 	else:
@@ -312,7 +327,54 @@ func try_cast(id: String) -> bool:
 	for skill_id in components(id):
 		_train(skill_id, SkillDB.DEFS[skill_id])
 	cast.emit(id)
-	return true
+
+
+## True while a skill is charging (the hero is slowed and cannot start another cast).
+func is_winding_up() -> bool:
+	return not _windup.is_empty()
+
+
+## The charge's progress 0..1 (0 when nothing is charging).
+func windup_fraction() -> float:
+	if _windup.is_empty():
+		return 0.0
+	return 1.0 - clampf(float(_windup["left"]) / float(_windup["total"]), 0.0, 1.0)
+
+
+func _begin_windup(id: String, delay: float) -> void:
+	var def: Dictionary = SkillDB.DEFS[id]
+	var fx := SkillFx.charge(body, String(def["element"]), area_radius(id) if def["kind"] == "aoe" else 0.0, self, id)
+	_windup = {"id": id, "left": delay, "total": delay, "fx": fx}
+	Sfx.play("cast_" + (String(def["element"]) if String(def["element"]) != "" else "martial"), &"SFX", -8.0)
+
+
+## Counts the charge down and releases the skill when it is full.
+func tick_windup(delta: float) -> void:
+	if _windup.is_empty():
+		return
+	_windup["left"] = float(_windup["left"]) - delta
+	if float(_windup["left"]) > 0.0:
+		return
+	var id := String(_windup["id"])
+	_end_windup()
+	_release(id)
+
+
+## Interrupts a charge (a dodge, or the hero's death): the cost and the cooldown stay spent.
+func cancel_windup() -> void:
+	if _windup.is_empty():
+		return
+	var id := String(_windup["id"])
+	_end_windup()
+	FloatText.spawn(body.get_parent(), body.global_position + Vector2(0, -8), "Interrupted", Color("8c88b8"))
+	cancelled.emit(id)
+
+
+func _end_windup() -> void:
+	var fx: Variant = _windup.get("fx")
+	if fx != null and is_instance_valid(fx):
+		fx.queue_free()
+	_windup = {}
 
 
 ## Area radius after attribute scaling (for the aim preview and the effect itself).

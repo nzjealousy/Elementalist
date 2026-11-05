@@ -25,12 +25,13 @@ const IMBUE_SWING_COST := 4.0    # mana per element per imbued slash
 const SPIN_STAMINA_MULT := 1.8   # a spin costs this many slashes' worth of stamina
 const SPIN_DAMAGE_MULT := 1.15
 const SPIN_COOLDOWN := 0.5
-const SPIN_DURATION := 0.32  # how long the spin lasts, during which you cannot be hurt
+const SPIN_DURATION := 0.5   # how long the spin lasts, during which you cannot be hurt (it was 0.32)
+const SPRITE_SCALE := 0.85  # the hero and the enemies are drawn this big (15% smaller than their pictures)
 
 @export var speed := 80.0
 @export var dodge_speed := 260.0
 @export var dodge_time := 0.18
-@export var dodge_iframes := 0.12  # invulnerable only for the start of the dodge
+@export var dodge_iframes := 0.3   # invulnerable from the start of the dodge for this long (it was 0.12; the roll itself lasts 0.18 s)
 @export var dodge_cooldown := 0.4
 @export var dodge_stamina_cost := 30.0
 @export var max_hp := 100.0
@@ -51,6 +52,8 @@ var _dodge_left := 0.0
 var _dodge_cd := 0.0
 var _dodge_dir := Vector2.ZERO
 var _dodge_buffer := 0.0
+var _iframes_left := 0.0   # dodge immunity still to run; it can outlast the roll
+var _passed: Array = []    # enemies the roll is passing through (see _begin_pass_through)
 var _spun := false  # one spin per dodge
 var _spin_left := 0.0  # while > 0 the spin is still going: immune to damage
 var _hurt_cd := 0.0
@@ -74,6 +77,7 @@ func _ready() -> void:
 	add_to_group("player")
 	sprite.texture = AssetDB.get_texture("player")
 	sprite.offset = Vector2(0, -9)  # the hero's feet (the 24 x 38 picture's lowest row) stand a little below the node
+	sprite.scale = Vector2.ONE * SPRITE_SCALE
 	caster = SkillCaster.new()
 	caster.body = self
 	caster.element_changed.connect(_on_element_changed)
@@ -174,9 +178,9 @@ func is_spinning() -> bool:
 	return _spin_left > 0.0
 
 
-## Immune during the start of a dodge, briefly after a hit, and for the whole of a spin.
+## Immune for `dodge_iframes` after a dodge starts (a little past the roll), briefly after a hit, and for the whole of a spin.
 func is_invulnerable() -> bool:
-	return _dodge_left > dodge_time - dodge_iframes or _hurt_cd > 0.0 or _spin_left > 0.0
+	return _iframes_left > 0.0 or _hurt_cd > 0.0 or _spin_left > 0.0
 
 
 ## Returns true if the hit landed (false while invulnerable), so attackers only spend
@@ -401,11 +405,43 @@ func try_dodge(dir: Vector2 = Vector2.ZERO) -> bool:
 		return false
 	_dodge_dir = dir.normalized() if dir != Vector2.ZERO else aim_direction
 	_dodge_left = dodge_time
+	_iframes_left = dodge_iframes
 	_dodge_cd = dodge_cooldown
 	_spun = false
+	caster.cancel_windup()   # a dodge interrupts a skill that is still charging
+	_begin_pass_through()
 	spend_stamina(dodge_cost)
 	Sfx.play("dodge")
 	return true
+
+
+## A roll slips through enemies, but not through terrain, bosses or mini bosses: for its length the hero and every ordinary
+## enemy ignore each other's bodies (the exceptions are lifted again once the two no longer overlap).
+func _begin_pass_through() -> void:
+	for node in get_tree().get_nodes_in_group("enemies"):
+		var enemy := node as Enemy
+		if enemy != null and not enemy.boss and not enemy.mini and not _passed.has(enemy):
+			add_collision_exception_with(enemy)
+			_passed.append(enemy)
+
+
+## For the tests: lifts every pass-through exception now.
+func _end_pass_through_for_test() -> void:
+	for enemy in _passed:
+		if is_instance_valid(enemy):
+			remove_collision_exception_with(enemy)
+	_passed.clear()
+
+
+func _update_pass_through() -> void:
+	if is_dodging() or _passed.is_empty():
+		return
+	var mine := hurtbox()
+	for enemy in _passed.duplicate():
+		if not is_instance_valid(enemy) or not enemy.hit_rect().intersects(mine):  # only once clear of it
+			if is_instance_valid(enemy):
+				remove_collision_exception_with(enemy)
+			_passed.erase(enemy)
 
 
 ## What a kill gives back (see Classes.KILL_MANA and the kill_* passive stats).
@@ -462,6 +498,7 @@ func _physics_process(delta: float) -> void:
 	_update_sprite()
 
 	_dodge_cd = maxf(0.0, _dodge_cd - delta)
+	_iframes_left = maxf(0.0, _iframes_left - delta)
 	_hurt_cd = maxf(0.0, _hurt_cd - delta)
 	_dodge_text_cd = maxf(0.0, _dodge_text_cd - delta)
 	_tick_buffs(delta)
@@ -501,9 +538,10 @@ func _physics_process(delta: float) -> void:
 		# Ease out: fast burst that settles, so the end of the roll is committal.
 		velocity = _dodge_dir * dodge_speed * (0.35 + 0.65 * clampf(_dodge_left / dodge_time, 0.0, 1.0))
 	else:
-		velocity = input * speed * (1.0 + buff_power("haste")) + _knock
+		velocity = input * speed * (1.0 + buff_power("haste")) * (SkillCaster.WINDUP_SLOW if caster.is_winding_up() else 1.0) + _knock
 	_knock = _knock.move_toward(Vector2.ZERO, 500.0 * delta)
 	move_and_slide()
+	_update_pass_through()
 
 	if (is_dodging() or is_spinning()) and is_invulnerable():
 		sprite.modulate = Color(1, 1, 1, 0.45)

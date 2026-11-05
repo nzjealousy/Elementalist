@@ -13,6 +13,7 @@ var _failed: Array[String] = []
 
 func _ready() -> void:
 	Juice.enabled = false  # hit-stop would slow the clock these tests rely on
+	SkillCaster.windups_enabled = false  # areas land the moment they are cast, except in _test_feel_changes
 	_neutral_character()
 	await get_tree().process_frame
 	_test_data_tables()
@@ -85,6 +86,7 @@ func _ready() -> void:
 	await _test_iso()
 	await _test_fixes()
 	_test_art_style()
+	await _test_feel_changes()
 	await _test_net_world()
 	_test_items()
 	_test_inventory_and_gear_stats()
@@ -507,7 +509,7 @@ func _test_attribute_scaling() -> void:
 	_check("martial skills have no element potency", is_equal_approx(c.potency_mult(""), 1.0))
 	_check("area radius scales with its attribute", is_equal_approx(c.skill_scale("flame_burst", "radius"), 1.3))
 	_check("skills that do not scale a property are unchanged", is_equal_approx(c.skill_scale("fireball", "radius"), 1.0))
-	_check("Agility shortens thorn shot cooldown", is_equal_approx(c.skill_cooldown("thorn_shot"), 0.35 * 0.8))
+	_check("Agility shortens thorn shot cooldown", is_equal_approx(c.skill_cooldown("thorn_shot"), 0.8 * 0.8))
 	_check("projectile speed scales with Agility", is_equal_approx(c.skill_scale("water_jet", "speed"), 1.3))
 	var data_ok := true
 	for id in SkillDB.DEFS:
@@ -1060,6 +1062,7 @@ func _test_spin_attack() -> void:
 	for lingering in get_tree().get_nodes_in_group("enemies"):
 		if is_instance_valid(lingering) and not lingering.is_queued_for_deletion():
 			lingering.queue_free()  # (the dummies beside the player would otherwise touch and hurt it)
+	player._iframes_left = 0.0
 	player._spin_left = 0.04
 	for i in 60:  # until the spin has run out (a slow machine takes more frames)
 		await get_tree().physics_frame
@@ -1519,9 +1522,11 @@ func _test_dodge_and_cycling() -> void:
 	player.stamina = player.dodge_stamina_cost - 1.0
 	_check("dodge needs stamina", not player.try_dodge(Vector2.RIGHT))
 	player.stamina = 100.0
-	player._dodge_left = player.dodge_time - player.dodge_iframes - 0.01
+	player._dodge_left = 0.0   # the roll is over (0.18 s), but its i-frames (0.3 s) are not
 	player._hurt_cd = 0.0
-	_check("i-frames end before the dodge does", not player.is_invulnerable())
+	_check("the dodge's i-frames outlast the roll itself", player.dodge_iframes > player.dodge_time and player.is_invulnerable())
+	player._iframes_left = 0.0
+	_check("and then they end", not player.is_invulnerable())
 
 	var caster: SkillCaster = player.caster
 	_check("starts on first element", caster.selected == 0)
@@ -4316,7 +4321,7 @@ func _test_phase6b() -> void:
 		var enemy := Monsters.spawn(self, monster_id, Vector2.ZERO)
 		var picture := enemy.sprite.texture.get_size()
 		rig_ok = rig_ok and picture == Vector2(24, 38) and AssetDB.get_frames(enemy.sprite_id).size() == 4
-		rig_ok = rig_ok and enemy.hit_rect().size == Enemy.BODY_SIZES[enemy.sprite_id] and enemy.picture_height() == 38.0
+		rig_ok = rig_ok and enemy.hit_rect().size == Enemy.BODY_SIZES[enemy.sprite_id] and is_equal_approx(enemy.picture_height(), 38.0 * Player.SPRITE_SCALE)
 		enemy.queue_free()
 	_check("the humanoid enemies are drawn on the 24 x 38 hero rig with four frames and keep their old hit boxes", rig_ok)
 	var icons_ok := true
@@ -4701,6 +4706,74 @@ func _test_art_style() -> void:
 		var picture := (HeroComposer.compose(HeroLook.for_class(class_id))["down"][0] as Texture2D).get_image()
 		palette_ok = palette_ok and picture.get_width() == size.x and picture.get_height() == size.y
 	_check("every class composes a 24 x 38 picture", palette_ok)
+
+
+# ---------- Feel: melee reach, ranged rate, wind-ups, longer dodge, pass-through, smaller sprites ----------
+
+func _test_feel_changes() -> void:
+	_check("the base melee reach is 10% longer", is_equal_approx(float(SkillDB.MELEE["range"]), 26.0 * 1.1))
+	var before := {"fireball": 0.38, "water_jet": 0.14, "gust": 0.18, "shard_shot": 0.6, "thorn_shot": 0.35, "light_lance": 0.25, "shadow_bolt": 0.32, "knife_throw": 0.24}
+	var rate_ok := true
+	for id in before:
+		rate_ok = rate_ok and absf(float(SkillDB.DEFS[id]["cooldown"]) / float(before[id]) - 2.3) < 0.06
+	_check("the ranged shots wait 2.3 times as long between casts", rate_ok)
+	var windup_ok := true
+	for id in SkillDB.WINDUPS:
+		windup_ok = windup_ok and SkillDB.DEFS.has(id) and SkillDB.slot_of(id) in ["area", "special"]
+	for slot in ["primary", "support"]:
+		for set_id in SkillDB.LOADOUTS:
+			windup_ok = windup_ok and SkillDB.windup_of(SkillDB.LOADOUTS[set_id][slot]) == 0.0
+	_check("only areas and specials wind up; bolts and supports are instant", windup_ok)
+
+	SkillCaster.windups_enabled = true
+	var saved := Game.character
+	var player: Node2D = await _player_with(CharacterData.create_sandbox("mystic", ["fire", "water"], 1))
+	var caster: SkillCaster = player.caster
+	Game.character.learned_specials.append("inferno_ring")
+	var areas_before := get_children().filter(func(n): return n is AoeEffect).size()
+	var mana_before: float = caster.mana
+	_check("a special starts to charge instead of landing", caster.try_cast("inferno_ring") and caster.is_winding_up())
+	_check("its cost and cooldown are paid at once", caster.mana < mana_before and caster.cooldowns.has("inferno_ring"))
+	_check("nothing has landed yet", get_children().filter(func(n): return n is AoeEffect).size() == areas_before)
+	_check("no second cast while charging", not caster.try_cast("flame_burst"))
+	caster.tick_windup(0.3)
+	_check("part way through it is still charging", caster.is_winding_up() and caster.windup_fraction() > 0.3 and caster.windup_fraction() < 1.0)
+	caster.tick_windup(2.0)
+	_check("when the charge is full the area lands", not caster.is_winding_up() and get_children().filter(func(n): return n is AoeEffect).size() > areas_before)
+	caster.cooldowns.clear()
+	caster.mana = caster.max_mana
+	caster.try_cast("inferno_ring")
+	player.stamina = 100.0
+	player._dodge_cd = 0.0
+	player.try_dodge(Vector2.RIGHT)
+	_check("a dodge interrupts a charge", not caster.is_winding_up() and caster.cooldowns.has("inferno_ring"))
+	SkillCaster.windups_enabled = false
+
+	_check("a dodge keeps its i-frames longer than the roll, and a spin is immune for half a second", player.dodge_iframes >= 0.3 and player.dodge_iframes > player.dodge_time and is_equal_approx(Player.SPIN_DURATION, 0.5))
+	var minion := _dummy(player.position + Vector2(6, 0))
+	var boss := _dummy(player.position + Vector2(-6, 0))
+	boss.boss = true
+	var mini := _dummy(player.position + Vector2(0, 6))
+	mini.mini = true
+	player._dodge_left = 0.0
+	player._dodge_cd = 0.0
+	player._end_pass_through_for_test()
+	player.stamina = 100.0
+	player.try_dodge(Vector2.RIGHT)
+	var passed: Array = player.get_collision_exceptions()
+	_check("a roll slips through ordinary enemies", passed.has(minion))
+	_check("but not through a boss or a mini boss", not passed.has(boss) and not passed.has(mini))
+	player._dodge_left = 0.0
+	player._update_pass_through()
+	_check("the pass-through lasts while the hero still overlaps the enemy", player.get_collision_exceptions().has(minion))
+	minion.position = player.position + Vector2(200, 0)
+	player._update_pass_through()
+	_check("and ends once they are apart", not player.get_collision_exceptions().has(minion))
+
+	_check("the hero and the enemies are drawn 15% smaller", is_equal_approx(player.sprite.scale.x, 0.85) and is_equal_approx(minion.sprite.scale.x, 0.85))
+	for node in [minion, boss, mini, player]:
+		node.queue_free()
+	Game.character = saved
 
 
 # ---------- Phase 6d: multiplayer, the parts that need no network ----------

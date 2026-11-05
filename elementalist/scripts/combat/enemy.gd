@@ -141,6 +141,7 @@ func _ready() -> void:
 	_attack_cd = randf_range(0.6, 1.6)
 	add_to_group("enemies")
 	sprite.texture = AssetDB.get_texture(sprite_id)
+	sprite.scale = Vector2.ONE * Player.SPRITE_SCALE
 	anim = SpriteAnim.attach(sprite, sprite_id, 10.0 if behavior == "flutter" else (7.0 if behavior == "ranged" else 5.0), self)
 	if variant != "":
 		_base_tint = Color.WHITE.lerp(Elements.color_of(variant), 0.5)
@@ -336,7 +337,7 @@ func _body_size() -> Vector2:
 
 ## The tallest part of the picture, for things that float above it (health bars).
 func picture_height() -> float:
-	return float(sprite.texture.get_height())
+	return float(sprite.texture.get_height()) * sprite.scale.y
 
 
 ## True when this enemy's body overlaps the target's hurtbox on any side. The target needs

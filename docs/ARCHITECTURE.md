@@ -459,3 +459,16 @@ Sovereign.
 **Training grounds.** `Game.begin_training()` swaps in a sandbox copy of the hero (every element, nothing saved); the grounds hold three
 dummies, the `AltarScreen` (compares every element's mana, speed, area and damage) and a `TutorialGuide` checklist that ticks off controls as
 they are used.
+
+## Combat feel (after Phase 6)
+
+* **Melee reach** is `SkillDB.MELEE["range"]` = 28.6 (it was 26: +10% for everyone, before class and passive multipliers).
+* **Ranged rate:** the basic shots (the seven element primaries and Knife Throw) wait 2.3 times as long between casts as they did (Fireball 0.87 s,
+  Water Jet 0.32 s, Gust 0.41 s, Shard Shot 1.38 s, Thorn Shot 0.8 s, Light Lance 0.58 s, Shadow Bolt 0.74 s, Knife Throw 0.55 s). Slash is unchanged (0.26 s).
+* **Wind-ups:** areas (F) and specials (R) charge first (`SkillDB.WINDUPS`, 0.25 to 0.9 s). The cost and cooldown are paid when the key is pressed, the hero
+  moves at half speed while charging (`SkillCaster.WINDUP_SLOW`), a charge ring fills round the hero and an area shows its circle under the aim point
+  (`SkillFx.charge`), and a dodge interrupts the charge (`SkillCaster.cancel_windup`). `SkillCaster.windups_enabled` switches them off for tests.
+* **Dodge:** i-frames last 0.3 s from the start of a roll (`dodge_iframes`; the roll is 0.18 s, so they outlast it), a swirl attack is immune for 0.5 s
+  (`Player.SPIN_DURATION`), and a roll passes through ordinary enemies: for its length the hero and each non-boss, non-mini-boss enemy carry collision
+  exceptions, lifted once the two no longer overlap. Terrain, bosses and mini bosses still block.
+* **Sprite size:** the hero and every enemy are drawn at `Player.SPRITE_SCALE` = 0.85 (15% smaller). Hit boxes did not change.

@@ -45,6 +45,7 @@ func _ready() -> void:
 	add_child(shape)
 	sprite = Sprite2D.new()
 	sprite.offset = Vector2(0, -9)
+	sprite.scale = Vector2.ONE * Player.SPRITE_SCALE
 	add_child(sprite)
 	_anim = SpriteAnim.attach(sprite, _prefix + ":down", 8.0, self)
 	_label = Label.new()

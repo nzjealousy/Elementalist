@@ -214,6 +214,42 @@ static func aura(target: Node2D, color: Color, element: String = "") -> CPUParti
 	return node
 
 
+## The charge of a skill that has a wind-up: a ring that closes round the hero, and for an area skill a growing circle where it will land.
+static func charge(body: Node2D, element: String, area_radius: float, caster: Node, id: String) -> Node2D:
+	var node := FxCharge.new()
+	node.color = Elements.color_of(element) if element != "" else Color("b8b8d8")
+	node.area_radius = area_radius
+	node.caster = caster
+	node.skill_id = id
+	body.add_child(node)
+	return node
+
+
+## The charge ring: `caster.windup_fraction()` fills it; an area skill also previews its circle under the aim point.
+class FxCharge extends Node2D:
+	var color := Color.WHITE
+	var area_radius := 0.0
+	var caster: Node
+	var skill_id := ""
+
+	func _ready() -> void:
+		z_index = 45
+
+	func _process(_delta: float) -> void:
+		queue_redraw()
+
+	func _draw() -> void:
+		if caster == null or not is_instance_valid(caster):
+			return
+		var t: float = caster.windup_fraction()
+		draw_arc(Vector2.ZERO, 13.0, -PI * 0.5, -PI * 0.5 + TAU * t, 32, Color(color, 0.95), 1.5)
+		draw_arc(Vector2.ZERO, 15.0, 0.0, TAU, 32, Color(color, 0.18), 1.0)
+		if area_radius > 0.0:
+			var target: Vector2 = to_local(caster.area_target(skill_id))
+			draw_arc(target, area_radius * (0.35 + 0.65 * t), 0.0, TAU, 36, Color(color, 0.25 + 0.6 * t), 1.0)
+			draw_circle(target, area_radius * 0.12 * t, Color(color, 0.5))
+
+
 ## The ring that SkillFx.ring spawns: it draws itself, `t` runs 0 -> 1.
 class FxRing extends Node2D:
 	var radius := 20.0
