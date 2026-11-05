@@ -13,6 +13,7 @@ import os
 import sys
 
 sys.path.insert(0, os.path.dirname(__file__))
+import noir
 import style
 from pixel import Canvas, hexc, mix, soft_outline
 
@@ -25,14 +26,22 @@ os.makedirs(OUT, exist_ok=True)
 
 
 def tones(hexstr):
-    """[deep, shadow, base, light, highlight] of a colour, shaded the way HeroComposer shades a part."""
-    base = hexc(hexstr)
-    sc = RAMP['shadow_color'] + [255]
-    shadow = mix(tuple(int(c * RAMP['dark_mul']) for c in base[:3]) + (255,), tuple(sc), RAMP['shadow_mix'])
-    deep = tuple(int(c * 0.62) for c in shadow[:3]) + (255,)
-    light = tuple(min(255, int(c * RAMP['light_mul'])) for c in base[:3]) + (255,)
-    hi = mix(base, tuple(RAMP['highlight_color']) + (255,), RAMP['highlight_mix'])
-    return [deep, shadow, base, light, hi]
+    """[deep, shadow, base, light, glint] of a body colour as it appears in the dark (tools/art/noir.py): dark, desaturated, with a
+    pale steel glint."""
+    b = noir.base(hexc(hexstr))
+    deep = tuple(int(v * 0.5 + 4) for v in b) + (255,)
+    shadow = tuple(int(v * 0.74 + 3) for v in b) + (255,)
+    light = tuple(min(255, int(v * 1.35 + 8)) for v in b) + (255,)
+    glint = tuple(min(255, int(v * 1.75 + 28)) for v in b) + (255,)
+    return [deep, shadow, b + (255,), light, glint]
+
+
+def glow_tones(hexstr):
+    """[deep, shadow, base, light, hot] of a glowing part (a gem, a flame): bright, saturated, nearly white at its heart."""
+    g = hexc(hexstr)[:3]
+    ramp = [tuple(min(255, int(v * k)) for v in g) for k in (0.35, 0.62, 1.0, 1.15)]
+    hot = tuple(int(v + (255 - v) * 0.55) for v in g)
+    return [r + (255,) for r in ramp] + [hot + (255,)]
 
 
 def stick(cv, p0, p1, width, t, taper=False):
@@ -104,8 +113,31 @@ def poly(cv, pts, t, mode='cyl'):
 
 
 def frame(cv):
-    """The 14 x 14 drawing becomes the 16 x 16 icon: selective outline."""
-    return cv.outline(None)
+    """The 14 x 14 drawing becomes the 16 x 16 icon: a nearly black outline and a pale steel rim on the lit upper-left edge."""
+    lit = []
+    for y in range(cv.h):
+        for x in range(cv.w):
+            if cv.get(x, y)[3] and (not cv.get(x - 1, y)[3] or not cv.get(x, y - 1)[3]):
+                lit.append((x, y))
+    for x, y in lit:
+        c = cv.get(x, y)
+        if sum(c[:3]) > 110:
+            cv.set(x, y, mix(c, (184, 192, 224, 255), 0.55))
+    out = Canvas(cv.w + 2, cv.h + 2)
+    out.blit(cv, 1, 1)
+    marks = []
+    for y in range(out.h):
+        for x in range(out.w):
+            if out.get(x, y)[3]:
+                continue
+            for dx, dy in ((1, 0), (-1, 0), (0, 1), (0, -1)):
+                n = out.get(x + dx, y + dy)
+                if n[3]:
+                    marks.append((x, y, n))
+                    break
+    for x, y, n in marks:
+        out.set(x, y, (int(n[0] * 0.25 + 6), int(n[1] * 0.25 + 5), int(n[2] * 0.25 + 16), 255))
+    return out
 
 
 # ------------------------------------------------------------------------------------------- weapons
@@ -306,7 +338,7 @@ def ring(base_hex, gem_hex):
                     lam = dx * -0.5 + dy * -0.7
                     cv.set(x, y, b[4] if lam > 0.55 else (b[3] if lam > 0.15 else (b[2] if lam > -0.35 else b[1])))
         if gem_hex:
-            g = tones(gem_hex)
+            g = glow_tones(gem_hex)
             ball(cv, 7, 3, 2.1, g)
             cv.set(6, 2, g[4])
         return frame(cv)
@@ -319,7 +351,7 @@ def amulet(pendant_hex, charm):
         cord = tones('785070')
         for t_ in range(-5, 6):
             cv.set(7 + t_, 1 + int(round((t_ / 5.0) ** 2 * 4)), cord[3] if t_ < 0 else cord[2])
-        t = tones(pendant_hex)
+        t = tones(pendant_hex) if charm == 'bone' else glow_tones(pendant_hex)
         if charm == 'bone':
             poly(cv, [(5, 6), (9, 6), (10, 9), (9, 12), (5, 12), (4, 9)], t)
             cv.set(6, 8, t[1])
@@ -359,7 +391,7 @@ def main():
     for base, kind in WEAPONS.items():
         prefix = base.split('_')[0]
         mat = material(prefix)
-        cv = WEAPON_DRAW[kind](tones(mat['metal']), tones(mat['wood']), tones(GEM_OF_FAMILY.get(prefix, '6ab0ff')))
+        cv = WEAPON_DRAW[kind](tones(mat['metal']), tones(mat['wood']), glow_tones(GEM_OF_FAMILY.get(prefix, '6ab0ff')))
         cv.save(os.path.join(OUT, 'item_%s.png' % base))
         count += 1
     for table, section in ((BODY_DRAW, 'armor'), (HEAD_DRAW, 'helms'), (FEET_DRAW, 'boots')):

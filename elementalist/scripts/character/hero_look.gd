@@ -87,6 +87,13 @@ static func _apply_materials(palette: Dictionary, prefix: String) -> void:
 	palette["wood"] = String(material["wood"])
 
 
+## The look with its glow set: the one accent colour (a Color) that the eyes, gems, glints and rim light take (see HeroComposer).
+static func with_glow(look: Dictionary, glow: Color) -> Dictionary:
+	var out: Dictionary = look.duplicate(true)
+	out["palette"]["glow"] = glow.to_html(false)
+	return out
+
+
 ## A main colour for a class, for borders and tints: its outfit colour.
 static func class_color(class_id: String) -> Color:
 	var d := data()

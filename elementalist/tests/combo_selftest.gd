@@ -87,6 +87,7 @@ func _ready() -> void:
 	await _test_fixes()
 	_test_art_style()
 	await _test_feel_changes()
+	await _test_noir_and_poses()
 	await _test_net_world()
 	_test_items()
 	_test_inventory_and_gear_stats()
@@ -4279,10 +4280,10 @@ func _test_phase6b() -> void:
 	var size := HeroComposer.size()
 	var shape_ok: bool = frames.size() == 3
 	for facing in HeroComposer.FACINGS:
-		shape_ok = shape_ok and frames[facing].size() == 4
+		shape_ok = shape_ok and frames[facing].size() == HeroComposer.FRAME_COUNT
 		for texture in frames[facing]:
 			shape_ok = shape_ok and texture.get_size() == Vector2(size)
-	_check("a look composes to three facings of four frames", shape_ok)
+	_check("a look composes to three facings of every pose", shape_ok)
 	var image: Image = HeroComposer.portrait(HeroLook.for_class("channeler")).get_image()
 	var opaque := 0
 	for y in image.get_height():
@@ -4296,7 +4297,7 @@ func _test_phase6b() -> void:
 	_check("the walking frames differ from the standing one", a_frame.get_data() != b_frame.get_data())
 	_check("composing the same look again reuses the pictures", HeroComposer.compose(HeroLook.for_class("channeler")) == frames)
 	var prefix := HeroComposer.register(HeroLook.for_class("ranger"))
-	_check("a registered look is found by AssetDB with four frames", AssetDB.has_art(prefix + ":side") and AssetDB.get_frames(prefix + ":side").size() == 4)
+	_check("a registered look is found by AssetDB with every pose", AssetDB.has_art(prefix + ":side") and AssetDB.get_frames(prefix + ":side").size() == HeroComposer.FRAME_COUNT)
 
 	# gear changes the look
 	var rng := RandomNumberGenerator.new()
@@ -4656,7 +4657,7 @@ func _test_art_style() -> void:
 	_check("a rune picture is as big as the hotbar slot", UiTheme.rune("fire", "s").get_size() == Vector2(18, 18))
 
 	var size := HeroComposer.size()
-	_check("heroes are 24 x 38", size == Vector2i(24, 38))
+	_check("heroes are drawn in a 40 x 38 cell with 21 poses", size == Vector2i(40, 38) and HeroComposer.FRAME_COUNT == 21)
 	var strips_ok := true
 	for part in ["base_body", "outfit_robe", "head_hat", "weapon_staff", "back_cape", "boots_boots"]:
 		for facing in HeroComposer.FACINGS:
@@ -4705,7 +4706,7 @@ func _test_art_style() -> void:
 	for class_id in Classes.playable():
 		var picture := (HeroComposer.compose(HeroLook.for_class(class_id))["down"][0] as Texture2D).get_image()
 		palette_ok = palette_ok and picture.get_width() == size.x and picture.get_height() == size.y
-	_check("every class composes a 24 x 38 picture", palette_ok)
+	_check("every class composes a whole-cell picture", palette_ok)
 
 
 # ---------- Feel: melee reach, ranged rate, wind-ups, longer dodge, pass-through, smaller sprites ----------
@@ -4774,6 +4775,86 @@ func _test_feel_changes() -> void:
 	for node in [minion, boss, mini, player]:
 		node.queue_free()
 	Game.character = saved
+
+
+# ---------- Noir Silhouette: glow colours, poses, animated dolls ----------
+
+func _rgb(c: Color) -> Array:
+	return [int(round(c.r * 255.0)), int(round(c.g * 255.0)), int(round(c.b * 255.0))]
+
+
+func _near(c: Color, expected: Array) -> bool:
+	var got := _rgb(c)
+	return absi(got[0] - expected[0]) <= 3 and absi(got[1] - expected[1]) <= 3 and absi(got[2] - expected[2]) <= 3   # (the Python twin rounds at every step)
+
+
+func _test_noir_and_poses() -> void:
+	# the colouring is the Python twin in tools/art/noir.py (these are its numbers)
+	var fire := {"outfit": Color("e0403a"), "skin": Color("f6d2b0"), "glow": Color("ff8040")}
+	_check("a body colour is dark and desaturated (noir.py base)", _near(HeroComposer._color_of(3, 2, fire), [69, 37, 38]))
+	_check("skin stays a little warm but dark", _near(HeroComposer._color_of(1, 2, fire), [95, 88, 83]))
+	_check("metal is a cool grey", _near(HeroComposer._color_of(11, 3, {"metal": Color("9a9aa4"), "glow": Color("5cc8ff")}), [116, 116, 123]))
+	_check("eyes take the glow, hot", _near(HeroComposer._color_of(14, 2, {"glow": Color("5cc8ff")}), [149, 217, 255]))
+	_check("gems are the glow itself", _near(HeroComposer._color_of(13, 3, {"glow": Color("88e880")}), [149, 255, 140]))
+	_check("the outline is nearly black", _near(HeroComposer._color_of(3, 0, {"outfit": Color("4f8f4a"), "glow": Color("88e880")}), [16, 18, 26]))
+
+	var fire_look := HeroLook.with_glow(HeroLook.for_class("channeler"), Color("ff8040"))
+	var water_look := HeroLook.with_glow(HeroLook.for_class("channeler"), Color("5cc8ff"))
+	var fire_image := HeroComposer.frame_image(fire_look, "down", 4)
+	var water_image := HeroComposer.frame_image(water_look, "down", 4)
+	_check("the glow recolours the hero: another element, another picture", fire_image.get_data() != water_image.get_data())
+	_check("and the two looks are separate pictures in the cache", HeroComposer.register(fire_look) != HeroComposer.register(water_look))
+	var prefix := HeroComposer.register(fire_look)
+	_check("a registered look is composed when first asked for, all 21 poses", AssetDB.has_art(prefix + ":down") and AssetDB.get_frames(prefix + ":down").size() == HeroComposer.FRAME_COUNT)
+
+	var runs: Array = HeroComposer.CLIPS.values()
+	runs.sort_custom(func(a, b): return a.x < b.x)
+	var next := 0
+	var covered := true
+	for run in runs:
+		covered = covered and run.x == next
+		next += run.y
+	_check("the clips (walk, idle, attack, dodge, swirl, cast, stun, hurt) cover every pose once", covered and next == HeroComposer.FRAME_COUNT)
+
+	var saved := Game.character
+	var player: Node2D = await _player_with(CharacterData.create_sandbox("channeler", ["fire", "water"], 1))
+	player._update_sprite()
+	_check("standing still plays the idle poses", player._anim.clip_start == HeroComposer.CLIPS["idle"].x)
+	player.stamina = 100.0
+	player.try_melee(Vector2.RIGHT)
+	player._update_sprite()
+	_check("a slash plays the attack poses", player._anim.clip_start == HeroComposer.CLIPS["attack"].x)
+	player._attack_time = 0.0
+	player._cast_time = 0.3
+	player._update_sprite()
+	_check("an area or a special plays the cast poses", player._anim.clip_start == HeroComposer.CLIPS["cast"].x)
+	player._cast_time = 0.0
+	player._hurt_pose = 0.2
+	player._update_sprite()
+	_check("a hit plays the hurt pose", player._anim.clip_start == HeroComposer.CLIPS["hurt"].x)
+	player._hurt_pose = 0.0
+	player._dodge_left = 0.1
+	player._update_sprite()
+	_check("a dodge plays the roll", player._anim.clip_start == HeroComposer.CLIPS["dodge"].x)
+	player._spin_left = 0.3
+	player._update_sprite()
+	_check("a swirl attack plays the swirl", player._anim.clip_start == HeroComposer.CLIPS["swirl"].x)
+	player._dodge_left = 0.0
+	player._spin_left = 0.0
+	player.caster.selected = 0
+	var first_glow: String = player._glow_hex()
+	player.caster.selected = 1
+	_check("the hero's glow follows the selected element", first_glow != player._glow_hex() and player._glow_hex() == Elements.color_of(player.caster.elements[1]).to_html(false))
+	player.queue_free()
+	Game.character = saved
+
+	var doll := HeroDoll.make(HeroLook.for_class("channeler"))
+	add_child(doll)
+	var anim := doll.get_node_or_null("DollAnim") as HeroDoll.DollAnim
+	_check("a hero picture on a card breathes, and its figure is a 24 x 38 cell", anim != null and doll.texture.get_size() == Vector2(24, 38))
+	HeroDoll.set_hot(doll, true)
+	_check("a hovered card makes its hero cast", anim.hot)
+	doll.queue_free()
 
 
 # ---------- Phase 6d: multiplayer, the parts that need no network ----------

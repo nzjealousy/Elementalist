@@ -23,7 +23,9 @@ WAVE = [0, 1, 0, -1]  # idle breathing phase per frame
 def save(name, frames, moonlit=True):
     """frames: list of Canvas, all the same size. Pictures are snapped onto the Moonlit Glyphwork ramps (restyle.py);
     `moonlit=False` keeps a white picture white, for the ones code tints (pickups)."""
-    if moonlit:   # soft outline: the drawing's own deep shade of each colour, snapped to the ramps (the lit rim is added by volumize)
+    if moonlit and name.startswith(('enemy_', 'boss_', 'mini_')):   # monsters and bosses are Noir: near-black bodies, one glowing accent
+        frames = [restyle.noirize(f) for f in frames]
+    elif moonlit:   # props keep the Moonlit palette
         frames = [restyle.restyle(f, rim=False, outline=False) for f in frames]
     frames[0].save(os.path.join(OUT, name + '.png'))
     if len(frames) > 1:

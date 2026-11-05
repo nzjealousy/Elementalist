@@ -1,6 +1,7 @@
-"""Composes the hero parts the way the game does (scripts/character/hero_composer.gd) and writes a contact sheet to
-tools/art/preview_heroes.png: every class, then every subclass, facing down; then one class in all facings/frames.
-Run: python tools/art/preview_heroes.py   (then look at the PNG)
+"""Composes the hero parts the way the game does (scripts/character/hero_composer.gd, Noir Silhouette colouring from noir.py) and writes
+contact sheets: tools/art/preview_heroes.png (every class facing down, each with a different element glowing) and
+tools/art/preview_poses.png (one hero in every pose and every facing).
+Run: python tools/art/preview_heroes.py   (then look at the PNGs)
 """
 import json
 import os
@@ -8,17 +9,13 @@ import sys
 
 sys.path.insert(0, os.path.dirname(__file__))
 import gen_heroes as gh  # noqa: E402
-from pixel import Canvas, hexc  # noqa: E402
+import noir  # noqa: E402
+from pixel import Canvas  # noqa: E402
 
 DATA = json.load(open(os.path.join(os.path.dirname(__file__), '..', '..', 'elementalist', 'data', 'hero_looks.json')))
-RAMP = DATA['ramp']
 W, H = gh.W, gh.H
-REGION_KEY = {1: 'skin', 2: 'hair', 3: 'outfit', 4: 'trim', 5: 'pants', 6: 'boots', 7: 'head', 8: 'headtrim', 9: 'cape',
-              10: 'accent', 11: 'metal', 12: 'wood', 13: 'gem'}
 
 _cache = {}
-INK = (10, 6, 24, 255)
-RIM = (216, 208, 255)
 
 
 def part_frames(name, builder):
@@ -32,9 +29,10 @@ BUILDERS = {
     'boots': gh.boots, 'outfit': gh.outfit, 'hair': gh.hair, 'head': gh.headgear,
     'back': gh.back, 'accent': gh.accent, 'weapon': gh.weapon,
 }
+GLOWS = {'fire': 'ff8040', 'water': '5cc8ff', 'air': '9cf0d8', 'mineral': 'f8d060', 'earth': '88e880', 'light': 'e8e0ff', 'dark': 'b868ff'}
 
 
-def resolve(cls, sub='', armor='', helm='', boots='', weapon_kind='', weapon_prefix='', skin=0, hair_color=1):
+def resolve(cls, sub='', armor='', helm='', boots='', weapon_kind='', weapon_prefix='', skin=0, hair_color=1, glow=None):
     c = DATA['classes'][cls]
     look = {k: c[k] for k in ('outfit', 'hair', 'head', 'back', 'boots', 'weapon')}
     pal = dict(c['palette'])
@@ -65,6 +63,7 @@ def resolve(cls, sub='', armor='', helm='', boots='', weapon_kind='', weapon_pre
     pal['wood'] = mat['wood']
     pal['skin'] = DATA['skin_tones'][skin]
     pal['hair'] = DATA['hair_colors'][hair_color]
+    pal['glow'] = glow or noir.DEFAULT_GLOW
     return look, pal
 
 
@@ -88,37 +87,11 @@ def layer_list(look, facing):
     return out
 
 
-def color_of(region, shade, pal):
-    if region == 14:
-        return (30, 22, 44, 255)
-    if region == 15:
-        base = (252, 248, 240)
-    else:
-        base = tuple(hexc(pal[REGION_KEY[region]])[:3])
-    if shade == 0:
-        return tuple(min(255, int(base[i] * RAMP['outline_mul'] + RAMP['outline_add'][i])) for i in range(3)) + (255,)
-    if shade == 4:
-        hc = RAMP['highlight_color']
-        m = RAMP['highlight_mix']
-        return tuple(int(base[i] + (hc[i] - base[i]) * m) for i in range(3)) + (255,)
-    if shade == 3:
-        return tuple(min(255, int(base[i] * RAMP['light_mul'])) for i in range(3)) + (255,)
-    if shade == 1:
-        sc = RAMP['shadow_color']
-        m = RAMP['shadow_mix']
-        d = [base[i] * RAMP['dark_mul'] for i in range(3)]
-        return tuple(int(d[i] + (sc[i] - d[i]) * m) for i in range(3)) + (255,)
-    return base + (255,)
-
-
 def compose(look, pal, facing, frame):
     grid = [[None] * W for _ in range(H)]
     for part, variant in layer_list(look, facing):
         key = part + ('_' + variant if variant else '')
-        if part == 'base_body':
-            frames = part_frames(key, gh.base_body)
-        else:
-            frames = part_frames(key, BUILDERS[part](variant))
+        frames = part_frames(key, gh.base_body if part == 'base_body' else BUILDERS[part](variant))
         rc = frames[facing][frame]
         for y in range(H):
             for x in range(W):
@@ -129,23 +102,22 @@ def compose(look, pal, facing, frame):
         for x in range(W):
             cell = grid[y][x]
             if cell is not None:
-                out.set(x, y, color_of(cell[0], cell[1], pal))
-    for y in range(H):  # rim light on the upper-left edge (as HeroComposer does)
+                out.set(x, y, noir.colour(cell[0], cell[1], pal))
+    for y in range(H):  # the hard rim light on the upper-left edge
         for x in range(W):
             cell = grid[y][x]
             if cell is None or cell[0] == 14 or cell[1] < 2:
                 continue
             if x == 0 or grid[y][x - 1] is None or y == 0 or grid[y - 1][x] is None:
-                c = out.get(x, y)
-                out.set(x, y, tuple(int(c[i] + (RIM[i] - c[i]) * 0.4) for i in range(3)) + (255,))
-    for y in range(H):  # selective outline: a dark shade of the colour it surrounds
+                out.set(x, y, noir.rim(out.get(x, y), pal['glow']))
+    for y in range(H):  # a nearly black outline tinted by what it borders
         for x in range(W):
             if grid[y][x] is not None:
                 continue
             for dx, dy in ((1, 0), (-1, 0), (0, 1), (0, -1)):
                 nx, ny = x + dx, y + dy
                 if 0 <= nx < W and 0 <= ny < H and grid[ny][nx] is not None:
-                    out.set(x, y, color_of(grid[ny][nx][0], 0, pal))
+                    out.set(x, y, noir.colour(grid[ny][nx][0], 0, pal))
                     break
     return out
 
@@ -162,35 +134,33 @@ def scaled(cv, k):
     return out
 
 
+def crop(cv, x0, w):
+    out = Canvas(w, cv.h)
+    for y in range(cv.h):
+        for x in range(w):
+            out.px[y * w + x] = cv.get(x0 + x, y)
+    return out
+
+
 def main():
     k = 3
-    cells = []
-    for cls in DATA['classes']:
-        cells.append(resolve(cls))
-    for cls in DATA['classes']:
-        for sub in [s for s in DATA['subclasses'] if True]:
-            pass
-    sub_of = {'channeler': ['spellweaver', 'warden'], 'vanguard': ['duelist', 'bulwark'], 'ranger': ['sharpshooter', 'pathfinder'],
-              'mystic': ['oracle', 'spiritblade'], 'assassin': ['nightstalker', 'trickster'], 'berserker': ['warlord', 'reaver'],
-              'sage': ['archmage', 'lorekeeper'], 'druid': ['grovekeeper', 'stormcaller']}
-    for cls, subs in sub_of.items():
-        for sub in subs:
-            cells.append(resolve(cls, sub))
-    cols = 8
-    rows = (len(cells) + cols - 1) // cols
-    sheet_cv = Canvas(cols * W * k + 8, (rows + 2) * H * k + 8, (44, 52, 40, 255))
+    bg = (24, 22, 44, 255)
+    cellw = gh.CELL + 4
+    names = list(DATA['classes'])
+    glows = list(GLOWS.values())
+    cells = [resolve(cls, glow=glows[i % len(glows)]) for i, cls in enumerate(names)]
+    sheet1 = Canvas(len(cells) * cellw * k + 8, H * k + 8, bg)
     for i, (look, pal) in enumerate(cells):
-        cv = scaled(compose(look, pal, 'down', 0), k)
-        sheet_cv.blit(cv, 4 + (i % cols) * W * k, 4 + (i // cols) * H * k)
-    # all facings and frames of the sage and the vanguard with a chain mail and iron helm
-    for r, (look, pal) in enumerate([resolve('channeler', 'spellweaver'), resolve('vanguard', 'bulwark', 'chain_mail', 'iron_helm', 'runner_boots', 'sword', 'iron')]):
-        for j, facing in enumerate(('down', 'up', 'side')):
-            for f in range(4):
-                cv = scaled(compose(look, pal, facing, f), k)
-                sheet_cv.blit(cv, 4 + (j * 4 + f) * W * k - (0 if j * 4 + f < cols else 0), 4 + (rows + r) * H * k)
-    path = os.path.join(os.path.dirname(__file__), 'preview_heroes.png')
-    sheet_cv.save(path)
-    print('wrote', path, sheet_cv.w, sheet_cv.h)
+        sheet1.blit(scaled(crop(compose(look, pal, 'down', 4), gh.OX - 2, cellw), k), 4 + i * cellw * k, 4)
+    sheet1.save(os.path.join(os.path.dirname(__file__), 'preview_heroes.png'))
+    look, pal = resolve('channeler', 'spellweaver', glow=GLOWS['fire'])
+    n = gh.FRAMES
+    sheet2 = Canvas(n * 34 * 2 + 8, 3 * H * 2 + 8, bg)
+    for r, facing in enumerate(('down', 'up', 'side')):
+        for f in range(n):
+            sheet2.blit(scaled(crop(compose(look, pal, facing, f), gh.OX - 5, 34), 2), 4 + f * 68, 4 + r * H * 2)
+    sheet2.save(os.path.join(os.path.dirname(__file__), 'preview_poses.png'))
+    print('wrote previews', sheet1.w, sheet1.h, sheet2.w, sheet2.h)
 
 
 if __name__ == '__main__':

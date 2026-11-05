@@ -1,6 +1,9 @@
-# Five art styles for the sprites (pick one)
+# Five art styles for the sprites
 
-Status: **proposed, not applied.** The five boards below show the same things in five looks: a hero in idle, attack, dodge, cast and stunned
+Status: **4 Noir Silhouette was picked ("colour affected by elements") and is applied**: see the section at the end. The other four boards stay
+here as the record of what was offered.
+
+Original proposal: **proposed, not applied.** The five boards below show the same things in five looks: a hero in idle, attack, dodge, cast and stunned
 frames (with a dodge trail), three enemies (slime, skeleton, bat), three pieces of gear, a bolt, an area ring, stun stars and a class-card
 mock-up. They are drawn by `tools/art/sprite_styles.py` (`python tools/art/sprite_styles.py [soft|chibi|painted|noir|retro]`), at the new,
 smaller hero size (about 15% below the current 38 px figure). The world, the UI and the runes stay Moonlit Glyphwork; only the sprites differ.
@@ -43,3 +46,35 @@ The gameplay changes asked for with these styles are in the game already: base m
 and specials (cancelled by a dodge), longer dodge and swirl-attack immunity, a roll that slips through ordinary enemies (not bosses, mini bosses or
 terrain), and heroes and enemies drawn 15% smaller. The 15% is a scale applied while drawing: until the sprites are redrawn on the smaller grid it
 shows some uneven pixels at some window sizes; the redraw in the chosen style removes that.
+
+## Applied: Noir Silhouette, with colour that follows the element
+
+![the training grounds in Noir](art/noir_in_game.png)
+
+* **Bodies are near-black.** Every palette colour of a hero, enemy or piece of gear is darkened and desaturated (`tools/art/noir.py`: half the
+  saturation, 46% of the light, a breath of night blue) and shaded in three hard tones. Outlines are nearly black, tinted by what they border.
+* **One glowing accent, the element's.** Eyes, gems, glints and a hard rim light on the lit upper-left edge take a single colour, the sprite's *glow*.
+  For the hero it is the element currently selected (or the one the blade is coated with): press 1..7 and the whole figure re-lights in fire orange,
+  water blue, air teal, mineral gold, earth green, light white or dark violet (martial: pale steel). For an enemy it is its own element: skeleton
+  violet, bone duelist magenta, grave warden ice blue, ember matron fire orange, wraith teal, shade red; the other monsters keep the colour of what
+  glows on them (eyes, crowns, slime shine) and their variant tint still shades them toward the variant's element.
+  ![the hero re-lit in water blue, mid-attack](art/noir_attack_water.png)
+* **Heroes have 21 poses** in a 40 x 38 cell (the figure is the middle 24 columns, the rest is room for swings and raised arms): 4 walk, 2 idle,
+  3 attack (wind-up, strike, follow-through), 2 dodge (crouch, tuck), 4 swirl, 3 cast (arms rising), 2 stun, 1 hurt. Arms are drawn along an angle, weapons
+  are drawn upright and turned about the hand, legs spread, the body crouches: every part of every class and piece of gear follows the pose.
+  `HeroComposer.CLIPS` names the runs; `SpriteAnim.set_clip` plays them; `Player._update_sprite` chooses: swirl, dodge, hurt, cast (a charging or just
+  cast area, buff or special), attack (a slash, a bolt or a fusion), walk, idle.
+* **Class and subclass cards are alive**: each hero breathes (the idle poses) and casts while its card is hot (hovered or selected): `HeroDoll`.
+  ![the subclass cards](art/noir_cards.png)
+* **Stunned enemies** carry three stars circling over their heads (`SkillFx.stun_id`, a picture that stands on the enemy so the stars float over it
+  in both views). Areas charge with a ring round the hero and a circle where they will land (`SkillFx.charge`), then burst in their element's rune
+  circle; bolts, rings and rune circles were already in element colours.
+* **Gear icons** are dark metal and cloth with a pale steel rim, and glowing gems in their family's colour.
+* **Rules the art gate checks**: monsters and bosses are mostly dark (at least half their pixels), hero parts keep the region/shade encoding at 21 poses,
+  no part touches its frame's edge cells, no pure black or white.
+
+### Known gaps
+* The hero is still drawn at 0.85 scale (`Player.SPRITE_SCALE`), not redrawn on a smaller grid, so some window sizes show uneven pixels.
+* Remote players in multiplayer glow in the default teal (the look sent over the network carries no glow).
+* The stun, hurt and swirl poses exist for every hero but only the swirl, hurt, dodge, cast and attack are triggered in play: the hero cannot be stunned.
+* Enemy attack animations are the walk cycle plus the red telegraph; only humanoid enemies have more than four frames in their strip (four).

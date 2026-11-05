@@ -14,6 +14,7 @@ const AURA_TIME := 4.0
 const VULN_MULT := 1.25
 const SHATTER_MULT := 1.5  # physical hit on a rooted or stunned enemy
 const ENRAGE_AT := 0.3   # a boss below this share of its health enrages
+var _stun_sprite: Sprite2D
 const CONTACT_MARGIN := 1.0  # px; bodies this close count as touching
 ## Humanoids are drawn on the hero rig, taller than the bodies they fight with: they keep the hit box they had when their picture
 ## was small (the drawing grew, the fight did not).
@@ -277,7 +278,9 @@ func _ghost_tick(delta: float) -> void:
 		if absf(look_dir.y) > absf(look_dir.x) * 0.6:
 			facing = "up" if look_dir.y < 0.0 else "down"
 		anim.set_art("%s:%s" % [get_meta("prefix"), facing])
-		anim.playing = net_moving or net_dodging
+		var run: Vector2i = HeroComposer.CLIPS["dodge" if net_dodging else ("walk" if net_moving else "idle")]
+		anim.playing = true
+		anim.set_clip(run.x, run.y, 11.0 if net_dodging else (8.0 if net_moving else 3.0), not net_dodging)
 		sprite.flip_h = facing == "side" and look_dir.x < 0.0
 	else:
 		var target := get_tree().get_first_node_in_group("player") as Node2D
@@ -333,6 +336,22 @@ func _body_size() -> Vector2:
 	if ghost:
 		return Player.HURTBOX_SIZE
 	return BODY_SIZES.get(sprite_id, sprite.texture.get_size())
+
+
+## Three stars circle above a stunned enemy (a picture that stands on this enemy's position, so they float over its head in both views).
+func _sync_stun_fx() -> void:
+	if is_stunned():
+		if _stun_sprite == null or not is_instance_valid(_stun_sprite):
+			_stun_sprite = Sprite2D.new()
+			var id := SkillFx.stun_id(int(picture_height()) + 12)
+			_stun_sprite.texture = AssetDB.get_texture(id)
+			_stun_sprite.z_index = 30
+			add_child(_stun_sprite)
+			SpriteAnim.attach(_stun_sprite, id, 8.0, _stun_sprite)
+	elif _stun_sprite != null:
+		if is_instance_valid(_stun_sprite):
+			_stun_sprite.queue_free()
+		_stun_sprite = null
 
 
 ## The tallest part of the picture, for things that float above it (health bars).
@@ -431,6 +450,7 @@ func _physics_process(delta: float) -> void:
 
 	_attack(delta, target)
 	_update_tint(delta)
+	_sync_stun_fx()
 
 
 ## Where this monster wants to go this frame, by behaviour (zero while rooted or stunned).

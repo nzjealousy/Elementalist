@@ -16,6 +16,7 @@ var _was_paused := false
 var _theme: Theme
 var _detail: Label
 var _frames: Array[CardFrame] = []
+var _dolls: Array = []   # the hero pictures, one per card (they breathe, and cast while their card is hot)
 var _infos: Array[String] = []
 var _hot := 0
 
@@ -114,6 +115,7 @@ func _build() -> void:
 	for child in get_children():
 		child.queue_free()
 	_frames.clear()
+	_dolls.clear()
 	_infos.clear()
 	_hot = 0
 	var dim := ColorRect.new()
@@ -178,6 +180,7 @@ func _card(id: String, index: int) -> Control:
 	content.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	holder.add_child(content)
 	var picture := HeroDoll.make(look, 1 if is_class else 2)
+	_dolls.append(picture)
 	picture.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
 	content.add_child(picture)
 	var info := ""
@@ -226,6 +229,8 @@ func _set_hot(index: int) -> void:
 	_hot = index
 	for i in _frames.size():
 		_frames[i].hot = i == index
+	for i in _dolls.size():
+		HeroDoll.set_hot(_dolls[i], i == index)  # the hovered hero casts, the others breathe
 	if _detail and index >= 0 and index < _infos.size():
 		_detail.text = _infos[index]
 

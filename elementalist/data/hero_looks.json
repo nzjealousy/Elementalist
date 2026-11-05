@@ -1,6 +1,6 @@
 {
-	"canvas": [24, 38],
-	"frames": 4,
+	"canvas": [40, 38],
+	"frames": 21,
 	"ramp": {
 		"highlight_color": [224, 216, 255], "highlight_mix": 0.4,
 		"light_mul": 1.1,

@@ -69,6 +69,10 @@ var _imbue_fx: CPUParticles2D
 @onready var sprite: Sprite2D = $Sprite2D
 var _anim: SpriteAnim
 var _look_prefix := ""   # AssetDB id prefix of the composed hero pictures (HeroComposer)
+var _glow := ""          # the accent colour (hex) the composed pictures were made with: the selected or imbued element
+var _attack_time := 0.0  # the attack pose plays while this runs
+var _cast_time := 0.0    # the cast pose plays while this runs
+var _hurt_pose := 0.0    # the hurt pose plays while this runs
 @onready var camera: Camera2D = $Camera2D
 var _look := Vector2.ZERO   # the camera look-ahead, smoothed
 
@@ -81,6 +85,7 @@ func _ready() -> void:
 	caster = SkillCaster.new()
 	caster.body = self
 	caster.element_changed.connect(_on_element_changed)
+	caster.cast.connect(_on_cast)
 	add_child(caster)
 	apply_stats(true)
 	stamina = max_stamina
@@ -194,6 +199,7 @@ func take_damage(amount: float, from: Vector2) -> bool:
 	amount *= float(Game.character.derived()["damage_taken_mult"]) * (1.0 - buff_power("ward"))
 	hp -= amount
 	_hurt_cd = hurt_invulnerability
+	_hurt_pose = 0.3
 	_hp_regen_delay = hp_regen_delay
 	_knock = (global_position - from).normalized() * 120.0
 	FloatText.spawn(get_parent(), global_position + Vector2(0, -4), "-%d" % int(round(amount)), Color("ff5a5a"), 10)
@@ -334,6 +340,10 @@ func try_melee(dir: Vector2 = Vector2.ZERO, spin: bool = false) -> bool:
 	if dir == Vector2.ZERO:
 		dir = aim_direction
 	spend_stamina(cost)
+	if not spin:
+		_attack_time = 0.24
+		if _anim != null:
+			_anim.restart()
 	Sfx.play("spin" if spin else "slash")
 	_melee_cd = (SPIN_COOLDOWN if spin else float(m["cooldown"])) / float(stats["attack_speed"])
 	if spin:
@@ -459,6 +469,17 @@ func spend_stamina(amount: float) -> void:
 	_stamina_delay = STAMINA_REGEN_DELAY
 
 
+## A skill left the hero's hand: a bolt or a fused cast is an attack, an area, a buff or a special is a cast.
+func _on_cast(skill_id: String) -> void:
+	var primary := skill_id.begins_with("fusion:") or (SkillDB.DEFS.has(skill_id) and SkillDB.slot_of(skill_id) == "primary")
+	if primary:
+		_attack_time = 0.24
+	else:
+		_cast_time = 0.4
+	if _anim != null:
+		_anim.restart()
+
+
 func _on_element_changed(element: String) -> void:
 	FloatText.spawn(get_parent(), global_position + Vector2(0, 2), element.capitalize(), Elements.color_of(element))
 
@@ -474,7 +495,18 @@ func _process(delta: float) -> void:
 ## The hero's pictures follow the class, subclass and gear (HeroLook/HeroComposer); a changed
 ## look is composed once and then reused.
 func _refresh_look() -> void:
-	_look_prefix = HeroComposer.register(HeroLook.for_character(Game.character))
+	_glow = _glow_hex()
+	_look_prefix = HeroComposer.register(HeroLook.with_glow(HeroLook.for_character(Game.character), Color(_glow)))
+
+
+## The accent colour of the hero: the element the blade is coated with, else the selected element, else pale steel for the martial set.
+func _glow_hex() -> String:
+	var element := ""
+	if imbued and not imbue_elements().is_empty():
+		element = imbue_elements()[0]
+	elif caster != null and not caster.elements.is_empty():
+		element = String(caster.elements[clampi(caster.selected, 0, caster.elements.size() - 1)])
+	return (Elements.color_of(element) if element != "" else Color("b8b8d8")).to_html(false)
 
 
 ## Picks the art for where the hero faces (toward the aim) and walks it while moving.
@@ -489,12 +521,43 @@ func _update_sprite() -> void:
 	if _anim == null:
 		_anim = SpriteAnim.attach(sprite, id, 8.0, self)
 	_anim.set_art(id)
-	_anim.playing = velocity.length() > 8.0 or is_dodging()
+	# which run of poses: the swirl, a dodge, a hurt flinch, a cast, an attack, a walk, or standing about
+	var clip := "idle"
+	var fps := 3.0
+	var looping := true
+	if is_spinning():
+		clip = "swirl"
+		fps = 9.0
+	elif is_dodging():
+		clip = "dodge"
+		fps = 11.0
+		looping = false
+	elif _hurt_pose > 0.0:
+		clip = "hurt"
+	elif caster != null and (caster.is_winding_up() or _cast_time > 0.0):
+		clip = "cast"
+		fps = 7.0
+		looping = false
+	elif _attack_time > 0.0:
+		clip = "attack"
+		fps = 14.0
+		looping = false
+	elif velocity.length() > 8.0:
+		clip = "walk"
+		fps = 8.0
+	var run: Vector2i = HeroComposer.CLIPS[clip]
+	_anim.playing = true
+	_anim.set_clip(run.x, run.y, fps, looping)
 	sprite.flip_h = facing == "side" and look_dir.x < 0.0
 
 
 func _physics_process(delta: float) -> void:
 	aim_direction = (Controls.aim_point(self, global_position) - global_position).normalized()
+	_attack_time = maxf(0.0, _attack_time - delta)
+	_cast_time = maxf(0.0, _cast_time - delta)
+	_hurt_pose = maxf(0.0, _hurt_pose - delta)
+	if _glow != _glow_hex():  # a new element selected, or the blade coated: the glow follows
+		_refresh_look()
 	_update_sprite()
 
 	_dodge_cd = maxf(0.0, _dodge_cd - delta)

@@ -1,5 +1,8 @@
 # Art direction: Moonlit Glyphwork
 
+> **Sprites since then:** characters, enemies and gear use the **Noir Silhouette** look with element-coloured glow (docs/SPRITE_STYLES.md). The world, UI, runes
+> and effects below stay Moonlit Glyphwork; where this page describes soft selective outlines for sprites, Noir's nearly black outline and rim light replace them.
+
 Status: **chosen and applied.** Of the three proposals (Gilded Hollow, Moonlit Glyphwork, Autumn Storybook) the project uses
 **Moonlit Glyphwork**. Every picture in the game is still drawn by the scripts in `tools/art` (standard library only), so the style
 is code: `tools/art/style.py` holds the palette ramps, the rune renderer and the outline rule; `python tools/art/build_all.py`

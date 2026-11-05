@@ -10,7 +10,9 @@ Regions: 1 skin  2 hair  3 outfit  4 trim  5 pants  6 boots  7 headgear  8 headg
          10 accent  11 metal  12 wood  13 gem  14 eyes  15 white
 Shades:  1 dark  2 mid  3 light  4 highlight (0 is the outline, which the composer adds around the whole hero)
 
-Every part is a strip of FRAMES frames (W x H each) for the three facings: down, up and side (facing right).
+Every part is a strip of FRAMES frames (W x H each) for the three facings: down, up and side (facing right). The frames are poses
+(POSES): 4 walk, 2 idle, 3 attack, 2 dodge, 4 swirl, 3 cast, 2 stun and 1 hurt. Arms are drawn along an angle, weapons are drawn upright
+and rotated about the hand, legs can spread, and the body can crouch (bob), so every part follows the pose.
 
 The figure is drawn with natural proportions, in the soft, detailed manner of cosy village RPGs: a head about a quarter of the
 height, a neck, shoulders, a waist, arms that end in hands, legs that end in shoes, hair with volume and highlight clusters,
@@ -29,8 +31,9 @@ from pixel import Canvas, sheet  # noqa: E402
 OUT = os.path.join(os.path.dirname(__file__), '..', '..', 'elementalist', 'assets', 'sprites', 'hero')
 os.makedirs(OUT, exist_ok=True)
 
-W, H = 24, 38
-FRAMES = 4
+W, H = 40, 38
+OX = 8          # the figure is drawn in 24-wide coordinates; the grid has 8 spare columns on each side for swings and raised arms
+CELL = 24      # width of the figure's own cell (portraits and enemies are cut to it)
 SKIN, HAIR, OUTFIT, TRIM, PANTS, BOOT, HAT, HATTRIM, CAPE, ACCENT, METAL, WOOD, GEM, EYE, WHITE = range(1, 16)
 LIGHT = (-0.45, -0.6, 0.66)
 _n = math.sqrt(sum(v * v for v in LIGHT))
@@ -40,9 +43,31 @@ HEAD_Y = 9      # centre row of the head when standing
 SHOULDER = 16
 HIP = 25
 FOOT = 36       # last row of the shoes
-# per frame: how far the body dips (rows) and which leg is raised
+# the walk cycle (the enemies that use the rig still walk it): how far the body dips (rows) and which leg is raised
 BOB = [0, 1, 0, 1]
 STEP = ['', 'L', '', 'R']
+
+
+def pose(bob=0, step='', af=0, ab=0, spread=0, wa=0):
+    """One frame's pose: body dip (rows), raised leg, front (right) and back (left) arm angles in degrees from hanging (positive swings
+    out and up, 90 is horizontal, 180 straight up), how far the legs spread, and the weapon's turn in degrees (clockwise, 0 is upright)."""
+    return dict(bob=bob, step=step, af=af, ab=ab, spread=spread, wa=wa)
+
+
+POSES = [
+    pose(0, ''), pose(1, 'L'), pose(0, ''), pose(1, 'R'),                                                       # 0-3 walk
+    pose(0, '', af=4, ab=4), pose(1, '', af=6, ab=6),                                                           # 4-5 idle
+    pose(1, '', af=-35, ab=15, spread=1, wa=-50), pose(1, '', af=62, ab=-20, spread=2, wa=70), pose(0, '', af=38, ab=-10, spread=1, wa=105),   # 6-8 attack
+    pose(4, '', af=-40, ab=-40, spread=2, wa=-30), pose(6, '', af=25, ab=25, spread=0, wa=-20),                   # 9-10 dodge
+    pose(2, '', af=55, ab=55, spread=2, wa=0), pose(2, '', af=55, ab=55, spread=2, wa=45),
+    pose(2, '', af=55, ab=55, spread=2, wa=0), pose(2, '', af=55, ab=55, spread=2, wa=-45),                       # 11-14 swirl
+    pose(0, '', af=70, ab=70, wa=10), pose(0, '', af=120, ab=120, wa=5), pose(0, '', af=150, ab=150, wa=0),      # 15-17 cast
+    pose(3, '', af=12, ab=-12, spread=1, wa=15), pose(2, '', af=-12, ab=12, wa=-15),                              # 18-19 stun
+    pose(2, '', af=55, ab=55, spread=1, wa=40),                                                                 # 20 hurt
+]
+FRAMES = len(POSES)
+POSE = dict(POSES[0])
+CLIPS = {'walk': (0, 4), 'idle': (4, 2), 'attack': (6, 3), 'dodge': (9, 2), 'swirl': (11, 4), 'cast': (15, 3), 'stun': (18, 2), 'hurt': (20, 1)}
 
 
 class RC:
@@ -52,15 +77,48 @@ class RC:
         self.g = [[None] * W for _ in range(H)]
 
     def px(self, x, y, rid, sh=2):
-        x, y = int(x), int(y)
+        x, y = int(x) + OX, int(y)
         if 0 <= x < W and 0 <= y < H:
             self.g[y][x] = (rid, sh)
 
     def has(self, x, y):
+        x += OX
         return 0 <= x < W and 0 <= y < H and self.g[y][x] is not None
 
     def get(self, x, y):
+        x += OX
         return self.g[y][x] if 0 <= x < W and 0 <= y < H else None
+
+    def merge(self, other):
+        for y in range(H):
+            for x in range(W):
+                if other.g[y][x] is not None:
+                    self.g[y][x] = other.g[y][x]
+
+    def rotated(self, pivot, degrees):
+        """A copy turned clockwise by `degrees` about `pivot` (figure coordinates), nearest-pixel."""
+        out = RC()
+        if abs(degrees) < 0.5:
+            out.g = [row[:] for row in self.g]
+            return out
+        a = math.radians(degrees)
+        ca, sa = math.cos(a), math.sin(a)
+        cx, cy = pivot[0] + OX, pivot[1]
+        for y in range(H):
+            for x in range(W):
+                dx, dy = x - cx, y - cy
+                sx = int(round(cx + dx * ca + dy * sa))
+                sy = int(round(cy - dx * sa + dy * ca))
+                if 0 <= sx < W and 0 <= sy < H:
+                    out.g[y][x] = self.g[sy][sx]
+        return out
+
+    def trim_edges(self):
+        """Nothing may sit on the frame's edge cells (the outline needs them): drop what swings that far."""
+        for y in range(H):
+            for x in range(W):
+                if x == 0 or y == 0 or x == W - 1 or y == H - 1:
+                    self.g[y][x] = None
 
     def rect(self, x, y, w, h, rid, shaded=True):
         x, y, w, h = int(x), int(y), int(w), int(h)
@@ -139,10 +197,11 @@ class RC:
     def erase_where(self, fn):
         for y in range(H):
             for x in range(W):
-                if self.g[y][x] is not None and fn(x, y):
+                if self.g[y][x] is not None and fn(x - OX, y):
                     self.g[y][x] = None
 
     def to_canvas(self):
+        self.trim_edges()
         cv = Canvas(W, H)
         for y in range(H):
             for x in range(W):
@@ -158,15 +217,19 @@ def save_part(name, frames_by_facing):
 
 
 def for_all(draw):
-    """draw(rc, facing, frame, bob, step) for each facing and frame -> {facing: [RC]}."""
+    """draw(rc, facing, frame, bob, step) for each facing and pose frame -> {facing: [RC]}."""
     out = {}
     for facing in ('down', 'up', 'side'):
         frames = []
-        for f in range(FRAMES):
+        for f, pose in enumerate(POSES):
+            POSE.clear()
+            POSE.update(pose)
             rc = RC()
-            draw(rc, facing, f, BOB[f], STEP[f])
+            draw(rc, facing, f, pose['bob'], pose['step'])
             frames.append(rc)
         out[facing] = frames
+    POSE.clear()
+    POSE.update(POSES[0])
     return out
 
 
@@ -182,11 +245,46 @@ def arm_boxes(facing, bob, step, width=2):
 
 
 def leg_cols(facing, step):
-    """[(x, raised)] of the two legs (3 px wide each, touching in the front and back views)."""
+    """[(x, raised)] of the two legs (3 px wide each, touching in the front and back views); the pose can spread them."""
+    sp = POSE['spread']
     if facing == 'side':
         back = -1 if step == 'L' else (1 if step == 'R' else 0)
-        return [(8 + back, step == 'L'), (12 - back, step == 'R')]
-    return [(9, step == 'L'), (12, step == 'R')]
+        return [(8 + back - sp, step == 'L'), (12 - back + sp, step == 'R')]
+    return [(9 - sp, step == 'L'), (12 + sp, step == 'R')]
+
+
+def arm_segs(facing, bob, step, width=2):
+    """The arms of the current pose as segments: [{sx, sy, ex, ey, w, front}] (figure coordinates, ey is the wrist). Walking dips the arm
+    opposite the raised leg a row and swings the side view's near arm; the pose angles do the rest."""
+    top = SHOULDER + 1 + bob
+    length = 9.0
+    if facing == 'side':
+        a = math.radians(POSE['af'] + (-18 if step == 'L' else (18 if step == 'R' else 0)))
+        return [dict(sx=11.0, sy=float(top), ex=11.0 + math.sin(a) * length, ey=top + math.cos(a) * length, w=3, front=True)]
+    segs = []
+    for side, cx, angle in (('l', 6.0, POSE['ab']), ('r', 18.0, POSE['af'])):
+        sign = -1.0 if side == 'l' else 1.0
+        sy = top + (1 if (side == 'l' and step == 'R') or (side == 'r' and step == 'L') else 0)
+        a = math.radians(angle)
+        segs.append(dict(sx=cx, sy=float(sy), ex=cx + sign * math.sin(a) * length, ey=sy + math.cos(a) * length, w=width, front=(side == 'r')))
+    return segs
+
+
+def limb(rc, seg, rid, w=None, t0=0.0, t1=1.0, mode='cyl'):
+    """A stretch (t0..t1 of its length) of an arm segment, drawn as a shaded band of width w."""
+    w = w or seg['w']
+    dx, dy = seg['ex'] - seg['sx'], seg['ey'] - seg['sy']
+    ln = math.hypot(dx, dy) or 1.0
+    nx, ny = -dy / ln * w / 2.0, dx / ln * w / 2.0
+    ax, ay = seg['sx'] + dx * t0, seg['sy'] + dy * t0
+    bx, by = seg['sx'] + dx * t1, seg['sy'] + dy * t1
+    rc.poly([(ax + nx, ay + ny), (bx + nx, by + ny), (bx - nx, by - ny), (ax - nx, ay - ny)], rid, mode)
+
+
+def hand_blob(rc, seg):
+    """The hand at the end of an arm."""
+    w = seg['w']
+    rc.ellipse(seg['ex'], seg['ey'] + 1.0, w / 2.0 + 0.5, 1.6, SKIN)
 
 
 # ------------------------------------------------------------------------------------------ the body
@@ -235,10 +333,8 @@ def base_body(rc, facing, f, bob, step):
         rc.rect(10, cy + 5, 4, 2, SKIN, shaded=False)  # neck, shaded under the chin
         for x in (10, 11, 12, 13):
             rc.px(x, cy + 5, SKIN, 1)
-    for ax, ay in arm_boxes(facing, bob, step):       # hands
-        w = 2 if facing != 'side' else 3
-        rc.rect(ax, ay + 9, w, 2, SKIN)
-        rc.px(ax + w - 1, ay + 11, SKIN, 1)
+    for seg in arm_segs(facing, bob, step):           # hands
+        hand_blob(rc, seg)
 
 
 # ------------------------------------------------------------------------------------------ boots
@@ -270,11 +366,11 @@ def torso_poly(facing, bob, flare=0):
 
 
 def sleeves(rc, facing, bob, step, rid, length=9, width=2, cuff=TRIM, cuff_h=1):
-    for ax, ay in arm_boxes(facing, bob, step, width):
+    for seg in arm_segs(facing, bob, step, width):
         w = width if facing != 'side' else 3
-        rc.poly([(ax, ay), (ax + w, ay), (ax + w, ay + length), (ax, ay + length)], rid)
+        limb(rc, seg, rid, w, 0.0, min(1.0, length / 9.0))
         if cuff:
-            rc.rect(ax, ay + length - cuff_h, w, cuff_h, cuff)
+            limb(rc, seg, cuff, w, max(0.0, (length - cuff_h) / 9.0), min(1.0, length / 9.0))
 
 
 def belt(rc, facing, bob, rid=TRIM, buckle=METAL, y=None):
@@ -372,9 +468,8 @@ def outfit(style):
         elif style == 'leather':
             rc.poly(torso_poly(facing, bob), OUTFIT)
             sleeves(rc, facing, bob, step, OUTFIT, 5, 2, cuff=None)
-            for ax, ay in arm_boxes(facing, bob, step, 2):
-                w = 2 if facing != 'side' else 3
-                rc.rect(ax, ay + 6, w, 3, TRIM)                                       # bracers
+            for seg in arm_segs(facing, bob, step, 2):
+                limb(rc, seg, TRIM, 2 if facing != 'side' else 3, 0.6, 1.0)                # bracers
             if facing == 'down':
                 rc.line(7, top, 16, top + 8, TRIM, 3)                                 # a cross strap
                 rc.line(7, top + 1, 15, top + 8, TRIM, 2)
@@ -663,13 +758,21 @@ def accent(style):
 
 # ---------------------------------------------------------------------------------------- weapons
 def hand(facing, bob):
-    y = SHOULDER + 11 + bob
-    return {'down': (18, y), 'up': (18, y), 'side': (13, y)}[facing]
+    """Where the front hand grips (figure coordinates): the end of the front arm of the current pose."""
+    seg = [g for g in arm_segs(facing, bob, '') if g['front']][0]
+    x = int(round(seg['ex'])) + (2 if facing == 'side' else 0)
+    return (x, int(round(seg['ey'])) + 1)
 
 
 def weapon(kind):
     def draw(rc, facing, f, bob, step):
+        """The weapon drawn upright in the hand, then turned about the hand by the pose's weapon angle."""
         hx, hy = hand(facing, bob)
+        raw = RC()
+        render(raw, facing, f, bob, step, hx, hy)
+        rc.merge(raw.rotated((hx + 1, hy), POSE['wa']))
+
+    def render(rc, facing, f, bob, step, hx, hy):
         if kind == 'sword':
             rc.rect(hx, hy - 1, 2, 4, WOOD)                    # grip
             rc.rect(hx - 2, hy - 3, 6, 2, METAL)               # guard

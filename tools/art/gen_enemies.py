@@ -13,7 +13,7 @@ import sys
 
 sys.path.insert(0, os.path.dirname(__file__))
 import gen_heroes as gh
-import preview_heroes as ph
+import noir
 from gen_heroes import (ACCENT, BOB, BOOT, CAPE, EYE, FOOT, GEM, HAIR, HAT, HATTRIM, HEAD_Y, HIP, METAL, OUTFIT, PANTS, RC, SHOULDER, SKIN,
                         STEP, TRIM, WHITE, WOOD, H, W)
 from pixel import Canvas, sheet
@@ -22,23 +22,31 @@ OUT = os.path.join(os.path.dirname(__file__), '..', '..', 'elementalist', 'asset
 
 
 # ------------------------------------------------------------------------------------------ enemy-only parts
+def hole(rc, x, y, w=1, h=1):
+    """A dark gap (an eye socket, a rib gap): the near-black shade-0 pixel; the EYE region itself glows in the Noir style."""
+    for yy in range(h):
+        for xx in range(w):
+            rc.px(x + xx, y + yy, SKIN, 0)
+
+
 def skull(rc, f, bob, step):
     cy = HEAD_Y + bob
     rc.ellipse(11.5, cy - 0.3, 5.0, 5.0, SKIN)                          # cranium
     rc.poly([(8, cy + 3), (15, cy + 3), (14, cy + 6), (9, cy + 6)], SKIN)  # jaw
     for ex in (8, 14):                                                   # eye sockets with a faint glow
-        rc.rect(ex, cy - 1, 2, 3, EYE, shaded=False)
+        hole(rc, ex, cy - 1, 2, 3)
         rc.px(ex + (1 if ex == 8 else 0), cy, GEM, 4)
-    rc.px(11, cy + 2, EYE, 2)                                            # nose hole
-    rc.px(12, cy + 2, EYE, 2)
+    hole(rc, 11, cy + 2, 2, 1)                                           # nose hole
     for x in range(9, 15):                                               # teeth
-        rc.px(x, cy + 4, WHITE if x % 2 else EYE, 3 if x % 2 else 2)
+        if x % 2:
+            rc.px(x, cy + 4, WHITE, 3)
+        else:
+            hole(rc, x, cy + 4)
     rc.px(8, cy + 1, SKIN, 4)                                            # a cheekbone in the light
     rc.px(9, cy - 4, SKIN, 4)
     rc.px(10, cy - 4, SKIN, 4)
     rc.px(13, cy + 2, SKIN, 1)
-    rc.px(11, cy + 6, EYE, 2)                                            # the neck bones
-    rc.px(12, cy + 6, EYE, 2)
+    hole(rc, 11, cy + 6, 2, 1)                                           # the neck bones
 
 
 def bones(rc, f, bob, step, rags=True):
@@ -59,7 +67,7 @@ def bones(rc, f, bob, step, rags=True):
         rc.rect(13, y, 3 - (i == 3), 1, SKIN, shaded=False)
         rc.px(16 - (i == 3), y - 0, SKIN, 1)
     rc.poly([(8, HIP - 1 + bob), (16, HIP - 1 + bob), (15, HIP + 2 + bob), (9, HIP + 2 + bob)], SKIN)   # pelvis
-    rc.rect(11, HIP + bob, 2, 1, EYE, shaded=False)
+    hole(rc, 11, HIP + bob, 2, 1)
     # arms: upper bone, elbow knob, forearm, hand
     for ax, ay in gh.arm_boxes('down', bob, step, 2):
         rc.rect(ax, ay, 2, 5, SKIN)
@@ -122,7 +130,10 @@ def hooded_cloak(float_range, tendrils=False):
         cy = HEAD_Y + bob
         sway = (0, 1, 0, -1)[f]
         rc.ellipse(11.5, cy - 0.2, 6.4, 6.3, HAT)                                           # the hood
-        rc.ellipse(11.5, cy + 1.2, 4.0, 4.4, EYE)                                            # the dark face
+        for yy in range(cy - 4, cy + 7):                                                      # the dark face
+            for xx in range(6, 18):
+                if ((xx + 0.5 - 11.5) / 4.0) ** 2 + ((yy + 0.5 - (cy + 1.2)) / 4.4) ** 2 <= 1.0:
+                    rc.px(xx, yy, HAT, 0)
         for ex in (9, 13):
             rc.rect(ex, cy + 1, 2, 2, GEM, shaded=False)
             rc.px(ex, cy + 1, WHITE, 4)
@@ -156,7 +167,8 @@ def hero(builder, *args):
 
 
 def composed(layers, palette, bobs=None):
-    """The four walking frames of an enemy: layers are drawn in order, then coloured, rimmed and outlined as the hero composer does."""
+    """The four walking frames of an enemy: layers are drawn in order, then coloured in the Noir way (near-black body, one glowing accent,
+    a hard rim on the lit edge, a nearly black outline) and cut to the figure's own 24-column cell."""
     frames = []
     for f in range(4):
         bob = (bobs or BOB)[f]
@@ -173,54 +185,56 @@ def composed(layers, palette, bobs=None):
             for x in range(W):
                 cell = grid[y][x]
                 if cell is not None:
-                    c = ph.color_of(cell[0], cell[1], palette)
-                    out.set(x, y, (248, 244, 255, 255) if c[:3] == (255, 255, 255) else c)   # never pure white (the art gate)
-        for y in range(H):                                                  # the moonlit rim on the lit edge
+                    out.set(x, y, noir.colour(cell[0], cell[1], palette))
+        for y in range(H):                                                  # the hard rim light on the lit edge
             for x in range(W):
                 cell = grid[y][x]
                 if cell is None or cell[0] == 14 or cell[1] < 2:
                     continue
                 if x == 0 or grid[y][x - 1] is None or y == 0 or grid[y - 1][x] is None:
-                    c = out.get(x, y)
-                    out.set(x, y, tuple(int(c[i] + (ph.RIM[i] - c[i]) * 0.3) for i in range(3)) + (255,))
-        for y in range(H):                                                  # the selective outline
+                    out.set(x, y, noir.rim(out.get(x, y), palette['glow']))
+        for y in range(H):                                                  # the outline
             for x in range(W):
                 if grid[y][x] is not None:
                     continue
                 for dx, dy in ((1, 0), (-1, 0), (0, 1), (0, -1)):
                     nx, ny = x + dx, y + dy
                     if 0 <= nx < W and 0 <= ny < H and grid[ny][nx] is not None:
-                        out.set(x, y, ph.color_of(grid[ny][nx][0], 0, palette))
+                        out.set(x, y, noir.colour(grid[ny][nx][0], 0, palette))
                         break
-        frames.append(out)
+        cell = Canvas(gh.CELL, H)
+        for y in range(H):
+            for x in range(gh.CELL):
+                cell.px[y * gh.CELL + x] = out.get(gh.OX + x, y)
+        frames.append(cell)
     return frames
 
 
 def base_palette(**kw):
     pal = {'skin': 'd8d0c0', 'hair': '3a3a4a', 'outfit': '5c5890', 'trim': 'a098f0', 'pants': '3c3868', 'boots': '30203a', 'head': '5c5890',
-           'headtrim': 'a098f0', 'cape': '3c3868', 'accent': 'a098f0', 'metal': 'a098c8', 'wood': '785070', 'gem': '9cf0d8'}
+           'headtrim': 'a098f0', 'cape': '3c3868', 'accent': 'a098f0', 'metal': 'a098c8', 'wood': '785070', 'gem': '9cf0d8', 'glow': '9cf0d8'}
     pal.update(kw)
     return pal
 
 
 ENEMIES = {
     'enemy_skeleton': ([skull, bones, hero(gh.weapon, 'bow')],
-                       base_palette(skin='d8d0c0', outfit='6a5878', gem='9cf0d8', wood='785070', trim='c8b098')),
+                       base_palette(skin='d8d0c0', outfit='6a5878', glow='b868ff', wood='785070', trim='c8b098')),
     'enemy_duelist': ([hero(gh.back, 'cape'), skull, bones, hero(gh.headgear, 'feather'), rapier],
-                      base_palette(skin='e0d8c8', outfit='7a1f4a', cape='b02a4a', head='3a3068', headtrim='e0403a', gem='ff8040', metal='d8d0ff', trim='f8d060')),
+                      base_palette(skin='e0d8c8', outfit='7a1f4a', cape='b02a4a', head='3a3068', headtrim='e0403a', glow='ff4a8a', metal='d8d0ff', trim='f8d060')),
     'mini_warden': ([BODY,
                      hero(gh.boots, 'boots'), hero(gh.outfit, 'mail'), hero(gh.accent, 'pauldrons'), hero(gh.headgear, 'helm'),
                      hero(gh.weapon, 'sword'), shield],
                     base_palette(skin='7aa898', outfit='4a6a78', trim='9cb0c8', accent='6a8aa0', head='5c7890', headtrim='9cb0c8', boots='24304a',
-                                 pants='34485a', metal='c8d0e8', gem='9cf0d8', wood='503450')),
+                                 pants='34485a', metal='c8d0e8', glow='5cc8ff', wood='503450')),
     'mini_matron': ([BODY,
                      hero(gh.boots, 'shoes'), hero(gh.outfit, 'robe'), hero(gh.hair, 'long'), hero(gh.accent, 'collar'), flame_crown, fire_orbs],
                     base_palette(skin='e8b098', hair='ff8040', outfit='c8402a', trim='f8d060', accent='f8d060', cape='7a1f4a', boots='501a30',
-                                 pants='7a1f4a', gem='ffd8a0')),
+                                 pants='7a1f4a', glow='ff8040')),
     'enemy_wraith': ([hooded_cloak(1)],
-                     base_palette(skin='b8b0e0', outfit='6858b0', head='8878c8', headtrim='d8d0ff', gem='9cf0d8')),
+                     base_palette(skin='b8b0e0', outfit='6858b0', head='8878c8', headtrim='d8d0ff', glow='9cf0d8')),
     'enemy_shade': ([hooded_cloak(1, tendrils=True)],
-                    base_palette(skin='584878', outfit='241c44', head='30284c', headtrim='5c5890', gem='ff4a60')),
+                    base_palette(skin='584878', outfit='241c44', head='30284c', headtrim='5c5890', glow='ff4a60')),
 }
 
 

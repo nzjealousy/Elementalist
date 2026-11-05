@@ -13,6 +13,7 @@ import os
 import sys
 
 sys.path.insert(0, os.path.dirname(__file__))
+import noir  # noqa: E402
 import pixel  # noqa: E402
 import style  # noqa: E402
 from pixel import Canvas  # noqa: E402
@@ -194,6 +195,56 @@ def pillow(cv, strength=1.0, radius=4):
             elif lam < 0.34:
                 t = min(1.0, (0.34 - lam) * 2.2) * 0.32 * strength
                 out.px[y * w + x] = (int(c[0] * (1 - t) + 24 * t), int(c[1] * (1 - t) + 16 * t), int(c[2] * (1 - t) + 70 * t), c[3])
+    return out
+
+
+def noirize(cv, glow=None):
+    """The Noir Silhouette look for a finished (outlined) monster: its body colours go dark and desaturated, what is bright and saturated
+    (eyes, gems, fire, slime shine) stays and becomes its glow, the lit upper-left edge takes that glow as a hard rim, and the
+    outline is nearly black. `glow` (r, g, b) overrides the glow found in the picture."""
+    w, h = cv.w, cv.h
+    bright = []
+    opaque = 0
+    for c in cv.px:
+        if c[3] == 255:
+            opaque += 1
+            hi, lo = max(c[:3]), min(c[:3])
+            if hi > 170 and hi - lo > 70:
+                bright.append(c[:3])
+    floor = 0.0      # a body that is bright all over (a green slime) is mostly dark in Noir: only its brightest shine glows
+    if len(bright) > 0.2 * opaque:
+        lumas = sorted(0.3 * c[0] + 0.59 * c[1] + 0.11 * c[2] for c in bright)
+        floor = lumas[int(0.88 * len(lumas))]
+
+    def glows(c):
+        hi, lo = max(c[:3]), min(c[:3])
+        return c[3] == 255 and hi > 170 and hi - lo > 70 and 0.3 * c[0] + 0.59 * c[1] + 0.11 * c[2] >= floor
+    if glow is None:
+        if bright:
+            glow = tuple(int(sum(v[i] for v in bright) / len(bright)) for i in range(3))
+        else:    # no glowing part: the most saturated mid-tone stands in
+            mids = sorted((c for c in cv.px if c[3] == 255), key=lambda c: -(max(c[:3]) - min(c[:3])))
+            glow = tuple(min(255, int(v * 1.5)) for v in (mids[0][:3] if mids else (156, 240, 216)))
+    out = Canvas(w, h)
+    for i, c in enumerate(cv.px):
+        if c[3] == 0:
+            continue
+        if glows(c):
+            out.px[i] = c[:3] + (255,)                          # a glowing part keeps its colour
+        else:
+            out.px[i] = noir.base(c[:3]) + (c[3],)
+    for y in range(h):                                            # the hard rim on the lit upper-left edge; a nearly black outline
+        for x in range(w):
+            c = out.get(x, y)
+            if c[3] != 255:
+                continue
+            src = cv.get(x, y)
+            edge = cv.get(x - 1, y)[3] == 0 or cv.get(x, y - 1)[3] == 0
+            outline = any(cv.get(x + dx, y + dy)[3] == 0 for dx, dy in ((1, 0), (-1, 0), (0, 1), (0, -1)))
+            if outline and sum(src[:3]) < 260:                    # the old soft outline pixel: now nearly black
+                out.set(x, y, tuple(int(v * 0.3 + t) for v, t in zip(c[:3], (6, 5, 16))) + (255,))
+            elif edge and sum(c[:3]) > 90:
+                out.set(x, y, noir.rim(c, '%02x%02x%02x' % glow))
     return out
 
 

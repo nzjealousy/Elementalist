@@ -420,7 +420,7 @@ func _update_sprite(src: Sprite2D, mirror: Sprite2D) -> void:
 	else:
 		mirror.rotation = 0.0
 	if shadow:
-		var span := clampf(float(texture.get_width()) * size_scale.x * 0.9, 6.0, 40.0)
+		var span := clampf(float(mini(texture.get_width(), HeroComposer.CELL_WIDTH)) * size_scale.x * 0.9, 6.0, 40.0)   # a hero picture has room for swings: its shadow is the figure's
 		shadow.scale = Vector2(span / 16.0, span / 16.0 * 0.5)
 		shadow.position = ground.round()
 		shadow.modulate.a = 0.4 * colour.a

@@ -57,11 +57,14 @@ const PLACEHOLDERS := {
 }
 
 var _cache: Dictionary = {}
+var _lazy: Dictionary = {}   # id -> Callable that makes the frames the first time they are asked for (the composed heroes)
 
 
 func get_texture(id: String) -> Texture2D:
 	if _cache.has(id):
 		return _cache[id]
+	if _lazy.has(id):
+		return get_frames(id)[0]
 	var path := SPRITE_DIR + id + ".png"
 	var tex: Texture2D
 	if ResourceLoader.exists(path):
@@ -74,7 +77,7 @@ func get_texture(id: String) -> Texture2D:
 
 ## True when real art (not the placeholder box) exists for `id`.
 func has_art(id: String) -> bool:
-	return _cache.has("frames:" + id) or ResourceLoader.exists(SPRITE_DIR + id + ".png")
+	return _cache.has("frames:" + id) or _lazy.has(id) or ResourceLoader.exists(SPRITE_DIR + id + ".png")
 
 
 ## Art made while playing (the composed heroes, see HeroComposer): its frames are looked up by `id`
@@ -84,12 +87,22 @@ func register_frames(id: String, frames: Array) -> void:
 	_cache[id] = frames[0]
 
 
+## Art that is made the first time it is used: `provider` returns the frames (see HeroComposer.register).
+func register_lazy(id: String, provider: Callable) -> void:
+	_lazy[id] = provider
+
+
 ## The animation frames of `id`: its <id>_strip.png cut into frames as wide as the idle picture.
 ## Without a strip it is just the one picture. Cached.
 func get_frames(id: String) -> Array:
 	var key := "frames:" + id
 	if _cache.has(key):
 		return _cache[key]
+	if _lazy.has(id):
+		var made: Array = _lazy[id].call()
+		_lazy.erase(id)
+		register_frames(id, made)
+		return made
 	var idle := get_texture(id)
 	var out: Array = [idle]
 	var path := SPRITE_DIR + id + "_strip.png"

@@ -15,6 +15,8 @@ var playing := true
 var loop := true
 var free_when_done := false
 var art_id := ""
+var clip_start := 0   # the run of frames being played: first frame...
+var clip_count := 0   # ...and how many (0: the whole strip)
 
 var _time := 0.0
 
@@ -35,28 +37,49 @@ func set_art(id: String) -> void:
 	art_id = id
 	frames = AssetDB.get_frames(id)
 	_time = 0.0
-	_show(0)
+	_show(clip_start)
+
+
+## Plays a run of frames of the strip (HeroComposer.CLIPS): from `start`, `count` frames, at `frames_per_second` (unchanged if negative),
+## looping or holding the last frame. Does nothing if it is already playing exactly that.
+func set_clip(start: int, count: int, frames_per_second: float = -1.0, looping: bool = true) -> void:
+	if start == clip_start and count == clip_count and looping == loop and (frames_per_second < 0.0 or is_equal_approx(frames_per_second, fps)):
+		return
+	clip_start = start
+	clip_count = count
+	loop = looping
+	if frames_per_second > 0.0:
+		fps = frames_per_second
+	_time = 0.0
+	_show(clip_start)
+
+
+## Starts the current clip again from its first frame.
+func restart() -> void:
+	_time = 0.0
+	_show(clip_start)
 
 
 func _process(delta: float) -> void:
 	if frames.size() < 2 or not is_instance_valid(sprite):
 		return
+	var count := clip_count if clip_count > 0 else frames.size()
 	if not playing:
 		_time = 0.0
-		_show(0)
+		_show(clip_start)
 		return
 	_time += delta * fps
 	var index := int(_time)
 	if loop:
-		_show(index % frames.size())
-	elif index >= frames.size():
+		_show(clip_start + index % count)
+	elif index >= count:
 		if free_when_done:
 			sprite.queue_free()
 			queue_free()
 		else:
-			_show(frames.size() - 1)
+			_show(clip_start + count - 1)
 	else:
-		_show(index)
+		_show(clip_start + index)
 
 
 func _show(index: int) -> void:

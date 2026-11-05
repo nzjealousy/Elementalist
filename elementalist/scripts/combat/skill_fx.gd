@@ -214,6 +214,30 @@ static func aura(target: Node2D, color: Color, element: String = "") -> CPUParti
 	return node
 
 
+## Four frames of three stars circling at the top of a picture `height` px tall (it stands on its position in the isometric view, so the
+## stars float above whatever it is put on). Cached by height, registered in AssetDB as "stun:<height>".
+static func stun_id(height: int) -> String:
+	var id := "stun:%d" % height
+	if AssetDB.has_art(id):
+		return id
+	var frames: Array = []
+	for frame in 4:
+		var image := Image.create(26, height, false, Image.FORMAT_RGBA8)
+		for i in 3:
+			var a := (float(i) / 3.0 + float(frame) / 12.0) * TAU
+			var x := int(13.0 + cos(a) * 8.0)
+			var y := int(4.0 + sin(a) * 2.5)
+			var near := sin(a) > 0.0   # stars in front are bright, stars behind dim
+			var colour := Color("f8e08a") if near else Color("a08850")
+			for d in [Vector2i(0, 0), Vector2i(1, 0), Vector2i(-1, 0), Vector2i(0, 1), Vector2i(0, -1)]:
+				var px: Vector2i = Vector2i(x, y) + d
+				if px.x >= 0 and px.y >= 0 and px.x < 26 and px.y < height:
+					image.set_pixelv(px, colour)
+		frames.append(ImageTexture.create_from_image(image))
+	AssetDB.register_frames(id, frames)
+	return id
+
+
 ## The charge of a skill that has a wind-up: a ring that closes round the hero, and for an area skill a growing circle where it will land.
 static func charge(body: Node2D, element: String, area_radius: float, caster: Node, id: String) -> Node2D:
 	var node := FxCharge.new()

@@ -87,7 +87,9 @@ func _physics_process(delta: float) -> void:
 	if absf(look_dir.y) > absf(look_dir.x) * 0.6:
 		facing = "up" if look_dir.y < 0.0 else "down"
 	_anim.set_art("%s:%s" % [_prefix, facing])
-	_anim.playing = moving or dodging
+	var run: Vector2i = HeroComposer.CLIPS["dodge" if dodging else ("walk" if moving else "idle")]
+	_anim.playing = true
+	_anim.set_clip(run.x, run.y, 11.0 if dodging else (8.0 if moving else 3.0), not dodging)
 	sprite.flip_h = facing == "side" and look_dir.x < 0.0
 	sprite.modulate = Color(1, 1, 1, 0.45) if (dodging or is_down()) else Color.WHITE
 	_label.visible = not is_down()

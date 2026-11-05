@@ -460,6 +460,19 @@ Sovereign.
 dummies, the `AltarScreen` (compares every element's mana, speed, area and damage) and a `TutorialGuide` checklist that ticks off controls as
 they are used.
 
+## Sprites after Noir Silhouette (docs/SPRITE_STYLES.md)
+
+* **Poses.** A hero part strip holds 21 poses in a 40 x 38 cell (`gen_heroes.POSES`, `HeroComposer.FRAME_COUNT`, `HeroComposer.CLIPS`). The figure is the
+  middle 24 columns (`HeroComposer.portrait_size()`); portraits and the doll cards show only that.
+* **Colour.** `HeroComposer._color_of` is the Noir colouring (twin of `tools/art/noir.py`); the look's `palette["glow"]` is the accent. `Player._refresh_look`
+  sets it from the selected or imbued element (`_glow_hex`, checked every physics frame), so a new element is a new composed look (cached per glow).
+* **Lazy frames.** `HeroComposer.register(look)` registers each facing with `AssetDB.register_lazy`; the 21 poses are composed the first time a facing is
+  used (`compose_facing`), not up front.
+* **Clips.** `SpriteAnim.set_clip(start, count, fps, looping)` plays a run of a strip; `Player._update_sprite` picks the clip from the state (swirl, dodge,
+  hurt, cast, attack, walk, idle); remote avatars and arena ghosts play walk, idle and dodge.
+* **Enemies.** Humanoid enemies come from `gen_enemies.py` on the same rig with a per-enemy glow; the other monsters pass through `restyle.noirize`.
+  `Enemy._sync_stun_fx` shows the stun stars; hit boxes are unchanged (`Enemy.BODY_SIZES`).
+
 ## Combat feel (after Phase 6)
 
 * **Melee reach** is `SkillDB.MELEE["range"]` = 28.6 (it was 26: +10% for everyone, before class and passive multipliers).
