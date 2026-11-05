@@ -4,12 +4,14 @@ extends StaticBody2D
 ## doorway. Walking into the open doorway sends the player on (see Dungeon).
 
 const TILE := 16
+const BUMP_REACH := 9.0  # px around the doorway that count as walking into it (the hero's body is about this wide)
 
 var open := false
 var side := "north"
 var size_px := Vector2(32, 16)
 var _sprites: Array[Sprite2D] = []
 var _shape: CollisionShape2D
+var _bumped := false   # the player is pressed against the barred door (door_locked plays once per bump)
 
 
 ## `rect` is the doorway in world pixels.
@@ -35,6 +37,17 @@ func _ready() -> void:
 		sprite.z_index = -9
 		add_child(sprite)
 		_sprites.append(sprite)
+
+
+## Walking into the barred door: one locked rattle per attempt (it plays again only after stepping away).
+func _physics_process(_delta: float) -> void:
+	if open:
+		return
+	var player := get_tree().get_first_node_in_group("player") as Node2D
+	var touching := player != null and Rect2(global_position - size_px * 0.5, size_px).grow(BUMP_REACH).has_point(player.global_position)
+	if touching and not _bumped:
+		Sfx.play("door_locked", &"SFX", -6.0)
+	_bumped = touching
 
 
 ## The room is cleared: the bars drop and the way is open.

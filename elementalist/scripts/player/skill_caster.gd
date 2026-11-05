@@ -209,21 +209,30 @@ func _process(delta: float) -> void:
 		var key_action := "element_%d" % (i + 1)
 		if InputMap.has_action(key_action) and Input.is_action_just_pressed(key_action):
 			select(i)
+			Sfx.play("ui_tick", &"UI", -8.0)
 	# LMB fuses locked elements (or throws knives); a slash-mode LMB is the Player's melee.
 	if Input.is_action_pressed("skill_primary") and primary_id() != "":
 		try_cast(primary_id())
+	if Input.is_action_just_pressed("skill_primary") and primary_id() != "" and not can_afford(primary_id()):
+		_refused(primary_id())
 	# RMB shoots the selected element while a ranged class is imbued (the Player slashes
 	# otherwise, and spins instead whenever you are dodging).
 	if Input.is_action_pressed("attack_basic") and rmb_mode() == "bolt" and not body.is_dodging():
 		try_cast(bolt_id())
+	if Input.is_action_just_pressed("attack_basic") and rmb_mode() == "bolt" and not can_afford(bolt_id()):
+		_refused(bolt_id())
 	if Input.is_action_just_pressed("skill_lock"):
 		toggle_lock()
-	if Input.is_action_just_pressed("skill_area"):
-		try_cast(skill_for("area"))
-	if Input.is_action_just_pressed("skill_support"):
-		try_cast(skill_for("support"))
-	if Input.is_action_just_pressed("skill_special"):
-		try_cast(skill_for("special"))
+	for slot in ["area", "support", "special"]:
+		if Input.is_action_just_pressed("skill_" + slot) and not try_cast(skill_for(slot)):
+			_refused(skill_for(slot))
+
+
+## A press that cast nothing (on cooldown, too little mana or stamina, not learned yet): a quiet buzz. Holding
+## LMB/RMB only buzzes on the first press and only when it cannot be paid; Sfx rate-limits "error" anyway.
+func _refused(id: String) -> void:
+	if id != "" and not is_winding_up():
+		Sfx.play("error", &"UI", -6.0)
 
 
 ## Total mana (x) and stamina (y) an action costs; a fusion costs the sum of its parts.
@@ -446,8 +455,8 @@ func _spawn(id: String, def: Dictionary) -> void:
 	Sfx.play("cast_" + (String(def["element"]) if String(def["element"]) != "" else "martial"), &"SFX", -2.0)
 	match def["kind"]:
 		"buff":
-			Sfx.play("buff")
 			var buff: Dictionary = def["buff"]
+			Sfx.play("heal" if String(buff["kind"]) == "mend" else "buff")
 			body.add_buff(String(buff["kind"]), float(buff["time"]), float(buff["power"]), String(def["element"]))
 		"projectile":
 			var speed := float(def["speed"]) * character.skill_scale(id, "speed") * float(stats["projectile_speed_mult"])

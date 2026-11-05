@@ -81,6 +81,7 @@ func _build_backdrop() -> void:
 func _unhandled_input(event: InputEvent) -> void:
 	if _back.is_valid() and (event.is_action_pressed("ui_cancel") or event.is_action_pressed("pause")) and not _settings.is_open() and not _board.is_open() and not _multiplayer.is_open():
 		get_viewport().set_input_as_handled()
+		Sfx.ui("ui_back")
 		_back.call()
 
 

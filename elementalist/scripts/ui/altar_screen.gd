@@ -59,6 +59,7 @@ func close() -> void:
 func _input(event: InputEvent) -> void:
 	if _open and (event.is_action_pressed("pause") or event.is_action_pressed("ui_cancel")):
 		get_viewport().set_input_as_handled()
+		Sfx.ui("ui_back")
 		close()
 
 
@@ -198,6 +199,7 @@ func _refill() -> void:
 	var player := get_tree().get_first_node_in_group("player")
 	if player == null:
 		return
+	Sfx.play("heal", &"UI", -4.0)
 	player.hp = player.max_hp
 	player.stamina = player.max_stamina
 	if player.caster:

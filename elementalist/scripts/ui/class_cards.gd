@@ -85,6 +85,7 @@ func _input(event: InputEvent) -> void:
 	if not _open:
 		return
 	if event.is_action_pressed("pause") or event.is_action_pressed("ui_cancel"):
+		Sfx.ui("ui_back")
 		close()  # decide later
 		get_viewport().set_input_as_handled()
 	elif event.is_action_pressed("ui_left") or event.is_action_pressed("ui_right"):

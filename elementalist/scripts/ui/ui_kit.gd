@@ -31,14 +31,18 @@ static func column(parent: Node, theme: Theme, min_width: float = 150.0, separat
 	return box
 
 
-## A themed button. `action` runs on press; hovering plays a tick, pressing a click.
+## Labels that step back out of a screen: they play ui_back instead of ui_click (each screen's Esc / pad B handler plays it too).
+const BACK_LABELS := ["Back", "Close", "Cancel", "Resume", "Leave"]
+
+
+## A themed button. `action` runs on press; hovering plays a tick, pressing a click (a back-out label: ui_back).
 static func button(text: String, action: Callable, min_width: float = 0.0) -> Button:
 	var b := Button.new()
 	b.text = text
 	b.focus_mode = Control.FOCUS_ALL
 	b.custom_minimum_size = Vector2(min_width, 0)
 	b.pressed.connect(func():
-		Sfx.ui("ui_click")
+		Sfx.ui("ui_back" if b.text in BACK_LABELS else "ui_click")
 		action.call())
 	b.mouse_entered.connect(func(): Sfx.ui("ui_tick"))
 	b.focus_entered.connect(func(): Sfx.ui("ui_tick"))

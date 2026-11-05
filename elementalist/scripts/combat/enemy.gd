@@ -15,6 +15,8 @@ const VULN_MULT := 1.25
 const SHATTER_MULT := 1.5  # physical hit on a rooted or stunned enemy
 const ENRAGE_AT := 0.3   # a boss below this share of its health enrages
 const SLAM_STUN := 0.5   # a slam that lands stuns the hero this long (it is telegraphed, so it can be dodged)
+const GRUNT_GAP_MS := 450  # the "enemy_hurt" grunt plays at most this often per monster
+var _grunt_at := 0
 var _stun_sprite: Sprite2D
 const CONTACT_MARGIN := 1.0  # px; bodies this close count as touching
 ## Humanoids are drawn on the hero rig, taller than the bodies they fight with: they keep the hit box they had when their picture
@@ -264,7 +266,8 @@ func take_hit(hit: Dictionary) -> void:
 
 	if juicy:
 		HitFx.burst(get_parent(), global_position, text_color)
-		Sfx.play_at("hit", global_position, 240.0, -2.0)
+		if not hit.get("burst", false):
+			Sfx.play_at("hit", global_position, 240.0, -2.0)
 		if not combo.is_empty():
 			Sfx.play_at("combo", global_position, 260.0, -3.0)
 		if not combo.is_empty():
@@ -277,6 +280,11 @@ func take_hit(hit: Dictionary) -> void:
 			Juice.shake(0.5, 0.08)
 
 	_damage(dmg, text_color, crit)
+	# Sound split: "hit" is the contact (every melee/bolt hit, above); "enemy_hurt" is the monster's own grunt,
+	# quieter, only on a non-lethal juicy hit with no combo chime, and at most once per GRUNT_GAP_MS per monster.
+	if juicy and hp > 0.0 and combo.is_empty() and Time.get_ticks_msec() >= _grunt_at:
+		_grunt_at = Time.get_ticks_msec() + GRUNT_GAP_MS
+		Sfx.play_at("enemy_hurt", global_position, 240.0, -9.0)
 	if label != "" and hp > 0.0:
 		FloatText.spawn(get_parent(), global_position + Vector2(0, -8) + _text_offset, label + "!", text_color)
 
@@ -439,7 +447,7 @@ func _damage(amount: float, color: Color, crit: bool = false) -> void:
 	if hp <= 0.0:
 		SkillFx.death(get_parent(), self)  # a fading picture and specks; this node still goes this frame
 		Juice.hit_stop(0.05)
-		Sfx.play_at("enemy_die", global_position, 260.0)
+		Sfx.play_at("explode" if boss else "enemy_die", global_position, 400.0 if boss else 260.0)  # a boss goes out with a bang
 		Game.on_enemy_killed(self)
 		died.emit(self)
 		queue_free()

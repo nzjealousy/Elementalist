@@ -394,7 +394,29 @@ Put it in a loadout's `support` slot.
   (docs/ART_DIRECTION.md): `style.py` owns the ramps, `restyle.py` snaps older sprites onto them, `check_art.py` is the gate, `build_all.py` runs
   everything. Element runes live in `assets/ui/rune_<element>_<s|m|l>.png` (`UiTheme.rune`), area-skill rune circles are `fx_rune_<element>`.
 - **Audio pipeline:** `tools/audio/gen_audio.py` writes `assets/audio/sfx/<name>[_2..5].wav` (variations are picked
-  at random) and `music/<track>.wav` (looped). `Sfx.music()` is called by `Dungeon._play_music`.
+  at random) and `music/<track>.wav` (looped). New sounds and tracks are appended after the old ones (each has its own seed), so a
+  re-run leaves every existing file byte-identical. `Sfx.music()` is called by `Dungeon._play_music`: one track per theme (camp, vault,
+  crypt, hollow, ember, spire), `boss` in a guardian's room until it is cleared, `menu` on the title screen; tracks stay under 800 KB.
+  Who plays what (sounds go through the SFX or UI bus, never a per-clip setting):
+
+  | Event | Sound | Where |
+  |---|---|---|
+  | Button press / hover or focus | `ui_click` / `ui_tick` | `UiKit.button` (the sheet's and forge's `_button` use it) |
+  | Back, Close, Cancel, Resume, Leave; Esc / pad B closing a screen | `ui_back` | `UiKit.BACK_LABELS`; each screen's cancel handler |
+  | Element key 1-7 | `ui_tick` (-8 dB) | `SkillCaster._process` |
+  | Denied action: forge fails, equip refused, cast on cooldown or unaffordable | `error` (UI, at most one per 0.3 s) | `ForgeScreen`, `CharacterSheet._equip`, `SkillCaster._refused`; limit in `Sfx.play` |
+  | Equip / unequip | `equip` | `CharacterSheet._equip`, `_unequip` |
+  | Deliberate save: back to camp, new hero, save and quit | `save` (-6 dB) | `Game.return_to_camp`, `NewCharacterMenu._begin`, `PauseMenu._save_and_leave` (room autosaves are silent) |
+  | Camp gate, next floor | `portal` | `Game.begin_run`, `Dungeon._advance` |
+  | Rest (camp, forge room, when hurt), altar Refill, a mend buff | `heal` | `Dungeon._heal_player`, `AltarScreen._refill`, `SkillCaster._spawn` |
+  | Run won / lost | `run_win` / `run_lose` (music fades out, ducked) | `RunEndScreen.show_result` |
+  | Walking into a barred door / door opens | `door_locked` (once per bump) / `door_open` | `Door` |
+  | Hit contact / monster grunt | `hit` / `enemy_hurt` (-9 dB, non-lethal, no combo, at most every 0.45 s per monster) | `Enemy.take_hit` |
+  | Area skill lands; a boss dies | `explode` (its own hits skip `hit`) | `AoeEffect._ready`; `Enemy._damage` (`enemy_die` for the rest) |
+  | Casts, buffs, melee, dodge, hurt, death | `cast_<element>` / `cast_martial`, `buff`, `slash` / `spin`, `dodge`, `player_hurt`, `player_die` | `SkillCaster`, `Player` |
+  | Combo, telegraph, slam, enrage, boss roar, level-up, reward, pickups, chest, forge | same-named files | `Enemy`, `Dungeon`, `Pickup`, `Chest`, `ForgeScreen` |
+
+  `_test_audio_coverage` scans the scripts for these names: a call to a missing file, a file nobody plays, or a theme without a track fails it.
 
 ## Testing
 

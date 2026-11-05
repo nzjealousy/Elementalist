@@ -169,6 +169,7 @@ func begin_run(tier: int) -> void:
 		keep_saved_run = false  # a solo run from the gate is the hero's own; a hosted co-op run is not
 	mode = "dungeon"
 	save_game()
+	Sfx.play("portal")  # through the camp gate (Sfx is an autoload, so it plays on across the reload)
 	_load_game_scene()
 
 
@@ -209,7 +210,8 @@ func return_to_camp() -> void:
 	_restore_hero()
 	run = {}
 	mode = "camp"
-	save_game()
+	if save_game() == OK:
+		Sfx.play("save", &"UI", -6.0)  # a deliberate save: back at camp (room autosaves stay silent)
 	get_tree().paused = false
 	get_tree().reload_current_scene()
 

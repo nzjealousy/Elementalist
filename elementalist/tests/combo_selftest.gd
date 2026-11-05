@@ -104,6 +104,7 @@ func _ready() -> void:
 	await _test_enemy_attack_poses()
 	await _test_net_world()
 	_test_net_trust()
+	_test_audio_coverage()
 	_test_items()
 	_test_inventory_and_gear_stats()
 	_test_forge()
@@ -5741,6 +5742,62 @@ func _test_net_world() -> void:
 
 
 # ---------- multiplayer trust: what a stranger (or a hostile host) sends is checked ----------
+
+## Audio coverage: every sound the scripts name has a file (cast_<element> for every element too), every sfx file is
+## played by someone (or is a _2.._5 take of one), every place's theme has its own music track, and tracks stay small.
+func _test_audio_coverage() -> void:
+	var call := RegEx.create_from_string(r"(?:Sfx\.(?:play_at|play|ui|music)|_fanfare)\(")
+	var first := RegEx.create_from_string(r'^"([a-z0-9_]+)"')          # Sfx.play("name" ...
+	var other := RegEx.create_from_string(r'else \(?"([a-z0-9_]+)"')  # ... if x else "name" / else ("name" ...
+	var named := {}
+	var music := {}
+	var paths: Array = ["res://scripts"]
+	while not paths.is_empty():
+		var path: String = paths.pop_back()
+		if DirAccess.dir_exists_absolute(path):
+			for sub in DirAccess.get_directories_at(path):
+				paths.append(path + "/" + sub)
+			for f in DirAccess.get_files_at(path):
+				if f.ends_with(".gd"):
+					paths.append(path + "/" + f)
+			continue
+		for line in FileAccess.get_file_as_string(path).split("\n"):
+			if line.strip_edges().begins_with("#"):
+				continue
+			for m in call.search_all(line):
+				var rest := line.substr(m.get_end()).get_slice("&\"", 0)  # the sound argument, not the bus name
+				if rest.contains("\"cast_\" +"):
+					continue  # the element cast sounds: added below for every element
+				var target: Dictionary = music if m.get_string().begins_with("Sfx.music") else named
+				var head := first.search(rest)
+				if head:
+					target[head.get_string(1)] = true
+				for e in other.search_all(rest):
+					target[e.get_string(1)] = true
+	for element in Elements.MAIN + Elements.RARE + ["martial"]:
+		named["cast_" + element] = true
+	var missing: Array = named.keys().filter(func(n): return not FileAccess.file_exists("%s%s.wav" % [Sfx.SFX_DIR, n]))
+	_check("audio: every sound the scripts name has a file (%d named) %s" % [named.size(), missing], named.size() > 30 and missing.is_empty())
+	var take := RegEx.create_from_string("_[2-5]$")
+	var allowed: Array = []  # sfx kept on purpose with no caller yet: name it here with the reason (none today)
+	var orphans: Array = []
+	for f in DirAccess.get_files_at(Sfx.SFX_DIR):
+		if f.ends_with(".wav") and not named.has(take.sub(f.get_basename(), "")) and not (f.get_basename() in allowed):
+			orphans.append(f)
+	_check("audio: every sfx file is played by some script %s" % [orphans], orphans.is_empty())
+	var themes: Array = ["camp", "vault", "crypt"]  # Dungeon._theme(): camp and training rooms, and its fallbacks
+	for tier in Game.TIERS:
+		if Game.TIERS[tier].has("theme"):  # tiers 1 and 2 leave it to those fallbacks
+			themes.append(String(Game.TIERS[tier]["theme"]))
+	var no_track: Array = themes.filter(func(t): return not FileAccess.file_exists("%s%s.wav" % [Sfx.MUSIC_DIR, t]))
+	_check("audio: every theme has its own music track %s" % [no_track], no_track.is_empty())
+	var big: Array = []
+	for t in themes + music.keys().filter(func(t): return t != ""):
+		var file := FileAccess.open("%s%s.wav" % [Sfx.MUSIC_DIR, t], FileAccess.READ)
+		if file == null or file.get_length() > 900 * 1024:
+			big.append(t)
+	_check("audio: music tracks exist and stay under 900 KB %s" % [big], music.size() >= 2 and big.is_empty())
+
 
 func _test_net_trust() -> void:
 	# the hello: a real hero passes unchanged, anything odd is replaced

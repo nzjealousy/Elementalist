@@ -205,6 +205,24 @@ def make_sfx():
     sfx('equip', mix(noise(0.07, 0.5, a=0.001, d=0.03, s=0.1, lp=0.6, seed=73), tone(500, 0.08, 'tri', 0.3, s=0.3)))
     sfx('save', mix(tone(784, 0.12, 'tri', 0.28, s=0.5, r=0.06), [0.0] * int(0.1 * SR) + tone(1047, 0.22, 'tri', 0.28, s=0.5, r=0.12)))
 
+    # added later: keep these after the originals so the seeded files above stay byte-identical
+    sfx('portal', mix(tone(220, 0.7, 'tri', 0.35, a=0.08, d=0.2, s=0.6, r=0.3, slide=1.5, vib=6.0),
+                      noise(0.7, 0.25, a=0.1, d=0.2, s=0.5, r=0.3, lp=0.08, seed=80, slide_lp=0.4)))
+    heal = [0.0] * int(0.6 * SR)
+    for i, f in enumerate((659, 784, 988, 1319)):
+        place(heal, tone(f, 0.25, 'sine', 0.3, a=0.01, d=0.08, s=0.5, r=0.12, vib=5.0), int(i * 0.06 * SR))
+    sfx('heal', heal)
+    win = [0.0] * int(1.8 * SR)
+    for i, (f, ln) in enumerate(((523, 0.15), (659, 0.15), (784, 0.15), (1047, 0.9))):
+        place(win, tone(f, ln, 'square', 0.25, d=0.08, s=0.6, r=min(0.3, ln * 0.5), vib=4.0 if ln > 0.5 else 0.0), int(i * 0.16 * SR))
+        place(win, tone(f / 2, ln, 'tri', 0.3, d=0.08, s=0.6, r=min(0.3, ln * 0.5)), int(i * 0.16 * SR))
+    sfx('run_win', win)
+    lose = [0.0] * int(1.8 * SR)
+    for i, (f, ln) in enumerate(((392, 0.3), (370, 0.3), (349, 0.3), (262, 0.8))):
+        place(lose, tone(f, ln, 'square', 0.22, d=0.1, s=0.6, r=min(0.3, ln * 0.5), slide=-0.15 if ln > 0.5 else 0.0, vib=3.0), int(i * 0.32 * SR))
+        place(lose, tone(f / 2, ln, 'tri', 0.3, d=0.1, s=0.6, r=min(0.3, ln * 0.5)), int(i * 0.32 * SR))
+    sfx('run_lose', lose)
+
 
 # ---------------------------------------------------------------------------------------- music
 def render_track(sr, bpm, bars, parts):
@@ -306,6 +324,16 @@ def make_music():
         'boss': song(MUSIC_SR, 140, [('E', 'min'), ('E', 'min'), ('C', 'maj'), ('D', 'maj'), ('E', 'min'), ('G', 'maj'), ('A', 'min'), ('B', 'sus')], arp_every=0.25,
                      lead_pattern=[[(0, 2, 0.75), (1, 1, 0.75), (2, 0, 0.5), (3, 1, 0.5)], [(0, 1, 0.75), (1, 2, 0.75), (2, 1, 1.0)]],
                      drums='drive', bass_pattern='drive', seed=6),
+        # added later (own seeds, so the five above stay byte-identical); 8 bars each keeps them under 800 KB
+        # hollow and quiet: the Hollow
+        'hollow': song(MUSIC_SR, 80, [('A', 'min'), ('A', 'min'), ('F', 'maj'), ('E', 'sus')] * 2, arp_every=1.0,
+                       lead_pattern=[[(0, 2, 3.0)], [], [(2, 1, 2.0)], []], bass_pattern='hold', bell=True, seed=7),
+        # warm and driving, not boss: the Ember halls
+        'ember': song(MUSIC_SR, 116, [('G', 'min'), ('D#', 'maj'), ('A#', 'maj'), ('F', 'maj')] * 2, arp_every=0.5,
+                      lead_pattern=[[(0, 0, 1.0), (1, 1, 1.0), (2, 2, 1.5)], [(0, 2, 2.0), (2, 1, 1.5)]], drums='soft', bass_pattern='drive', seed=8),
+        # high and cold: the Spire
+        'spire': song(MUSIC_SR, 92, [('B', 'min'), ('G', 'maj'), ('D', 'maj'), ('F#', 'sus')] * 2, arp_every=0.25,
+                      lead_pattern=[[(0, 2, 2.0), (2, 0, 2.0)], [(1, 1, 3.0)]], bass_pattern='hold', pad=False, bell=True, seed=9),
     }
     for name, samples in tracks.items():
         write(os.path.join(MUSIC_DIR, name + '.wav'), samples, MUSIC_SR, peak=0.8)

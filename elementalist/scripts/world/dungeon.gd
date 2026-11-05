@@ -254,7 +254,7 @@ func _fanfare(sound: String) -> void:
 	Sfx.duck(0.9)
 
 
-## Music follows the place: the camp, the vault or the crypt; a boss track in a guardian's room.
+## Music follows the place (one track per theme); a boss track in a guardian's room.
 func _play_music() -> void:
 	if not with_ui:
 		return
@@ -262,7 +262,7 @@ func _play_music() -> void:
 	if kind in ["boss", "miniboss"] and state != "clear":
 		Sfx.music("boss")
 	else:
-		Sfx.music(String({"camp": "camp", "crypt": "crypt", "spire": "crypt"}.get(_theme(), "vault")))
+		Sfx.music(_theme())  # every theme has its own track: camp, vault, crypt, hollow, ember, spire
 
 
 ## The camp: heal up, stand the forge, the notice board and the gate in the room.
@@ -557,6 +557,8 @@ func _clear_room(message: String) -> void:
 func _heal_player(share: float = FORGE_HEAL) -> void:
 	var player := _player()
 	if player and "hp" in player:
+		if player.hp < player.max_hp:
+			Sfx.play("heal", &"SFX", -4.0)
 		player.hp = minf(player.max_hp, player.hp + player.max_hp * share)  # a forge: half your health, not all of it
 		player.stamina = player.max_stamina
 		if player.caster:
@@ -595,6 +597,7 @@ func _advance() -> void:
 	if room_index + 1 < layout[floor_index].size():
 		_load_room(floor_index, room_index + 1)
 	elif floor_index + 1 < layout.size():
+		Sfx.play("portal")  # down to the next floor
 		_load_room(floor_index + 1, 0)
 	else:
 		_win()

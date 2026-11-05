@@ -69,6 +69,8 @@ func toggle() -> void:
 	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE if (_open or not in_game) else Input.MOUSE_MODE_HIDDEN
 	if _open:
 		show_tab(_tab)
+	else:
+		Sfx.ui("ui_back")
 
 
 ## Builds the frame (tab buttons + content area) and fills it with `tab`.
@@ -292,9 +294,8 @@ func _paper_doll(ch: CharacterData, detail: Label) -> Control:
 
 
 func _slot_button(slot: String, inv: Inventory, detail: Label) -> Button:
-	var button := Button.new()
+	var button := UiKit.button("", func(): pass, 24.0)
 	button.custom_minimum_size = Vector2(24, 24)
-	button.focus_mode = Control.FOCUS_ALL
 	button.expand_icon = true
 	button.icon_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	button.add_theme_constant_override("icon_max_width", 16)
@@ -537,12 +538,12 @@ func _use_gem(element: String) -> void:
 
 
 func _equip(index: int) -> void:
-	Game.character.inventory.equip(index)
+	Sfx.play("equip" if Game.character.inventory.equip(index) else "error", &"UI")
 	show_tab.call_deferred(_tab)
 
 
 func _unequip(slot: String) -> void:
-	Game.character.inventory.unequip(slot)
+	Sfx.play("equip" if Game.character.inventory.unequip(slot) else "error", &"UI")
 	show_tab.call_deferred(_tab)
 
 
@@ -569,10 +570,7 @@ static func tab_width(column_widths: Array) -> float:
 ## A button. It takes focus so a gamepad can work the sheet (the game is paused while it is open; TAB is caught in
 ## _input before the GUI could use it to move focus).
 func _button(text: String) -> Button:
-	var button := Button.new()
-	button.text = text
-	button.focus_mode = Control.FOCUS_ALL
-	return button
+	return UiKit.button(text, func(): pass)  # UiKit's click and focus ticks; callers connect their own action
 
 
 func _label(text: String, color: Color = Color.WHITE) -> Label:

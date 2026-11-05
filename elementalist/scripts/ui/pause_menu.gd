@@ -36,12 +36,14 @@ func is_open() -> bool:
 
 func _unhandled_input(event: InputEvent) -> void:
 	if _open and not _settings.is_open() and event.is_action_pressed("ui_cancel"):  # Esc / pad B also resume
+		Sfx.ui("ui_back")
 		resume()
 		get_viewport().set_input_as_handled()
 		return
 	if not event.is_action_pressed("pause"):
 		return
 	if _open and not _settings.is_open():
+		Sfx.ui("ui_back")
 		resume()
 		get_viewport().set_input_as_handled()
 	elif not _open and not get_tree().paused:
@@ -108,7 +110,8 @@ func _retreat() -> void:
 
 
 func _save_and_leave() -> void:
-	Game.save_game()
+	if Game.save_game() == OK:
+		Sfx.play("save", &"UI", -6.0)
 	Game.go_to_menu()
 
 

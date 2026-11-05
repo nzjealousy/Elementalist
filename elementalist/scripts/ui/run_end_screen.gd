@@ -28,6 +28,9 @@ func is_open() -> bool:
 func show_result(won: bool, lines: Array, final: bool = false) -> void:
 	_final = final
 	_open = true
+	Sfx.music("")  # the music fades out under the stinger; the camp (or menu) starts its own track
+	Sfx.play("run_win" if won else "run_lose")
+	Sfx.duck(2.0)
 	visible = true
 	get_tree().paused = true
 	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE

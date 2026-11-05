@@ -48,6 +48,7 @@ func is_open() -> bool:
 func _unhandled_input(event: InputEvent) -> void:
 	if _view != null and _back.is_valid() and (event.is_action_pressed("ui_cancel") or event.is_action_pressed("pause")):
 		get_viewport().set_input_as_handled()
+		Sfx.ui("ui_back")
 		_back.call()
 
 

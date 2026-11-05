@@ -17,6 +17,7 @@ const BUSES := ["Music", "SFX", "UI"]
 const VOICES := 12          # simultaneous one-shots; the oldest voice is reused when all are busy
 const MUSIC_FADE := 1.2
 const DUCK_DB := -9.0       # music dips by this much under big hits (boss slams, level-ups)
+const ERROR_GAP_MS := 300   # the "error" buzz plays at most once per this many ms
 
 var _variants: Dictionary = {}   # name -> Array[AudioStream]
 var _voices: Array[AudioStreamPlayer] = []
@@ -26,6 +27,7 @@ var _music_b: AudioStreamPlayer
 var _music_name := ""
 var _rng := RandomNumberGenerator.new()
 var _duck_tween: Tween
+var _error_at := -100000
 
 
 func _ready() -> void:
@@ -78,6 +80,10 @@ func play(sound: String, bus: StringName = &"SFX", volume_db: float = 0.0, pitch
 	var takes := _takes(sound)
 	if takes.is_empty():
 		return false
+	if sound == "error":  # a denied action: at most one buzz per ERROR_GAP_MS, so mashing a key cannot flood the voices
+		if Time.get_ticks_msec() - _error_at < ERROR_GAP_MS:
+			return false
+		_error_at = Time.get_ticks_msec()
 	var voice := _voices[_next_voice]
 	_next_voice = (_next_voice + 1) % VOICES
 	voice.stream = takes[_rng.randi_range(0, takes.size() - 1)]

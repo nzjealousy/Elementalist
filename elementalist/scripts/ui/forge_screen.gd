@@ -47,6 +47,8 @@ func open() -> void:
 
 
 func close() -> void:
+	if _open:
+		Sfx.ui("ui_back")
 	_open = false
 	visible = false
 	get_tree().paused = false
@@ -214,15 +216,15 @@ func _switch_tab(id: String) -> void:
 
 
 func _craft(base_id: String) -> void:
-	Sfx.play("forge")
 	var item := Forge.craft(Game.character.inventory, base_id, Game.character.level, Game.loot_rng, Game.loot_allows_spell())
+	Sfx.play("forge" if not item.is_empty() else "error")
 	_status = ("Crafted %s" % Items.display_name(item)) if not item.is_empty() else "Could not craft"
 	show_tab.call_deferred(_tab)
 
 
 func _upgrade(item: Dictionary) -> void:
-	Sfx.play("forge")
 	var ok := Forge.upgrade(Game.character.inventory, item)
+	Sfx.play("forge" if ok else "error")
 	_status = ("%s upgraded" % Items.display_name(item)) if ok else "Could not upgrade"
 	show_tab.call_deferred(_tab)
 
@@ -233,16 +235,16 @@ func _pick_enchant_target(item: Dictionary) -> void:
 
 
 func _enchant(element: String) -> void:
-	Sfx.play("forge")
 	var ok := Forge.enchant(Game.character.inventory, _enchant_target, element)
+	Sfx.play("forge" if ok else "error")
 	_status = ("%s enchanted: %s" % [Items.display_name(_enchant_target), Items.ENCHANTS[element]["name"]]) if ok else "Could not enchant"
 	_enchant_target = {}
 	show_tab.call_deferred(_tab)
 
 
 func _salvage(index: int) -> void:
-	Sfx.play("forge")
 	var gain := Forge.salvage(Game.character.inventory, index)
+	Sfx.play("forge" if not gain.is_empty() else "error")
 	_status = ("Salvaged: +%d scrap, +%d gold" % [gain["scrap"], gain["gold"]]) if not gain.is_empty() else "Nothing to salvage"
 	show_tab.call_deferred(_tab)
 
@@ -282,10 +284,7 @@ func _item_button(item: Dictionary, text: String) -> Button:
 
 ## A button. It takes focus so a gamepad can work the forge (the game is paused while it is open).
 func _button(text: String) -> Button:
-	var button := Button.new()
-	button.text = text
-	button.focus_mode = Control.FOCUS_ALL
-	return button
+	return UiKit.button(text, func(): pass)  # UiKit's click and focus ticks; callers connect their own action
 
 
 func _label(text: String, color: Color = Color.WHITE) -> Label:

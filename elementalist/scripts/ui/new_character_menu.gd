@@ -43,6 +43,8 @@ func _unhandled_input(event: InputEvent) -> void:
 		get_viewport().set_input_as_handled()  # a new hero must be made before anything else
 		return
 	if event.is_action_pressed("new_character") or back:
+		if back:
+			Sfx.ui("ui_back")
 		toggle()
 		get_viewport().set_input_as_handled()
 
@@ -164,7 +166,8 @@ func _refresh_description() -> void:
 func _begin() -> void:
 	Game.start_new(_class_id, _birth, _hero_name)
 	Game.creation_required = false
-	Game.save_game()  # (does nothing without a save slot)
+	if Game.save_game() == OK:  # (does nothing without a save slot)
+		Sfx.play("save", &"UI", -6.0)  # the new hero's slot is written
 	_open = false
 	get_tree().paused = false
 	get_tree().reload_current_scene()

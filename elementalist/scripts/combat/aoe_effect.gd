@@ -24,6 +24,7 @@ func setup(hit_data: Dictionary, r: float, dur: float, tick_time: float) -> void
 func _ready() -> void:
 	z_index = -5
 	SkillFx.area_burst(self, String(hit.get("element", "")), radius, duration)
+	Sfx.play_at("explode", global_position, 300.0, -4.0)  # the landing; its hits stay quiet (see _apply)
 
 
 func _physics_process(delta: float) -> void:
@@ -43,6 +44,7 @@ func _apply() -> void:
 			var h := hit.duplicate()
 			h["from"] = global_position
 			h["juice"] = duration <= 0.0  # lingering pools tick quietly
+			h["burst"] = true  # the explode above is the sound: no "hit" per enemy on top of it
 			enemy.take_hit(h)
 
 
