@@ -409,9 +409,18 @@ buttons call `show_tab.call_deferred(...)`, so tests `await` a frame after click
 
 ## UI notes
 
-- Screens share `UiTheme`. In-game screens (character sheet, forge) use `focus_mode = FOCUS_NONE` buttons so
-  TAB/WASD stay with the game; the shell menus (`MainMenu`, `SettingsMenu`, `PauseMenu`, ...) use `UiKit.button`,
-  which takes focus, because they are navigated by keyboard and gamepad.
+- Screens share `UiTheme`. Every menu opens with a control focused so a gamepad can act at once (the shell menus via
+  `UiKit.button` / `UiKit.focus_first`; the sheet and the forge focus their open tab and keep the pad's place across
+  rebuilds with `UiKit.focused_index` / `restore_focus`; the run-end button takes focus after 0.6 s, since A and Space
+  also dodge). Esc and pad B (`pause` / `ui_cancel`) close a screen or go back one level; the run-end screen and the
+  first hero's creation are modal on purpose. Key hints use the names `Controls.label_of` gives (LMB, RMB, TAB, Esc).
+- **The fit sweep** (`_test_ui_fit_sweep`): every screen, tab and state, opened with a stuffed hero (16-letter name,
+  level 30, 3-digit numbers, full bag), must fit both 320x180 and the 420x180 a 21:9 window gives (`_ui_view`), staying
+  centred there: `_ui_fit_problems` flags Controls outside the view or their parent, cut labels, overlapping controls
+  and off-centre screens. For a new screen, open each state in `_ui_sweep_screens` and `await _ui_sweep("<name>", node)`.
+  The drawn HUD is checked through `hud.gd`'s pure `layout()`, which anchors the groups to the view's corners and caps a
+  big HUD size per area (bottom pair side by side, top-left block beside a 100 px boss bar); 1.0 at 320 is never capped. `-- --ui-shots` (windowed, 1280x720) runs only the sweep
+  and refreshes `docs/art/ui_*.png`; `-- --ui-sweep` runs only its checks headless.
 - `CharacterSheet` keeps every tab inside the 320x180 view: the body sits in a fixed-size
   `ScrollContainer`, and a tab's columns plus gaps must fit `CONTENT_WIDTH` (a self-test checks
   this and that the panel stays on screen even when stuffed with content).

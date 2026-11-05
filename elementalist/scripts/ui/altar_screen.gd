@@ -6,7 +6,8 @@ extends CanvasLayer
 ## do. "Take" makes that element the selected one; "Refill" restores health, stamina and mana.
 ## Esc / B closes it. Group "altar_screen".
 
-const BAR_WIDTH := 54.0
+const BAR_WIDTH := 34.0  # four bars, the element buttons and the description column side by side fit the 320 px view
+const DETAIL_WIDTH := 84.0
 
 var _open := false
 var _was_paused := false
@@ -76,7 +77,7 @@ func _build() -> void:
 	for child in get_children():
 		child.queue_free()
 	UiKit.dim(self, 0.9)
-	var column := UiKit.column(self, _theme, 296.0, 3)
+	var column := UiKit.column(self, _theme, 308.0, 3)
 	column.add_child(UiTheme.heading("Altar of Elements", 10))
 	column.add_child(UiKit.label("Compare the elements, take one, and try it on the dummies.", UiTheme.TEXT_DIM, 6, HORIZONTAL_ALIGNMENT_CENTER))
 	column.add_child(UiTheme.divider())
@@ -87,11 +88,16 @@ func _build() -> void:
 		for key in maxima:
 			maxima[key] = maxf(float(maxima[key]), float(s[key]))
 
+	# The grid on the left, what the element does and the two actions on the right: seven rows and the text below them
+	# would not fit the 180 px view.
+	var body := HBoxContainer.new()
+	body.add_theme_constant_override("separation", 6)
+	column.add_child(body)
 	var grid := GridContainer.new()
 	grid.columns = 5
-	grid.add_theme_constant_override("h_separation", 4)
-	grid.add_theme_constant_override("v_separation", 2)
-	column.add_child(grid)
+	grid.add_theme_constant_override("h_separation", 3)
+	grid.add_theme_constant_override("v_separation", 1)
+	body.add_child(grid)
 	grid.add_child(UiKit.label("", UiTheme.TEXT_DIM, 6))
 	for title in ["Mana", "Speed", "Area", "Damage"]:
 		grid.add_child(UiKit.label(title, UiTheme.TEXT_DIM, 6, HORIZONTAL_ALIGNMENT_CENTER))
@@ -111,18 +117,17 @@ func _build() -> void:
 			grid.add_child(_bar(float(s[key]) / float(maxima[key]), color, "%d" % roundi(float(s[key]))))
 	UiKit.wrap_focus(buttons)
 
-	_detail = UiKit.label("", UiTheme.TEXT, 6, HORIZONTAL_ALIGNMENT_CENTER)
+	var side := VBoxContainer.new()
+	side.add_theme_constant_override("separation", 3)
+	body.add_child(side)
+	_detail = UiKit.label("", UiTheme.TEXT, 6)
 	_detail.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	_detail.custom_minimum_size = Vector2(280, 34)
-	column.add_child(_detail)
+	_detail.custom_minimum_size = Vector2(DETAIL_WIDTH, 0)
+	_detail.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	side.add_child(_detail)
 	_show(_current_element())
-
-	var row := HBoxContainer.new()
-	row.alignment = BoxContainer.ALIGNMENT_CENTER
-	row.add_theme_constant_override("separation", 6)
-	column.add_child(row)
-	row.add_child(UiKit.button("Refill", _refill, 60.0))
-	row.add_child(UiKit.button("Close", close, 60.0))
+	side.add_child(UiKit.button("Refill", _refill, DETAIL_WIDTH))
+	side.add_child(UiKit.button("Close", close, DETAIL_WIDTH))
 	UiKit.focus_first(grid)
 
 
@@ -130,6 +135,7 @@ func _build() -> void:
 func _bar(fraction: float, color: Color, number: String) -> Control:
 	var holder := Control.new()
 	holder.custom_minimum_size = Vector2(BAR_WIDTH, 10)
+	holder.size_flags_vertical = Control.SIZE_SHRINK_CENTER  # level with the element's button
 	var back := ColorRect.new()
 	back.color = Color(0, 0, 0, 0.45)
 	back.size = Vector2(BAR_WIDTH, 8)
@@ -143,8 +149,8 @@ func _bar(fraction: float, color: Color, number: String) -> Control:
 	var text := UiKit.label(number, Color.WHITE, 6, HORIZONTAL_ALIGNMENT_CENTER)
 	text.add_theme_color_override("font_outline_color", Color.BLACK)
 	text.add_theme_constant_override("outline_size", 2)
-	text.size = Vector2(BAR_WIDTH, 10)
-	text.position = Vector2(0, -1)
+	text.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	text.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	holder.add_child(text)
 	return holder
 

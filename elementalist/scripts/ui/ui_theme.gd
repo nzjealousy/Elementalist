@@ -58,6 +58,18 @@ static func make() -> Theme:
 			theme.set_stylebox(state, control, box)
 	theme.set_stylebox("hover_pressed", "Button", frame("button_pressed", 5, 3, 1))
 	theme.set_stylebox("focus", "Button", frame("button_focus", 5, 3, 1))
+	# Toggles (settings): a plain slab whether on or off, with a small rune switch saying which. The engine's default
+	# switch is a big white pill that made each row a seventh of the 180 px screen, and a lit "pressed" slab on every
+	# row that is on read as all of them being selected.
+	for state in ["normal", "hover", "disabled", "focus"]:
+		theme.set_stylebox(state, "CheckButton", frame("button_" + state, 5, 3, 1))
+	theme.set_stylebox("pressed", "CheckButton", frame("button_normal", 5, 3, 1))
+	theme.set_stylebox("hover_pressed", "CheckButton", frame("button_hover", 5, 3, 1))
+	for on in [true, false]:
+		var icon := _switch_texture(on, true)
+		for name in ["checked" if on else "unchecked", ("checked" if on else "unchecked") + "_mirrored"]:
+			theme.set_icon(name, "CheckButton", icon)
+		theme.set_icon(("checked" if on else "unchecked") + "_disabled", "CheckButton", _switch_texture(on, false))
 
 	# Text fields (the hero's name, the join address): a dark well with a rune-line rim, like the slider groove.
 	var well := _flat(Color("0c0a1a"), EDGE, 1, 2)
@@ -123,6 +135,23 @@ static func _flat(bg: Color, border: Color, border_width: int, margin: int) -> S
 	box.set_border_width_all(border_width)
 	box.set_content_margin_all(margin)
 	return box
+
+
+## The settings toggle: an 11 x 7 groove with a knob, right and lit when on, left and dark when off.
+static func _switch_texture(on: bool, enabled: bool) -> Texture2D:
+	var img := Image.create(11, 7, false, Image.FORMAT_RGBA8)
+	img.fill(Color(0, 0, 0, 0))
+	var groove := (EDGE if on else Color("0c0a1a")) if enabled else Color("2a2648")
+	var knob := (Color("e0d8ff") if on else Color("8c88b8")) if enabled else Color("5c5890")
+	for y in 7:
+		for x in 11:
+			var edge := x == 0 or x == 10 or y == 0 or y == 6
+			img.set_pixel(x, y, INK if edge else groove)
+	var from := 6 if on else 1
+	for y in range(1, 6):
+		for x in range(from, from + 4):
+			img.set_pixel(x, y, knob)
+	return ImageTexture.create_from_image(img)
 
 
 static func _knob_texture() -> Texture2D:

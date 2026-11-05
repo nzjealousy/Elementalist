@@ -84,7 +84,7 @@ func close() -> void:
 func _input(event: InputEvent) -> void:
 	if not _open:
 		return
-	if event.is_action_pressed("pause"):
+	if event.is_action_pressed("pause") or event.is_action_pressed("ui_cancel"):
 		close()  # decide later
 		get_viewport().set_input_as_handled()
 	elif event.is_action_pressed("ui_left") or event.is_action_pressed("ui_right"):
@@ -148,7 +148,7 @@ func _build() -> void:
 	_detail.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	column.add_child(_detail)
 	var keys := "1-%d" % entries.size()
-	var hint := _label("Click a card or press %s    Left/Right + Enter on a pad    Esc: decide later" % keys, Color(1, 1, 1, 0.6), 6)
+	var hint := _label("Click a card or press %s    Pad: Left/Right + A    Esc: decide later" % keys, Color(1, 1, 1, 0.6), 6)
 	hint.autowrap_mode = TextServer.AUTOWRAP_OFF
 	hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	column.add_child(hint)

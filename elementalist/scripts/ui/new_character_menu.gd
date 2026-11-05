@@ -38,10 +38,11 @@ func _exit_tree() -> void:
 func _unhandled_input(event: InputEvent) -> void:
 	if event.is_action_pressed("new_character") and Game.slot >= 0 and not Game.creation_required:
 		return  # a saved hero cannot be rerolled; N is for the sandbox and tests
-	if _open and event.is_action_pressed("pause") and Game.creation_required:
+	var back: bool = _open and (event.is_action_pressed("pause") or event.is_action_pressed("ui_cancel"))
+	if back and Game.creation_required:
 		get_viewport().set_input_as_handled()  # a new hero must be made before anything else
 		return
-	if event.is_action_pressed("new_character") or (_open and event.is_action_pressed("pause")):
+	if event.is_action_pressed("new_character") or back:
 		toggle()
 		get_viewport().set_input_as_handled()
 
@@ -72,7 +73,7 @@ func _build() -> void:
 	root.add_theme_constant_override("separation", 2)
 	panel.add_child(root)
 
-	root.add_child(_label("New character   (Esc to cancel)", Color("ffd84a")))
+	root.add_child(_label("New character   (Esc: cancel)", Color("ffd84a")))
 	var name_row := HBoxContainer.new()
 	name_row.add_theme_constant_override("separation", 3)
 	root.add_child(name_row)
@@ -89,7 +90,7 @@ func _build() -> void:
 	name_row.add_child(_name_edit)
 	var dice := Button.new()
 	dice.text = "Random"
-	dice.focus_mode = Control.FOCUS_NONE
+	dice.focus_mode = Control.FOCUS_ALL
 	dice.pressed.connect(func():
 		_hero_name = Game.random_name()
 		_name_edit.text = _hero_name)
@@ -119,16 +120,17 @@ func _build() -> void:
 	_refresh_description()
 
 	var begin := Button.new()
-	begin.focus_mode = Control.FOCUS_NONE
+	begin.focus_mode = Control.FOCUS_ALL
 	begin.text = "Begin"
 	begin.pressed.connect(_begin)
 	root.add_child(begin)
+	begin.grab_focus.call_deferred()  # the defaults make a hero, so a pad player can start at once (Up reaches the choices)
 
 
 func _choice(text: String, group: ButtonGroup, selected: bool, callback: Callable) -> Button:
 	var button := Button.new()
 	button.text = text
-	button.focus_mode = Control.FOCUS_NONE
+	button.focus_mode = Control.FOCUS_ALL
 	button.toggle_mode = true
 	button.button_group = group
 	button.button_pressed = selected

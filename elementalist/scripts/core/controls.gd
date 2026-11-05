@@ -193,14 +193,15 @@ func reset_bindings() -> void:
 			InputMap.action_add_event(action, event)
 
 
-## Short text for a binding: "W", "Mouse 1", "Pad A", "L stick left" ...
+## Short text for a binding: "W", "LMB", "Pad A", "L stick left" ... named as the screens' hints name them (TAB, Esc, LMB).
 func label_of(event: InputEvent) -> String:
 	if event == null:
 		return "-"
 	if event is InputEventKey:
-		return OS.get_keycode_string(event.keycode if event.keycode != 0 else event.physical_keycode)
+		var code: Key = event.keycode if event.keycode != 0 else event.physical_keycode
+		return _KEY_NAMES.get(code, OS.get_keycode_string(code))
 	if event is InputEventMouseButton:
-		return "Mouse %d" % event.button_index
+		return _MOUSE_NAMES.get(event.button_index, "Mouse %d" % event.button_index)
 	if event is InputEventJoypadButton:
 		return "Pad " + _BUTTON_NAMES.get(event.button_index, str(event.button_index))
 	if event is InputEventJoypadMotion:
@@ -208,6 +209,11 @@ func label_of(event: InputEvent) -> String:
 	return "?"
 
 
+const _KEY_NAMES := {KEY_TAB: "TAB", KEY_ESCAPE: "Esc"}
+const _MOUSE_NAMES := {
+	MOUSE_BUTTON_LEFT: "LMB", MOUSE_BUTTON_RIGHT: "RMB", MOUSE_BUTTON_MIDDLE: "MMB",
+	MOUSE_BUTTON_WHEEL_UP: "Wheel up", MOUSE_BUTTON_WHEEL_DOWN: "Wheel down",
+}
 const _BUTTON_NAMES := {
 	JOY_BUTTON_A: "A", JOY_BUTTON_B: "B", JOY_BUTTON_X: "X", JOY_BUTTON_Y: "Y",
 	JOY_BUTTON_BACK: "Back", JOY_BUTTON_START: "Start", JOY_BUTTON_LEFT_STICK: "L3", JOY_BUTTON_RIGHT_STICK: "R3",

@@ -13,6 +13,16 @@ var _failed: Array[String] = []
 
 func _ready() -> void:
 	Juice.enabled = false  # hit-stop would slow the clock these tests rely on
+	if OS.get_cmdline_user_args().has("--ui-sweep") or OS.get_cmdline_user_args().has("--ui-shots"):
+		_ui_shots = OS.get_cmdline_user_args().has("--ui-shots")  # only the UI sweep, e.g. to refresh docs/art/ui_*.png
+		if _ui_shots:
+			get_window().mode = Window.MODE_WINDOWED  # the player's fullscreen setting would capture at the desktop's size
+			get_window().size = Vector2i(1280, 720)
+		await get_tree().process_frame
+		await _test_ui_fit_sweep()
+		print("SELFTEST %d passed, %d failed" % [_pass, _fail])
+		get_tree().quit(1 if _fail > 0 else 0)
+		return
 	SkillCaster.windups_enabled = false  # areas land the moment they are cast, except in _test_feel_changes
 	_neutral_character()
 	await get_tree().process_frame
@@ -102,6 +112,7 @@ func _ready() -> void:
 	await _test_reward_cards()
 	await _test_ui_screens()
 	await _test_gear_screens()
+	await _test_ui_fit_sweep()
 	if not _failed.is_empty():
 		print("FAILED: ", " | ".join(_failed))
 	print("SELFTEST %d passed, %d failed" % [_pass, _fail])
@@ -1162,6 +1173,7 @@ func _test_ui_screens() -> void:
 	_check("every character sheet tab builds", all_tabs and CharacterSheet.TABS.has("rewards"))
 
 	# Nothing may spill off the game screen, whatever a tab holds: stress it with many offers.
+	await _ui_view(320)  # the real 320x180 (a headless window is square, so "expand" would give a taller view)
 	var view := Vector2(ProjectSettings.get_setting("display/window/size/viewport_width"), ProjectSettings.get_setting("display/window/size/viewport_height"))
 	var ui_character := Game.character
 	var stress := CharacterData.create_sandbox("channeler", Elements.MAIN, 10)
@@ -1182,6 +1194,7 @@ func _test_ui_screens() -> void:
 		widths_ok = widths_ok and CharacterSheet.tab_width(widths) <= CharacterSheet.CONTENT_WIDTH
 	_check("every tab stays inside the game screen, even stuffed with content", fits)
 	_check("every tab's columns fit the scroll area", widths_ok)
+	await _ui_view(0)
 	Game.character = ui_character
 	var reward_char := CharacterData.create_sandbox("channeler", ["fire"], 4)
 	Game.character = reward_char
@@ -2176,6 +2189,7 @@ func _test_gear_screens() -> void:
 	forge._salvage(0)
 	await get_tree().process_frame
 	_check("salvaging from the screen works", ch.inventory.bag.size() == bag_size - 1)
+	await _ui_view(320)
 	var view := Vector2(ProjectSettings.get_setting("display/window/size/viewport_width"), ProjectSettings.get_setting("display/window/size/viewport_height"))
 	var fits := true
 	for tab in ForgeScreen.TABS:
@@ -2184,6 +2198,7 @@ func _test_gear_screens() -> void:
 		var rect: Rect2 = forge.get_child(forge.get_child_count() - 1).get_global_rect()
 		fits = fits and rect.position.x >= 0.0 and rect.position.y >= 0.0 and rect.end.x <= view.x and rect.end.y <= view.y
 	_check("every forge tab stays inside the game screen", fits)
+	await _ui_view(0)
 	forge.free()
 	Game.character = saved
 	await get_tree().process_frame
@@ -5834,3 +5849,717 @@ func _test_net_trust() -> void:
 	_check("a huge bonus and an unknown tier are capped", Net.clean_clear_reward({"bonus": 1e12, "tier": 99}) == {"bonus": Net.CLEAR_BONUS_MAX, "tier": 0})
 	_check("odd-typed rewards are nothing", Net.clean_clear_reward({"bonus": "lots", "tier": "5"}) == {"bonus": 0, "tier": 0} \
 		and Net.clean_clear_reward({}) == {"bonus": 0, "tier": 0})
+
+
+# ---------- UI fit sweep: every screen, every tab, at 320x180 and at a 21:9-wide 420x180 ----------
+
+var _ui_width := 320  # the view the sweep checks against (_ui_view)
+var _ui_shots := false  # `-- --ui-shots` (windowed, 1280x720): also save docs/art/ui_<name>.png for each state
+
+
+## What is wrong with the screen under `root` in `view`: every visible Control (clipped only by the ScrollContainers it
+## sits in) must lie inside the view and inside its parent; no label may be cut (more lines than its height shows, or
+## clipped text without an ellipsis); no interactive control may overlap another one or a label; and a `centred` screen
+## must sit in the middle of the view (a wide view must not leave it hugging one edge). Returns one line per problem.
+func _ui_fit_problems(root: Node, view: Rect2, centred: bool = true) -> Array[String]:
+	var problems: Array[String] = []
+	var shown: Array = []  # [control, rect]
+	var bounds := Rect2()
+	for node in [root] + root.find_children("*", "Control", true, false):
+		var c := node as Control
+		if c == null or not c.is_visible_in_tree() or c.size.x <= 0.0 or c.size.y <= 0.0:
+			continue
+		var rect := _ui_scroll_clip(c, c.get_global_rect())
+		if rect.size.x < 0.5 or rect.size.y < 0.5:
+			continue  # scrolled out of sight
+		var what := _ui_name(c)
+		if not view.grow(0.5).encloses(rect):
+			problems.append("%s leaves the view: %s" % [what, rect])
+		var parent := c.get_parent() as Control
+		if parent != null and parent.is_visible_in_tree() and not (parent is ScrollContainer) and parent.size != Vector2.ZERO \
+				and not _ui_scroll_clip(parent, parent.get_global_rect()).grow(1.5).encloses(rect):
+			problems.append("%s spills out of its parent %s" % [what, _ui_name(parent)])
+		var cut := _ui_cut_text(c)
+		if cut != "":
+			problems.append("%s: %s" % [what, cut])
+		if c is BaseButton or c is Label or c is LineEdit or c is Slider:
+			shown.append([c, rect])
+		if rect.size != view.size:
+			bounds = rect if bounds.size == Vector2.ZERO else bounds.merge(rect)
+	for i in shown.size():
+		for j in range(i + 1, shown.size()):
+			var a: Control = shown[i][0]
+			var b: Control = shown[j][0]
+			if (a is Label and b is Label) or a.is_ancestor_of(b) or b.is_ancestor_of(a):
+				continue
+			if (shown[i][1] as Rect2).grow(-0.5).intersects((shown[j][1] as Rect2).grow(-0.5)):
+				problems.append("%s overlaps %s" % [_ui_name(a), _ui_name(b)])
+	if centred and bounds.size != Vector2.ZERO and absf(bounds.get_center().x - view.get_center().x) > 3.0:
+		problems.append("not centred: content spans x %d..%d in a %d px view" % [int(bounds.position.x), int(bounds.end.x), int(view.size.x)])
+	return problems
+
+
+## `rect` cut down to the ScrollContainers above `c` (what scrolls is only checked where it shows).
+func _ui_scroll_clip(c: Control, rect: Rect2) -> Rect2:
+	var up := c.get_parent()
+	while up is Control:
+		if up is ScrollContainer:
+			rect = rect.intersection((up as Control).get_global_rect())
+		up = up.get_parent()
+	return rect
+
+
+## Why the text of `c` does not show in full, or "".
+func _ui_cut_text(c: Control) -> String:
+	if c is Label:
+		var l := c as Label
+		if l.text == "" or l.max_lines_visible >= 0:
+			return ""
+		if l.get_visible_line_count() < l.get_line_count():
+			return "shows %d of %d lines" % [l.get_visible_line_count(), l.get_line_count()]
+		if l.clip_text and l.autowrap_mode == TextServer.AUTOWRAP_OFF and l.text_overrun_behavior == TextServer.OVERRUN_NO_TRIMMING \
+				and l.get_theme_font("font").get_string_size(l.text, HORIZONTAL_ALIGNMENT_LEFT, -1, l.get_theme_font_size("font_size")).x > l.size.x + 0.5:
+			return "text cut with no ellipsis"
+	elif c is Button:
+		var b := c as Button
+		if b.clip_text and b.text_overrun_behavior == TextServer.OVERRUN_NO_TRIMMING and b.text != "":
+			var room := b.size.x - b.get_theme_stylebox("normal").get_minimum_size().x
+			if b.get_theme_font("font").get_string_size(b.text, HORIZONTAL_ALIGNMENT_LEFT, -1, b.get_theme_font_size("font_size")).x > room + 0.5:
+				return "button text cut with no ellipsis"
+	return ""
+
+
+func _ui_name(c: Control) -> String:
+	var text: String = c.text if (c is Label or c is Button or c is LineEdit) else ""
+	return "%s%s" % [c.get_class(), (" '%s'" % text.left(28).replace("\n", " ")) if text != "" else ""]
+
+
+## Checks one open screen state (and saves its picture in --ui-shots runs).
+func _ui_sweep(state: String, root: Node, centred: bool = true) -> void:
+	await get_tree().process_frame
+	await get_tree().process_frame  # wrapping labels and scroll areas settle after the first layout
+	var view := Rect2(0, 0, _ui_width, 180)
+	var problems := _ui_fit_problems(root, view, centred)
+	if get_viewport().get_visible_rect() != view:  # the window grew to hold something too big
+		problems.append("the view became %s" % get_viewport().get_visible_rect())
+	_check("ui sweep: %s fits %dx%d" % [state, int(view.size.x), int(view.size.y)], problems.is_empty())
+	for line in problems.slice(0, 8):
+		print("    ", line)
+	if _ui_shots and int(view.size.x) == 320:
+		await RenderingServer.frame_post_draw
+		get_viewport().get_texture().get_image().save_png(ProjectSettings.globalize_path("res://").path_join("../docs/art/ui_%s.png" % state))
+
+
+## The game view at exactly `width` x 180 (320 is the designed size, wider is what a 21:9 window gives), or back to the
+## project's own setting with 0. "keep" pins the size: with "expand" a headless run's square window gives 320x320.
+func _ui_view(width: int) -> void:
+	_ui_width = width
+	var window := get_tree().root
+	window.content_scale_size = Vector2i(maxi(width, 320), 180)
+	window.content_scale_aspect = Window.CONTENT_SCALE_ASPECT_KEEP if width > 0 else Window.CONTENT_SCALE_ASPECT_EXPAND
+	await get_tree().process_frame
+	await get_tree().process_frame
+
+
+## A hero with the most of everything a screen may have to show: a 16-letter name of wide letters, level 30, every
+## element, the longest class + subclass pair, 3-digit numbers, the wordiest traits, a full bag of +10 enchanted gear,
+## every gem and essence and a stack of waiting offers.
+func _ui_stuffed_hero() -> CharacterData:
+	var best_class := ""
+	var best_sub := ""
+	for id in Classes.playable():
+		for sub in Classes.CLASSES[id]["subclasses"]:
+			if best_class == "" or (String(Classes.CLASSES[id]["name"]) + String(Classes.SUBCLASSES[sub]["name"])).length() \
+					> (String(Classes.CLASSES[best_class]["name"]) + String(Classes.SUBCLASSES[best_sub]["name"])).length():
+				best_class = id
+				best_sub = sub
+	var ch := CharacterData.create_sandbox(best_class, Elements.MAIN + Elements.RARE, CharacterData.MAX_LEVEL)
+	ch.subclass_id = best_sub
+	ch.display_name = "W".repeat(Game.NAME_MAX)
+	ch.unspent_points = 123
+	ch.deaths = 9
+	for attr in Classes.ATTRIBUTES:
+		ch.attributes[attr] = 100 + Classes.ATTRIBUTES.find(attr)
+	var wordy := Classes.TRAITS.duplicate()
+	wordy.sort_custom(func(a, b): return String(Classes.passive_info(a)["desc"]).length() > String(Classes.passive_info(b)["desc"]).length())
+	ch.traits.assign(wordy.slice(0, 4))
+	for element in ch.elements:
+		ch.element_mastery[element] = {"level": 29, "xp": 999}
+	var inv := ch.inventory
+	inv.gold = 99999
+	inv.materials = {"scrap": 999, "slime_gel": 999}
+	for element in Items.ENCHANTS:
+		inv.materials[Items.essence_of(element)] = 99
+	for element in Elements.MAIN + Elements.RARE:
+		inv.materials[Items.gem_of(element)] = 9
+	var rng := _rng(77)
+	for slot in Items.SLOTS:
+		var worn := Loot.roll_item(rng, 30, 3.0, slot)
+		if not worn.is_empty():
+			worn["plus"] = Items.MAX_PLUS
+			inv.equipped[slot] = worn
+	while not inv.bag_full():
+		var item := Loot.roll_item(rng, 30, 3.0)
+		item["plus"] = Items.MAX_PLUS
+		item["enchant"] = Items.ENCHANTS.keys()[inv.bag.size() % Items.ENCHANTS.size()]
+		inv.add_item(item)
+	ch.pending_rewards.clear()
+	for i in 6:
+		ch.pending_rewards.append(_ui_wordy_offer())
+	return ch
+
+
+## Three reward options with the longest names and texts there are.
+func _ui_wordy_offer() -> Array:
+	var specials: Array = []
+	for set_id in SkillDB.LOADOUTS:
+		specials.append(SkillDB.LOADOUTS[set_id]["special"])
+	specials.sort_custom(func(a, b): return Rewards.option_text({"type": "skill", "id": a}).length() > Rewards.option_text({"type": "skill", "id": b}).length())
+	var traits := Classes.TRAITS.duplicate()
+	traits.sort_custom(func(a, b): return Rewards.option_text({"type": "passive", "id": a}).length() > Rewards.option_text({"type": "passive", "id": b}).length())
+	return [{"type": "skill", "id": specials[0]}, {"type": "passive", "id": traits[0]}, {"type": "passive", "id": traits[1]}]
+
+
+func _test_ui_fit_sweep() -> void:
+	var saved := Game.character
+	var real_meta: Dictionary = Game.meta
+	var real_dir: String = SaveStore.dir
+	var real_board: String = Leaderboard.path
+	var real_mode: String = Game.mode
+	var real_run: Dictionary = Game.run
+	var real_roster: Dictionary = Net.roster
+	SaveStore.dir = "user://test_saves"
+	Leaderboard.path = "user://test_leaderboard.json"
+	Game.meta = SaveStore.new_meta()
+	Game.meta["tier_cleared"] = 2
+	var stuffed := _ui_stuffed_hero()
+	var difficulties: Array = Game.DIFFICULTIES.keys()
+	for slot in SaveStore.SLOTS:
+		var meta := SaveStore.new_meta(difficulties[slot % difficulties.size()])
+		meta["runs"] = 999
+		SaveStore.save_slot(slot, stuffed.to_dict(), meta, {"tier": 5, "seed": 1, "floor": 4, "room": 5} if slot == 0 else {})
+	Leaderboard.clear()
+	for i in 12:
+		Leaderboard.record({"score": 999999 - i, "name": stuffed.display_name, "class": "%s / %s" % [Classes.CLASSES[stuffed.class_id]["name"], Classes.SUBCLASSES[stuffed.subclass_id]["name"]],
+			"level": CharacterData.MAX_LEVEL, "floors": 25, "outcome": ["cleared", "fell", "died"][i % 3]})
+	Game.character = stuffed
+	await _ui_view(320)
+	await _ui_check_the_checker()
+	for width in [320, 420]:
+		await _ui_view(width)
+		await _ui_sweep_screens(stuffed)
+	await _ui_view(320)
+	_ui_check_hud_layout()
+	await _ui_check_leaving(stuffed)
+	if _ui_shots:
+		await _ui_shoot_hud(stuffed)
+		await _ui_shoot_tooltips(stuffed)
+	await _ui_view(0)
+	for slot in SaveStore.SLOTS:
+		SaveStore.delete_slot(slot)
+	Leaderboard.clear()
+	SaveStore.dir = real_dir
+	Leaderboard.path = real_board
+	Game.meta = real_meta
+	Game.mode = real_mode
+	Game.run = real_run
+	Net.roster = real_roster
+	Game.character = saved
+	get_tree().paused = false
+	Sfx.music("")  # the title screen started its music
+	await get_tree().create_timer(1.5, true, false, true).timeout  # the music fade and the screens' short timers run out first
+
+
+func _ui_sweep_screens(stuffed: CharacterData) -> void:
+	Game.character = stuffed
+	var menu := MainMenu.new()
+	add_child(menu)
+	await _ui_sweep("title", menu)
+	menu.show_slots("continue")
+	await _ui_sweep("slots", menu)
+	menu._confirm = "slot1"
+	menu.show_slots("new")
+	await _ui_sweep("slots_overwrite", menu)
+	menu.show_difficulty()
+	await _ui_sweep("oath", menu)
+	menu.free()
+
+	var creation := NewCharacterMenu.new()
+	add_child(creation)
+	await get_tree().process_frame
+	creation.toggle()
+	var wordy_class: String = Classes.playable().reduce(func(a, b): return a if String(Classes.CLASSES[a]["desc"]).length() >= String(Classes.CLASSES[b]["desc"]).length() else b)
+	creation._class_id = wordy_class
+	creation._birth = CharacterData.ATTUNABLE
+	creation._build()
+	await _ui_sweep("creation", creation)
+	creation.free()
+
+	var online := MultiplayerMenu.new()
+	add_child(online)
+	await get_tree().process_frame
+	online.show_hero()
+	await _ui_sweep("mp_hero", online)
+	online._status = "Could not host on port 65535 (error 22)"
+	online.show_choice()
+	await _ui_sweep("mp_choice", online)
+	online.show_join()
+	await _ui_sweep("mp_join", online)
+	online._show_waiting("Connecting to 255.255.255.255 ...")
+	await _ui_sweep("mp_waiting", online)
+	var roster := {}
+	for id in [1, 2, 3, 4]:
+		roster[id] = {"name": stuffed.display_name, "class": stuffed.class_id, "level": CharacterData.MAX_LEVEL, "look": {}}
+	Net.roster = roster
+	online.show_lobby(true)
+	await _ui_sweep("mp_lobby", online)
+	online.free()
+
+	var settings := SettingsMenu.new()
+	add_child(settings)
+	await get_tree().process_frame
+	for tab in SettingsMenu.TABS.size():
+		settings.open(tab)
+		await _ui_sweep("settings_" + String(SettingsMenu.TABS[tab]).to_lower(), settings)
+	settings.free()
+
+	var pause := PauseMenu.new()
+	add_child(pause)
+	await get_tree().process_frame
+	Game.mode = "dungeon"
+	Game.run = {"tier": 5, "seed": 1, "floor": 4, "room": 5}
+	pause.open()
+	pause._confirm = "retreat"
+	pause._build()
+	await _ui_sweep("pause", pause)
+	pause.resume()
+	pause.free()
+
+	var sheet := CharacterSheet.new()
+	add_child(sheet)
+	await get_tree().process_frame
+	sheet.toggle()
+	for tab in CharacterSheet.TABS:
+		sheet.show_tab(tab)
+		await _ui_sweep("sheet_" + tab, sheet)
+	sheet.free()
+
+	var forge := ForgeScreen.new()
+	add_child(forge)
+	await get_tree().process_frame
+	forge.open()
+	for tab in ForgeScreen.TABS:
+		forge._status = "Salvaged: +999 scrap, +99999 gold"
+		forge.show_tab(tab)
+		await _ui_sweep("forge_" + tab, forge)
+	forge.show_tab("enchant")
+	forge._pick_enchant_target(stuffed.inventory.bag[0])  # rebuilds the tab (deferred) at its second step
+	await _ui_sweep("forge_enchant_element", forge)
+	forge.free()
+
+	var altar := AltarScreen.new()
+	add_child(altar)
+	await get_tree().process_frame
+	altar.open()
+	await _ui_sweep("altar", altar)
+	altar.free()
+
+	var gate := DungeonSelect.new()
+	add_child(gate)
+	await get_tree().process_frame
+	gate.open()
+	await _ui_sweep("gate", gate)
+	gate.free()
+
+	var board := LeaderboardScreen.new()
+	add_child(board)
+	await get_tree().process_frame
+	board.open()
+	await _ui_sweep("hall", board)
+	board.free()
+
+	var end := RunEndScreen.new()
+	add_child(end)
+	await get_tree().process_frame
+	var lines := ["Fell on floor 5, room 6", "The fall cost 29999 gold", "Leaderboard: rank 10", "Monsters slain: 999", "Time: 59:59", "Level 30    Gold 99999",
+		"Lost: Mineral, Water, Light (their mastery starts over)", "Deaths so far: 9. The next one costs 10."]
+	end.show_result(true, ["Cleared all 5 floors", "Clear bonus: 9999 gold", "Leaderboard: rank 1", "Monsters slain: 999", "Time: 59:59", "Level 30    Gold 99999"])
+	await _ui_sweep("run_won", end)
+	end.show_result(false, lines)
+	await _ui_sweep("run_fell", end)
+	end.show_result(false, lines.slice(0, 6) + ["With no elements left to lose, this is the end of %s." % stuffed.display_name], true)
+	await _ui_sweep("run_died", end)
+	end.free()
+
+	var novice := CharacterData.create_sandbox(Classes.NEUTRAL_CLASS, ["fire"], 3)
+	novice.display_name = stuffed.display_name
+	Game.character = novice
+	var cards := ClassCards.new()
+	add_child(cards)
+	await get_tree().process_frame
+	cards.open("class")
+	await _ui_sweep("class_cards", cards)
+	cards.free()
+	var veteran := CharacterData.create_sandbox(stuffed.class_id, ["fire"], 10)
+	Game.character = veteran
+	cards = ClassCards.new()
+	add_child(cards)
+	await get_tree().process_frame
+	cards.open("subclass")
+	await _ui_sweep("subclass_cards", cards)
+	cards.free()
+
+	Game.character = stuffed
+	var rewards := RewardCards.new()
+	add_child(rewards)
+	await get_tree().process_frame
+	rewards.open()
+	await _ui_sweep("reward_cards", rewards)
+	rewards.free()
+
+	var guide := TutorialGuide.new()
+	add_child(guide)
+	await _ui_sweep("tutorial", guide, false)
+	guide.free()
+	get_tree().paused = false
+
+
+## The HUD is drawn, not built from Controls, so it is checked through its layout(): at every HUD size, in the 320 px
+## view and a 420 px one, with no to seven elements and the widest texts it can show, every group stays in the view
+## and no two meet; and 1.0 in the 320 view is never capped (it looks as designed).
+func _ui_check_hud_layout() -> void:
+	var hud_script: GDScript = load("res://scripts/ui/hud.gd")
+	var font := UiTheme.font()
+	var wide_text := font.get_string_size("99999g", HORIZONTAL_ALIGNMENT_LEFT, -1, 6).x
+	var wide_run := font.get_string_size("Floor 20/20  Room 10/10  Wave 3/3  Enemies 22", HORIZONTAL_ALIGNMENT_LEFT, -1, 6).x
+	var wide_boss := 0.0
+	for id in Monsters.DEFS:
+		wide_boss = maxf(wide_boss, font.get_string_size(String(Monsters.DEFS[id]["name"]), HORIZONTAL_ALIGNMENT_LEFT, -1, 7).x)
+	var problems: Array[String] = []
+	for width in [320.0, 420.0]:
+		var view := Rect2(0, 0, width, 180)
+		for scale in [0.75, 1.0, 1.5]:
+			for elements in [0, 1, 5, 7]:
+				for boss in [0.0, wide_boss]:
+					var lay: Dictionary = hud_script.layout(view.size, scale, elements, wide_text, wide_run, boss)
+					var rects: Dictionary = lay["rects"]
+					var names: Array = rects.keys().filter(func(k): return rects[k].size.x > 0.0 and (boss > 0.0 or not String(k).begins_with("boss")))
+					for i in names.size():
+						if not view.grow(0.5).encloses(rects[names[i]]):
+							problems.append("%s leaves the %d view at %.2f" % [names[i], int(width), scale])
+						for j in range(i + 1, names.size()):
+							if (rects[names[i]] as Rect2).intersects(rects[names[j]]):
+								problems.append("%s meets %s (%d view, %.2f, %d elements)" % [names[i], names[j], int(width), scale, elements])
+	_check("the HUD's groups never meet or leave the view, at every HUD size, 320 and 420 wide", problems.is_empty())
+	for line in problems.slice(0, 6):
+		print("    ", line)
+	var plain: Dictionary = hud_script.layout(Vector2(320, 180), 1.0, 7, font.get_string_size("500g", HORIZONTAL_ALIGNMENT_LEFT, -1, 6).x,
+		font.get_string_size("Floor 3/5  Room 4/6  Enemies 12", HORIZONTAL_ALIGNMENT_LEFT, -1, 6).x, wide_boss)
+	_check("at HUD size 1.0 in the 320 view nothing is scaled down", is_equal_approx(plain["top"], 1.0) and is_equal_approx(plain["bottom"], 1.0))
+	var big: Dictionary = hud_script.layout(Vector2(420, 180), 1.5, 5, wide_text, wide_run, 0.0)
+	_check("a wide view leaves room for a bigger HUD", float(big["bottom"]) >= 1.5 and float(big["top"]) > 1.3)
+
+
+## Pictures of the live HUD in a boss room (--ui-shots only): HUD sizes 0.75, 1.0 and 1.5, and 1.5 in a 420 px view.
+func _ui_shoot_hud(stuffed: CharacterData) -> void:
+	var real_scale: float = Settings.get_value("hud_scale")
+	Game.character = stuffed
+	var world := Node2D.new()
+	add_child(world)
+	var hero = PLAYER.instantiate()
+	world.add_child(hero)
+	var run := Dungeon.new()
+	run.with_ui = false
+	run.layout = DungeonGen.generate(_rng(12), 5, 5, 0)
+	world.add_child(run)
+	var hud: CanvasLayer = load("res://scripts/ui/hud.gd").new()
+	add_child(hud)
+	await get_tree().process_frame
+	run.debug_goto(run.layout.size() - 1, run.layout[-1].size() - 1)
+	run._physics_process(Dungeon.WAVE_DELAY + 0.1)
+	await get_tree().process_frame
+	hero.caster.locked.assign(["fire", "water"])
+	if is_instance_valid(Game.boss):
+		Game.boss.take_hit({"damage": 123.0, "element": "fire", "from": hero.global_position})  # a damage number in the picture
+	for shot in [["hud_075", 0.75, 320], ["hud_100", 1.0, 320], ["hud_150", 1.5, 320], ["hud_150_wide", 1.5, 420]]:
+		Settings.set_value("hud_scale", shot[1], false)
+		get_window().mode = Window.MODE_WINDOWED  # set_value re-applies the player's fullscreen setting
+		get_window().size = Vector2i(1280, 720)
+		await _ui_view(shot[2])
+		await get_tree().process_frame
+		await RenderingServer.frame_post_draw
+		get_viewport().get_texture().get_image().save_png(ProjectSettings.globalize_path("res://").path_join("../docs/art/ui_%s.png" % shot[0]))
+	Settings.set_value("hud_scale", real_scale, false)
+	get_window().mode = Window.MODE_WINDOWED
+	get_window().size = Vector2i(1280, 720)
+	await _ui_view(320)
+	world.free()
+	Game.boss = null
+	await get_tree().process_frame
+	# The camp: the prompt over the forge (centred on it) with the HUD at 1.0.
+	var camp := Node2D.new()
+	add_child(camp)
+	var walker = PLAYER.instantiate()
+	camp.add_child(walker)
+	var grounds := Dungeon.new()
+	grounds.with_ui = false
+	grounds.layout = [[DungeonGen.camp_room()]]
+	camp.add_child(grounds)
+	await get_tree().process_frame
+	var forge_station: Node2D = get_tree().get_nodes_in_group("interactables").filter(func(n): return n is ForgeStation)[0]
+	walker.global_position = forge_station.global_position + Vector2(0, 14)
+	for i in 4:
+		await get_tree().process_frame
+	await RenderingServer.frame_post_draw
+	get_viewport().get_texture().get_image().save_png(ProjectSettings.globalize_path("res://").path_join("../docs/art/ui_world_prompt.png"))
+	hud.free()
+	camp.free()
+	await get_tree().process_frame
+
+
+func _ui_cancel_press() -> void:
+	var cancel := InputEventAction.new()
+	cancel.action = "ui_cancel"
+	cancel.pressed = true
+	get_viewport().push_input(cancel)
+	await get_tree().process_frame
+
+
+func _ui_focus_in(root: Node) -> bool:
+	var focused := get_viewport().gui_get_focus_owner()
+	return focused != null and root.is_ancestor_of(focused) and focused.is_visible_in_tree()
+
+
+## Every screen that can be left opens with something focused (so a pad can act at once) and goes back one level or
+## closes on ui_cancel (Esc, pad B), pressed through the viewport like a real key. The run-end screen is modal on purpose:
+## its one button (focused shortly after it opens) is the way on.
+func _ui_check_leaving(stuffed: CharacterData) -> void:
+	var failed: Array[String] = []
+	Game.character = stuffed
+	var menu := MainMenu.new()
+	add_child(menu)
+	await get_tree().process_frame
+	menu.show_difficulty()
+	await get_tree().process_frame
+	if not _ui_focus_in(menu):
+		failed.append("oath: nothing focused")
+	await _ui_cancel_press()
+	if menu.find_children("*", "Button", true, false).filter(func(b): return b.text.begins_with("Slot") and b.is_visible_in_tree()).size() != 3:
+		failed.append("oath: Esc does not go back to the slots")
+	await _ui_cancel_press()
+	if not menu.find_children("*", "Button", true, false).any(func(b): return b.text == "Continue" and not b.is_queued_for_deletion()):
+		failed.append("slots: Esc does not go back to the title")
+	menu.free()
+
+	var online := MultiplayerMenu.new()
+	add_child(online)
+	await get_tree().process_frame
+	online.show_choice()
+	await get_tree().process_frame
+	if not _ui_focus_in(online):
+		failed.append("multiplayer: nothing focused")
+	await _ui_cancel_press()
+	await _ui_cancel_press()  # host or join -> which hero -> closed
+	if online.is_open():
+		failed.append("multiplayer: Esc does not go back and close")
+	online.free()
+
+	var real_required: bool = Game.creation_required
+	Game.creation_required = false
+	var creation := NewCharacterMenu.new()
+	add_child(creation)
+	await get_tree().process_frame
+	creation.toggle()
+	await get_tree().process_frame
+	if not (get_viewport().gui_get_focus_owner() is Button and get_viewport().gui_get_focus_owner().text == "Begin"):
+		failed.append("creation: Begin is not focused")
+	await _ui_cancel_press()
+	if creation._open:
+		failed.append("creation: Esc does not cancel")
+	creation.free()
+	Game.creation_required = real_required
+
+	var screens := [
+		["settings", SettingsMenu.new(), func(s): s.open(1), func(s): return s.is_open()],
+		["pause", PauseMenu.new(), func(s): s.open(), func(s): return s.is_open()],
+		["sheet", CharacterSheet.new(), func(s): s.toggle(), func(s): return s._open],
+		["forge", ForgeScreen.new(), func(s): s.open(), func(s): return s.is_open()],
+		["altar", AltarScreen.new(), func(s): s.open(), func(s): return s.is_open()],
+		["gate", DungeonSelect.new(), func(s): s.open(), func(s): return s.is_open()],
+		["hall", LeaderboardScreen.new(), func(s): s.open(), func(s): return s.is_open()],
+		["rewards", RewardCards.new(), func(s): s.open(), func(s): return s._open],
+	]
+	for entry in screens:
+		var screen: Node = entry[1]
+		add_child(screen)
+		await get_tree().process_frame
+		entry[2].call(screen)
+		await get_tree().process_frame
+		if not _ui_focus_in(screen):
+			failed.append("%s: nothing focused" % entry[0])
+		await _ui_cancel_press()
+		if entry[3].call(screen):
+			failed.append("%s: Esc / pad B does not close it" % entry[0])
+		screen.free()
+		get_tree().paused = false
+	if not (await _ui_settings_pad_walk()):
+		failed.append("settings: the Game tab cannot be walked with the pad")
+
+	var novice := CharacterData.create_sandbox(Classes.NEUTRAL_CLASS, ["fire"], 3)
+	Game.character = novice
+	var cards := ClassCards.new()
+	add_child(cards)
+	await get_tree().process_frame
+	cards.open("class")
+	await _ui_cancel_press()
+	if cards.is_open():
+		failed.append("class cards: Esc / pad B does not postpone")
+	cards.free()
+	Game.character = stuffed
+
+	var end := RunEndScreen.new()
+	add_child(end)
+	await get_tree().process_frame
+	end.show_result(false, ["Fell on floor 1, room 1"])
+	await get_tree().process_frame
+	var early := _ui_focus_in(end)
+	await get_tree().create_timer(0.8, true, false, true).timeout
+	if early or not _ui_focus_in(end):
+		failed.append("run end: its button should take focus after a moment, not at once")
+	await _ui_cancel_press()
+	if not end.is_open():
+		failed.append("run end: Esc closed the modal screen")
+	end.free()
+	get_tree().paused = false
+	_check("every menu opens with a focused control and Esc / pad B goes back one level (the run end stays modal)", failed.is_empty())
+	for line in failed:
+		print("    ", line)
+
+
+## Settings, Game tab, with the pad: Down from the tab walks every row inside the scroll area (each scrolled into
+## view), then Reset and Back; Up from Back walks all the way back to the tabs.
+func _ui_settings_pad_walk() -> bool:
+	var settings := SettingsMenu.new()
+	add_child(settings)
+	await get_tree().process_frame
+	settings.open(1)
+	await get_tree().process_frame
+	var scroll: ScrollContainer = settings.find_children("*", "ScrollContainer", true, false)[0]
+	var rows: Array = scroll.find_children("*", "Control", true, false).filter(func(c): return c.focus_mode == Control.FOCUS_ALL)
+	var seen: Array = []
+	var shown := true
+	var down := InputEventAction.new()
+	down.action = "ui_down"
+	down.pressed = true
+	for i in rows.size() + 4:
+		get_viewport().push_input(down)
+		await get_tree().process_frame
+		await get_tree().process_frame  # follow_focus scrolls on the next frame
+		var focused := get_viewport().gui_get_focus_owner()
+		if focused == null:
+			break
+		seen.append(focused)
+		if scroll.is_ancestor_of(focused):
+			shown = shown and scroll.get_global_rect().grow(0.5).encloses(focused.get_global_rect())
+	var texts := seen.filter(func(c): return c is Button).map(func(b): return b.text)
+	var down_ok := rows.all(func(r): return seen.has(r)) and texts.has("Reset to defaults") and texts.has("Back") and shown
+	var up := InputEventAction.new()
+	up.action = "ui_up"
+	up.pressed = true
+	var back_at_tabs := false
+	for i in rows.size() + 4:
+		get_viewport().push_input(up)
+		await get_tree().process_frame
+		var focused := get_viewport().gui_get_focus_owner()
+		if focused is Button and focused.text in SettingsMenu.TABS:
+			back_at_tabs = true
+			break
+	settings.free()
+	if not (down_ok and back_at_tabs):
+		print("    pad walk: rows %d, seen %s, shown %s, back at tabs %s" % [rows.size(), texts, shown, back_at_tabs])
+	return down_ok and back_at_tabs
+
+
+## The sweep's own check on a screen built to be wrong: a label off the view, a cut label, two overlapping buttons and a
+## panel hugging the left edge must all be reported.
+func _ui_check_the_checker() -> void:
+	var layer := CanvasLayer.new()
+	add_child(layer)
+	var panel := Control.new()
+	panel.position = Vector2(4, 4)
+	panel.size = Vector2(100, 60)
+	layer.add_child(panel)
+	var off := Label.new()
+	off.text = "off the edge"
+	off.position = Vector2(90, 10)
+	panel.add_child(off)
+	var cut := Label.new()
+	cut.text = "a long line cut short"
+	cut.clip_text = true
+	cut.position = Vector2(0, 30)
+	cut.size = Vector2(40, 9)
+	panel.add_child(cut)
+	for x in [0.0, 10.0]:
+		var b := Button.new()
+		b.text = "Same place"
+		b.position = Vector2(x, 44)
+		panel.add_child(b)
+	await get_tree().process_frame
+	cut.size = Vector2(40, 9)
+	var problems := " | ".join(_ui_fit_problems(layer, Rect2(0, 0, 100, 180)))
+	_check("the UI sweep reports spills, cut text, overlaps and an off-centre screen",
+		problems.contains("leaves the view") and problems.contains("cut with no ellipsis") and problems.contains("overlaps") and problems.contains("not centred"))
+	layer.free()
+
+
+## Pictures of native tooltips (--ui-shots only): the mouse rests on `target` (at `along` of its width) until the
+## tooltip shows; prints where the tooltip window landed, which must be inside the 1280x720 window.
+func _ui_shoot_tooltip(state: String, target: Control, along: float) -> void:
+	var at := target.get_global_rect().position + target.size * Vector2(along, 0.5)
+	for nudge in [Vector2(-2, 0), Vector2.ZERO]:  # two moves: the first only brings the mouse in
+		var move := InputEventMouseMotion.new()
+		move.position = (at + nudge) * 4.0  # window pixels: the 320x180 view at 4x
+		move.global_position = move.position
+		move.relative = Vector2(2, 0)
+		get_viewport().push_input(move)
+		await get_tree().process_frame
+	await get_tree().create_timer(1.0, true, false, true).timeout
+	for window in get_viewport().get_embedded_subwindows():
+		if window.visible:
+			print("    tooltip %s at %s, window 1280x720" % [state, Rect2(window.position, window.size)])
+	await RenderingServer.frame_post_draw
+	get_viewport().get_texture().get_image().save_png(ProjectSettings.globalize_path("res://").path_join("../docs/art/ui_%s.png" % state))
+	var away := InputEventMouseMotion.new()
+	away.position = Vector2(2, 2)
+	away.global_position = away.position
+	get_viewport().push_input(away)
+	await get_tree().process_frame
+
+
+func _ui_shoot_tooltips(stuffed: CharacterData) -> void:
+	Game.character = stuffed
+	var sheet := CharacterSheet.new()
+	add_child(sheet)
+	await get_tree().process_frame
+	sheet.toggle()
+	await get_tree().process_frame
+	await get_tree().process_frame
+	var rows: Array = sheet._content.get_child(0).get_children().filter(func(n): return n is HBoxContainer and n.tooltip_text != "")
+	await _ui_shoot_tooltip("tooltip_attribute", rows[3], 0.3)
+	sheet.show_tab("gear")
+	await get_tree().process_frame
+	await get_tree().process_frame
+	var gems: Array = sheet.find_children("*", "Button", true, false).filter(func(b): return b.text.begins_with("Use ") and b.tooltip_text != "")
+	await _ui_shoot_tooltip("tooltip_gem", gems[0], 0.9)
+	sheet.free()
+	var forge := ForgeScreen.new()
+	add_child(forge)
+	await get_tree().process_frame
+	forge.open()
+	forge.show_tab("salvage")
+	await get_tree().process_frame
+	await get_tree().process_frame
+	var items: Array = forge._content.get_children().filter(func(b): return b is Button and b.get_global_rect().end.y < 170.0)
+	await _ui_shoot_tooltip("tooltip_forge", items[-1], 0.95)
+	forge.free()
+	get_tree().paused = false

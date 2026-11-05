@@ -87,7 +87,7 @@ func _build() -> void:
 	row.alignment = BoxContainer.ALIGNMENT_CENTER
 	column.add_child(row)
 	row.add_child(UiKit.button("Back", close, 70.0))
-	UiKit.focus_first(tabs)
+	tabs.get_child(_tab).grab_focus.call_deferred()  # the open tab, so Down goes into its rows
 
 
 # ---------- audio ----------
@@ -190,7 +190,7 @@ func _choice(text: String, key: String, options: Array) -> void:
 # ---------- controls ----------
 
 func _build_controls() -> void:
-	var hint := UiKit.label("Click a binding, then press the new key or button (Esc cancels).", UiTheme.TEXT_DIM, 6)
+	var hint := UiKit.label("Click a binding, then press the new key or button (Esc: cancel).", UiTheme.TEXT_DIM, 6)
 	_body.add_child(hint)
 	var scroll := ScrollContainer.new()
 	scroll.custom_minimum_size = Vector2(0, 74)

@@ -72,6 +72,21 @@ static func _first_focusable(node: Node) -> Control:
 	return null
 
 
+## Index of the focused button among the buttons under `root`, or -1 (screens that rebuild themselves keep the
+## pad's place with this and restore_focus).
+static func focused_index(root: Node) -> int:
+	var focused := root.get_viewport().gui_get_focus_owner() if root.is_inside_tree() else null
+	return root.find_children("*", "BaseButton", true, false).find(focused) if focused != null else -1
+
+
+## After a rebuild: focuses the button at `index` under `root` (ignoring the nodes being freed), or `fallback` when
+## there is none or it is disabled, so a pad always has something to act on.
+static func restore_focus(root: Node, index: int, fallback: Control) -> void:
+	var buttons := root.find_children("*", "BaseButton", true, false).filter(func(b): return not b.is_queued_for_deletion())
+	var target: Control = buttons[index] if index >= 0 and index < buttons.size() and not buttons[index].disabled else fallback
+	target.grab_focus.call_deferred()
+
+
 ## Wraps vertical focus so Up on the first button lands on the last (and the reverse).
 static func wrap_focus(buttons: Array) -> void:
 	if buttons.size() < 2:

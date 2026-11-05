@@ -54,9 +54,16 @@ func show_result(won: bool, lines: Array, final: bool = false) -> void:
 		column.add_child(row)
 	var button := Button.new()
 	button.text = "Main menu (Enter)" if final else ("Return to camp (Enter)" if Game.slot >= 0 else "New dungeon (Enter)")
-	button.focus_mode = Control.FOCUS_NONE
+	button.focus_mode = Control.FOCUS_ALL
+	button.custom_minimum_size = Vector2(110, 0)
+	button.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
 	button.pressed.connect(restart)
 	column.add_child(button)
+	# Pad A presses it once focused (this screen has no other way out, on purpose). Not at once: A and Space also dodge,
+	# and a player mashing them as the run ends would skip the summary.
+	get_tree().create_timer(0.6, true, false, true).timeout.connect(func():
+		if _open and is_instance_valid(button):
+			button.grab_focus())
 
 
 func _input(event: InputEvent) -> void:

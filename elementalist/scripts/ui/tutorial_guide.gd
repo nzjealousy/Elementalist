@@ -21,6 +21,8 @@ const STEPS := [
 	["sheet", "Open the character sheet", "character_sheet", ""],
 ]
 
+const TOP := 18.0  # below the run text, even at the largest HUD size
+
 var _done: Dictionary = {}
 var _labels: Dictionary = {}
 var _title: Label
@@ -36,7 +38,13 @@ func _init() -> void:
 func _ready() -> void:
 	var panel := PanelContainer.new()
 	panel.theme = UiTheme.make()
-	panel.position = Vector2(4, 30)
+	# Top right, under the run text: on the left it sat under the HUD's status lines and, at a large HUD size, on the
+	# element slots.
+	panel.set_anchors_preset(Control.PRESET_TOP_RIGHT)
+	panel.grow_horizontal = Control.GROW_DIRECTION_BEGIN
+	panel.offset_left = -4
+	panel.offset_right = -4
+	panel.offset_top = TOP
 	panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(panel)
 	var box := VBoxContainer.new()

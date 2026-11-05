@@ -17,6 +17,7 @@ var _status := ""
 var _tier := 1
 var _roster_label: Label
 var _start_buttons: Array = []
+var _back := Callable()  # what the view's Back / Cancel / Leave button does; Esc and pad B do the same
 
 
 func _ready() -> void:
@@ -40,7 +41,24 @@ func _exit_tree() -> void:
 			Net.roster_changed.disconnect(connection["callable"])
 
 
+func is_open() -> bool:
+	return _view != null
+
+
+func _unhandled_input(event: InputEvent) -> void:
+	if _view != null and _back.is_valid() and (event.is_action_pressed("ui_cancel") or event.is_action_pressed("pause")):
+		get_viewport().set_input_as_handled()
+		_back.call()
+
+
+## A Back-style button that Esc and pad B press too.
+func _back_button(text: String, action: Callable) -> Button:
+	_back = action
+	return UiKit.button(text, action, 70.0)
+
+
 func _clear() -> VBoxContainer:
+	_back = Callable()
 	if _view:
 		_view.queue_free()
 	var holder := Control.new()
@@ -81,7 +99,7 @@ func show_hero() -> void:
 		column.add_child(button)
 	if not any:
 		column.add_child(UiKit.label("No saved hero yet: start a new game first.", UiTheme.RED, 6, HORIZONTAL_ALIGNMENT_CENTER))
-	column.add_child(UiKit.button("Back", close, 70.0))
+	column.add_child(_back_button("Back", close))
 	UiKit.focus_first(column)
 
 
@@ -104,7 +122,7 @@ func show_choice() -> void:
 	column.add_child(UiTheme.divider())
 	column.add_child(UiKit.button("Host a game", _host, 120.0))
 	column.add_child(UiKit.button("Join a game", show_join, 120.0))
-	column.add_child(UiKit.button("Back", show_hero, 70.0))
+	column.add_child(_back_button("Back", show_hero))
 	UiKit.focus_first(column)
 
 
@@ -147,7 +165,7 @@ func show_join() -> void:
 		_status = ""
 		_show_waiting("Connecting to %s ..." % _address), 80.0)
 	column.add_child(go)
-	column.add_child(UiKit.button("Back", show_choice, 70.0))
+	column.add_child(_back_button("Back", show_choice))
 	UiKit.focus_first(column)
 
 
@@ -155,9 +173,9 @@ func _show_waiting(text: String) -> void:
 	var column := _clear()
 	column.add_child(UiTheme.heading("Multiplayer", 10))
 	column.add_child(UiKit.label(text, UiTheme.TEXT, 7, HORIZONTAL_ALIGNMENT_CENTER))
-	column.add_child(UiKit.button("Cancel", func():
+	column.add_child(_back_button("Cancel", func():
 		Net.leave()
-		show_choice(), 70.0))
+		show_choice()))
 	UiKit.focus_first(column)
 
 
@@ -194,9 +212,9 @@ func show_lobby(is_host: bool) -> void:
 		_start_buttons = [coop, arena]
 		column.add_child(coop)
 		column.add_child(arena)
-	column.add_child(UiKit.button("Leave", func():
+	column.add_child(_back_button("Leave", func():
 		Net.leave()
-		show_choice(), 70.0))
+		show_choice()))
 	_refresh_roster()
 	UiKit.focus_first(column)
 

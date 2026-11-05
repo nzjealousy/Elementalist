@@ -33,7 +33,10 @@ func is_near() -> bool:
 
 
 func _process(_delta: float) -> void:
-	_label.text = prompt
+	if _label.text != prompt:
+		_label.text = prompt
+		_label.reset_size()
+		_label.position.x = -_label.size.x * 0.5  # centred over the object, whatever the prompt's length
 	_label.visible = can_interact() and is_near()
 
 

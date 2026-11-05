@@ -35,6 +35,10 @@ func is_open() -> bool:
 
 
 func _unhandled_input(event: InputEvent) -> void:
+	if _open and not _settings.is_open() and event.is_action_pressed("ui_cancel"):  # Esc / pad B also resume
+		resume()
+		get_viewport().set_input_as_handled()
+		return
 	if not event.is_action_pressed("pause"):
 		return
 	if _open and not _settings.is_open():

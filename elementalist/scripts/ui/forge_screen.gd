@@ -59,19 +59,22 @@ func is_open() -> bool:
 
 
 func _input(event: InputEvent) -> void:
-	if _open and (event.is_action_pressed("pause") or event.is_action_pressed("interact")):
+	if _open and (event.is_action_pressed("pause") or event.is_action_pressed("ui_cancel") or event.is_action_pressed("interact")):
 		close()
 		get_viewport().set_input_as_handled()
 
 
 ## Builds the frame (title, tab buttons, wallet, scrolling list) and fills it with `tab`.
 func show_tab(tab: String) -> void:
+	var focus_at := UiKit.focused_index(self) if tab == _tab else -1  # a rebuild after an upgrade keeps the pad's place
 	_tab = tab
 	for child in get_children():
 		child.queue_free()
 	var panel := PanelContainer.new()
 	panel.theme = _theme
-	panel.position = Vector2(8, 4)
+	panel.set_anchors_preset(Control.PRESET_CENTER)  # centred, so a wider (21:9) view does not leave it at the left edge
+	panel.grow_horizontal = Control.GROW_DIRECTION_BOTH
+	panel.grow_vertical = Control.GROW_DIRECTION_BOTH
 	panel.custom_minimum_size = Vector2(PANEL_SIZE)
 	panel.clip_contents = true
 	add_child(panel)
@@ -116,6 +119,8 @@ func show_tab(tab: String) -> void:
 		"upgrade": _fill_upgrade()
 		"enchant": _fill_enchant()
 		"salvage": _fill_salvage()
+	if _open:
+		UiKit.restore_focus(self, focus_at, tab_row.get_child(TABS.find(_tab) + 1))
 
 
 # ---------- tabs ----------
@@ -275,11 +280,11 @@ func _item_button(item: Dictionary, text: String) -> Button:
 	return button
 
 
-## A button that never takes keyboard focus, so WASD stays with the game.
+## A button. It takes focus so a gamepad can work the forge (the game is paused while it is open).
 func _button(text: String) -> Button:
 	var button := Button.new()
 	button.text = text
-	button.focus_mode = Control.FOCUS_NONE
+	button.focus_mode = Control.FOCUS_ALL
 	return button
 
 

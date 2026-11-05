@@ -14,6 +14,7 @@ var _board: LeaderboardScreen
 var _multiplayer: MultiplayerMenu
 var _confirm := ""   # "slot<N>" or "delete<N>": a risky button waiting for its second press
 var _pending_slot := -1
+var _back := Callable()  # what Esc / pad B does in the view shown (nothing on the main list)
 
 
 func _ready() -> void:
@@ -77,7 +78,14 @@ func _build_backdrop() -> void:
 	back.add_child(embers)
 
 
+func _unhandled_input(event: InputEvent) -> void:
+	if _back.is_valid() and (event.is_action_pressed("ui_cancel") or event.is_action_pressed("pause")) and not _settings.is_open() and not _board.is_open() and not _multiplayer.is_open():
+		get_viewport().set_input_as_handled()
+		_back.call()
+
+
 func _clear_view() -> VBoxContainer:
+	_back = Callable()
 	if _view:
 		_view.queue_free()
 	var holder := Control.new()
@@ -153,6 +161,7 @@ func show_slots(purpose: String) -> void:
 		buttons.append(button)
 	var back := UiKit.button("Back", show_main, 70.0)
 	column.add_child(back)
+	_back = show_main
 	UiKit.focus_first(column)
 
 
@@ -204,6 +213,7 @@ func show_difficulty() -> void:
 		cards.add_child(box)
 	var back := UiKit.button("Back", func(): show_slots("new"), 70.0)
 	column.add_child(back)
+	_back = show_slots.bind("new")
 	UiKit.focus_first(cards)
 	# The knight (the intended game) starts focused.
 	for node in cards.get_children():

@@ -17,6 +17,7 @@ const PANEL_SIZE := Vector2i(304, 172)  # fits inside the 320x180 game view
 const CONTENT_WIDTH := 284.0
 const GOLD := Color("ffd84a")
 const DIM := Color(1, 1, 1, 0.4)
+const SCALE_NAMES := {"radius": "area", "knockback": "push", "speed": "speed", "cooldown": "cd"}
 const TYPE_COLORS := {
 	"class": Color("e8e8f0"), "trait": Color("8fe3ff"), "element": Color("ffa66b"), "skill": Color("b6ff8a"),
 }
@@ -44,7 +45,7 @@ func _input(event: InputEvent) -> void:
 	var forge := get_tree().get_first_node_in_group("forge_screen")
 	if forge and forge.is_open():
 		return  # one menu at a time
-	if event.is_action_pressed("character_sheet") or (_open and event.is_action_pressed("pause")):
+	if event.is_action_pressed("character_sheet") or (_open and (event.is_action_pressed("pause") or event.is_action_pressed("ui_cancel"))):
 		toggle()
 		get_viewport().set_input_as_handled()
 	elif event.is_action_pressed("inventory"):
@@ -72,12 +73,15 @@ func toggle() -> void:
 
 ## Builds the frame (tab buttons + content area) and fills it with `tab`.
 func show_tab(tab: String) -> void:
+	var focus_at := UiKit.focused_index(self) if tab == _tab else -1  # a rebuild after spending a point keeps the pad's place
 	_tab = tab
 	for child in get_children():
 		child.queue_free()
 	var panel := PanelContainer.new()
 	panel.theme = _theme
-	panel.position = Vector2(8, 4)
+	panel.set_anchors_preset(Control.PRESET_CENTER)  # centred, so a wider (21:9) view does not leave it at the left edge
+	panel.grow_horizontal = Control.GROW_DIRECTION_BOTH
+	panel.grow_vertical = Control.GROW_DIRECTION_BOTH
 	panel.custom_minimum_size = Vector2(PANEL_SIZE)
 	panel.clip_contents = true
 	add_child(panel)
@@ -117,6 +121,8 @@ func show_tab(tab: String) -> void:
 		"passives": _fill_passives()
 		"combos": _fill_combos()
 		"rewards": _fill_rewards()
+	if _open:
+		UiKit.restore_focus(self, focus_at, tab_row.get_child(TABS.find(_tab)))
 
 
 # ---------- tabs ----------
@@ -126,7 +132,7 @@ func _fill_stats() -> void:
 	var left := _column(124)
 	var right := _column(148)
 	var cls: Dictionary = Classes.CLASSES[ch.class_id]
-	var title := "%s  Lv %d  %s" % [ch.display_name, ch.level, cls["name"]]
+	var title := "Lv %d  %s" % [ch.level, cls["name"]]
 	if ch.subclass_id != "":
 		title += " / " + String(Classes.SUBCLASSES[ch.subclass_id]["name"])
 	var head := HBoxContainer.new()
@@ -136,6 +142,12 @@ func _fill_stats() -> void:
 	var who := VBoxContainer.new()
 	who.add_theme_constant_override("separation", 1)
 	who.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	var hero_name := _label(ch.display_name, GOLD)  # one line: a long name ends in "..." instead of breaking mid-word
+	hero_name.autowrap_mode = TextServer.AUTOWRAP_OFF
+	hero_name.clip_text = true
+	hero_name.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+	hero_name.custom_minimum_size = Vector2(1, 0)
+	who.add_child(hero_name)
 	who.add_child(_label(title, GOLD))
 	var xp_need := CharacterData.xp_to_next(ch.level)
 	var xp_bar := ProgressBar.new()
@@ -298,8 +310,9 @@ func _slot_button(slot: String, inv: Inventory, detail: Label) -> Button:
 			button.add_theme_stylebox_override(state, box)
 		button.disabled = inv.bag_full()
 		button.pressed.connect(_unequip.bind(slot))
-		button.mouse_entered.connect(func(): detail.text = Items.describe(item))
-		button.focus_entered.connect(func(): detail.text = Items.describe(item))
+		var text := Items.describe(item) + ("\nThe bag is full: it cannot come off." if inv.bag_full() else "")  # why the slot is greyed
+		button.mouse_entered.connect(func(): detail.text = text)
+		button.focus_entered.connect(func(): detail.text = text)
 	else:
 		button.text = String(Items.SLOT_NAMES[slot]).substr(0, 1)
 		button.add_theme_color_override("font_color", DIM)
@@ -315,6 +328,7 @@ func _item_button(text: String, item: Dictionary, detail: Label) -> Button:
 	button.clip_text = true
 	button.add_theme_color_override("font_color", Items.rarity_color(item))
 	button.mouse_entered.connect(func(): detail.text = Items.describe(item))
+	button.focus_entered.connect(func(): detail.text = Items.describe(item))
 	return button
 
 
@@ -326,7 +340,7 @@ func _fill_skills() -> void:
 		sets.append("martial")
 	var columns := [_column(136), _column(136)]
 	columns[0].add_child(_label("Skills (numbers include your stats)", GOLD))
-	columns[1].add_child(_label("RMB: bolt while imbued (ranged classes)   F area (Lv %d)   V buff/debuff (Lv %d)   R special (reward)   LMB fuses 2-3 elements locked with Q" % [Classes.AREA_LEVEL, Classes.SUPPORT_LEVEL], DIM))
+	columns[1].add_child(_label("RMB: bolt while imbued (ranged classes)\nF area (Lv %d)   V buff/debuff (Lv %d)\nR special (reward)\nLMB fuses 2-3 elements locked with Q" % [Classes.AREA_LEVEL, Classes.SUPPORT_LEVEL], DIM))
 	if sets.is_empty():
 		columns[0].add_child(_label("No skills: no elements and no martial training.", DIM))
 	for i in sets.size():
@@ -337,7 +351,7 @@ func _fill_skills() -> void:
 			col.add_child(_skill_line(ch, SkillDB.LOADOUTS[set_id][slot], slot))
 
 
-## One compact line for a skill: key, name, cost, cooldown, damage; dim if not yet learned.
+## A skill: key and name, then cost, cooldown, damage and scaling on an indented second line; dim if not yet learned.
 func _skill_line(ch: CharacterData, id: String, slot: String) -> Label:
 	var def: Dictionary = SkillDB.DEFS[id]
 	var key: String = {"primary": "RMB" if SkillDB.set_of(id) != "martial" else "LMB", "area": "F", "support": "V", "special": "R"}[slot]
@@ -345,11 +359,11 @@ func _skill_line(ch: CharacterData, id: String, slot: String) -> Label:
 		var how := "reward" if slot == "special" else "Lv %d" % ch.skill_unlock_level(id)
 		return _label("  %s %s  (%s)" % [key, def["name"], how], DIM)
 	var cost := "%d%s" % [SkillDB.cost_of(def), "st" if SkillDB.uses_stamina(def) else "mp"]
-	var text := "  %s %s  %s  %.1fs  dmg %.0f" % [key, def["name"], cost, ch.skill_cooldown(id), ch.skill_damage(id)]
+	var text := "  %s %s\n      %s  %.1fs  dmg %.0f" % [key, def["name"], cost, ch.skill_cooldown(id), ch.skill_damage(id)]
 	if SkillDB.effect_text(def) != "":
-		text = "  %s %s  %s  %.1fs  %s" % [key, def["name"], cost, ch.skill_cooldown(id), SkillDB.effect_text(def)]
+		text = "  %s %s\n      %s  %.1fs  %s" % [key, def["name"], cost, ch.skill_cooldown(id), SkillDB.effect_text(def)]
 	for prop in def.get("scales", {}):
-		text += "  %s x%.2f" % [String(prop).substr(0, 3), ch.skill_scale(id, prop)]
+		text += "  %s x%.2f" % [SCALE_NAMES.get(prop, prop), ch.skill_scale(id, prop)]
 	return _label(text)
 
 
@@ -552,11 +566,12 @@ static func tab_width(column_widths: Array) -> float:
 	return total
 
 
-## A button that never takes keyboard focus, so TAB/WASD stay with the game.
+## A button. It takes focus so a gamepad can work the sheet (the game is paused while it is open; TAB is caught in
+## _input before the GUI could use it to move focus).
 func _button(text: String) -> Button:
 	var button := Button.new()
 	button.text = text
-	button.focus_mode = Control.FOCUS_NONE
+	button.focus_mode = Control.FOCUS_ALL
 	return button
 
 

@@ -62,7 +62,7 @@ func close() -> void:
 func _input(event: InputEvent) -> void:
 	if not _open:
 		return
-	if event.is_action_pressed("pause"):
+	if event.is_action_pressed("pause") or event.is_action_pressed("ui_cancel"):
 		close()  # decide later: the offer stays pending
 		get_viewport().set_input_as_handled()
 	elif event is InputEventKey and event.pressed and not event.echo:
