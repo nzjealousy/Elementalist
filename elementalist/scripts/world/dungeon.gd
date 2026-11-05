@@ -635,7 +635,8 @@ func _on_player_died() -> void:
 			player.hp = player.max_hp
 			player.stamina = player.max_stamina
 		return
-	if with_ui and Net.is_online():  # multiplayer: a fallen hero waits a moment, then comes back (no penalty)
+	# multiplayer: a fallen hero waits a moment, then comes back (no penalty); a host left alone in a dungeon dies for real
+	if with_ui and Net.is_online() and (Net.roster.size() > 1 or String(room.get("kind", "")) == "arena"):
 		_net_player_down()
 		return
 	state = "dead"
@@ -834,10 +835,10 @@ func on_net_end(info: Dictionary) -> void:
 		text = "%s wins the arena!" % String(info.get("winner_name", "Somebody"))
 	elif bool(info.get("won", false)):
 		text = "The dungeon is cleared! Together."
-		if viewer:  # a guest earns the clear bonus too
-			var bonus := int(info.get("bonus", 0))
-			Game.character.inventory.gold += bonus
-			Game.meta["tier_cleared"] = maxi(int(Game.meta.get("tier_cleared", 0)), int(info.get("tier", 0)))
+		if viewer:  # a guest earns the clear bonus too (capped: the host's numbers go into this guest's save)
+			var reward := Net.clean_clear_reward(info)
+			Game.character.inventory.gold += int(reward["bonus"])
+			Game.meta["tier_cleared"] = maxi(int(Game.meta.get("tier_cleared", 0)), int(reward["tier"]))
 			Game.character.inventory.changed.emit()
 	else:
 		text = "The party fell."

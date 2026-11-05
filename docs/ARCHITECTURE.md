@@ -461,6 +461,14 @@ messages for rooms, loot, kills and damage; guests send their position, aim and 
 as damage. A guest's `Dungeon` runs in `viewer` mode: it builds the host's rooms and spawns nothing. `tests/net_selftest.tscn` plus
 `tools/run_net_test.ps1` run a real host and guest over loopback; `combo_selftest.gd` covers snapshots, ghosts, avatars and the arena offline.
 
+**Trust model.** The host is trusted; clients are not, since any `any_peer` RPC can come from a stranger. On the host, every client message
+(`_pos`, `_hit`, `_down`, `_pvp_hit`, `_pvp_down`) is ignored unless the sender passed the hello (`Net.roster`), a second hello is ignored, and
+a peer that says nothing for 5 s is disconnected so it cannot hold a slot. The hello itself is cleaned (`Net._clean_info`: a known class, a
+look shaped exactly like `HeroLook.for_character`, else the default). A guest's monster hit is rebuilt from known keys with capped numbers and
+a whitelisted status (`CoopHost.clean_hit` / `clean_apply`) and rate-limited per peer (`take_token`, 60 a second, burst 100); PvP hits pass
+only in an arena session, to a peer in the roster, as damage and origin alone (`Net.clean_pvp_hit`). The other way, a guest caps what the host
+gives it before it reaches the save (`Net.clean_kill`, `Net.clean_clear_reward`) and skips malformed snapshot entries (`Net.all_numbers`).
+
 **Five dungeons.** `Game.TIERS` holds five dungeons (floors 5, 10, 12, 15, 20; depth offsets 0, 5, 15, 27, 42) with themes (`vault`, `crypt`,
 `hollow`, `ember`, `spire`) for tiles and music. `Monsters.band_of(depth)` picks one of nine weight bands; `floor_scale` climbs steeply to depth
 10 and gently after. New monsters: Thornling, Dire Wolf, Magma Slug, Gloom Shade; new final bosses: Thorn Matriarch, Cinder Tyrant, Gloaming

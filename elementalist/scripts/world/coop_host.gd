@@ -8,6 +8,18 @@ extends Node
 ##            p: [[peer, x, y, aim_x, aim_y, hp, max_hp, flags]], door: bool, t: run text, boss: net id,
 ##            score: {peer: kills}}
 
+## A guest's hit is rebuilt from these (numbers a client sends are not trusted).
+const APPLY_KINDS := ["dot", "slow", "root", "stun", "vuln", "weaken"]  # the statuses Enemy acts on
+const APPLY_TIME_MAX := 10.0   # longest legit: a 6 s weaken / vuln x1.6 potency = 9.6 s
+const DOT_POWER_MAX := 12.0    # strongest legit burn: 4 a second x1.6 potency = 6.4; about 2x
+const FRACTION_POWER_MAX := 1.0  # every other status is a share (slow 0.8 at most): above 1 would turn it inside out
+const TEXT_OFFSET_MAX := 64.0  # a fused hit's number is shifted at most 36 px
+## Hits a guest may send: a token bucket per peer. Legit worst frame: an imbued spin with all 7 elements on
+## 10 monsters (70 hits) plus an area (10), so the burst is 100; sustained, two lingering areas on 10
+## monsters (40 a second) plus bolts and slashes stay under the refill.
+const HIT_RATE := 60.0
+const HIT_BURST := 100.0
+
 var dungeon: Node2D
 var avatars: Dictionary = {}   # peer -> RemoteAvatar (co-op) or Enemy ghost (arena)
 var scores: Dictionary = {}    # arena: peer -> kills
@@ -16,6 +28,7 @@ var arena := false
 var _enemies: Dictionary = {}  # net id -> Enemy
 var _timer := 0.0
 var _last_state: Dictionary = {}  # peer -> last position update (time), to notice a silent peer
+var _hit_buckets: Dictionary = {}  # peer -> [tokens, last time in seconds] (take_token)
 
 
 static func attach(world: Node2D) -> CoopHost:
@@ -58,6 +71,7 @@ func on_peer_left(peer: int) -> void:
 		avatars[peer].queue_free()
 	avatars.erase(peer)
 	scores.erase(peer)
+	_hit_buckets.erase(peer)
 	if Net.roster.size() < 2:
 		Game.say("Everyone else has left.")
 	if dungeon.has_method("on_net_peer_left"):
@@ -67,7 +81,7 @@ func on_peer_left(peer: int) -> void:
 # ---------- from clients ----------
 
 func on_client_state(peer: int, state: Array) -> void:
-	if state.size() < 7 or not avatars.has(peer) or not is_instance_valid(avatars[peer]):
+	if not Net.all_numbers(state, 7) or not avatars.has(peer) or not is_instance_valid(avatars[peer]):
 		return
 	if arena:
 		PvpGhost.apply_state(avatars[peer], state)
@@ -77,21 +91,56 @@ func on_client_state(peer: int, state: Array) -> void:
 
 
 ## A client hit a ghost monster: the real one takes it (its numbers capped, so a bad client cannot one-shot a boss).
-func on_client_hit(_peer: int, net_id: int, hit: Dictionary) -> void:
+func on_client_hit(peer: int, net_id: int, hit: Dictionary) -> void:
 	var enemy: Enemy = _enemies.get(net_id)
 	if enemy == null or not is_instance_valid(enemy) or enemy.is_queued_for_deletion():
 		return
+	var bucket: Array = _hit_buckets.get_or_add(peer, [HIT_BURST, Time.get_ticks_msec() / 1000.0])
+	if not take_token(bucket, Time.get_ticks_msec() / 1000.0):
+		return  # flooding: the excess is dropped
+	enemy.take_hit(clean_hit(hit, enemy.global_position + Vector2.UP))
+
+
+## A guest's hit rebuilt from known keys with checked types and capped numbers; `fallback_from` if "from" is no position.
+func clean_hit(hit: Dictionary, fallback_from: Vector2) -> Dictionary:
+	var element: Variant = hit.get("element")
+	var from: Variant = hit.get("from")
+	var juice: Variant = hit.get("juice", true)
 	var clean := {
-		"damage": clampf(float(hit.get("damage", 0.0)), 0.0, 400.0),
-		"element": String(hit.get("element", "")),
-		"knockback": clampf(float(hit.get("knockback", 50.0)), 0.0, 400.0),
-		"from": hit.get("from", enemy.global_position + Vector2.UP),
-		"juice": bool(hit.get("juice", true)),
-		"apply": hit.get("apply", {}),
+		"damage": Net.clean_num(hit.get("damage"), 0.0, Net.MAX_HIT_DAMAGE),
+		"element": element if element is String and (element in Elements.MAIN or element in Elements.RARE) else "",
+		"knockback": Net.clean_num(hit.get("knockback", 50.0), 0.0, 400.0, 50.0),
+		"from": from if from is Vector2 and from.is_finite() else fallback_from,
+		"juice": juice if juice is bool else true,
+		"apply": clean_apply(hit.get("apply")),
 	}
-	if hit.has("text_offset"):
-		clean["text_offset"] = hit["text_offset"]
-	enemy.take_hit(clean)
+	var offset: Variant = hit.get("text_offset")
+	if offset is Vector2 and offset.is_finite() and offset.length() <= TEXT_OFFSET_MAX:
+		clean["text_offset"] = offset
+	return clean
+
+
+## A status from a guest: a kind Enemy knows, a capped time and power; anything else is no status ({}).
+func clean_apply(apply: Variant) -> Dictionary:
+	if not (apply is Dictionary and apply.get("kind") is String and apply["kind"] in APPLY_KINDS):
+		return {}
+	var time: Variant = apply.get("time")
+	var power: Variant = apply.get("power", 1.0)
+	if not ((time is int or time is float) and (power is int or power is float)):
+		return {}
+	var kind: String = apply["kind"]
+	return {"kind": kind, "time": Net.clean_num(time, 0.0, APPLY_TIME_MAX),
+		"power": Net.clean_num(power, 0.0, DOT_POWER_MAX if kind == "dot" else FRACTION_POWER_MAX)}
+
+
+## Token bucket [tokens, last time]: refills HIT_RATE a second up to HIT_BURST; true (and one token spent) if a hit may pass.
+static func take_token(bucket: Array, now: float) -> bool:
+	bucket[0] = minf(HIT_BURST, float(bucket[0]) + maxf(now - float(bucket[1]), 0.0) * HIT_RATE)
+	bucket[1] = now
+	if float(bucket[0]) < 1.0:
+		return false
+	bucket[0] = float(bucket[0]) - 1.0
+	return true
 
 
 func on_client_down(_peer: int) -> void:

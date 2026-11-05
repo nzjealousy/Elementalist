@@ -33,6 +33,7 @@ runes for elements, a cold world with glowing magic, 24 x 38 heroes), and an art
 the element numbers on the altar, the arena damage (70%) and the co-op rules (a fallen hero returns after 5 s, no penalty) are first guesses.
 The isometric view is a 2D skew of the flat game: collisions and aiming stay flat. Multiplayer was tested over loopback with two real
 processes, not across a network; the host's pause freezes the world for everyone; guests cannot use the forge or the gate during a session.
+The host is trusted and clients are validated (roster check, capped and rate-limited hits, rewards capped on guests), but this is not anti-cheat: a modified host can still do as it likes within those caps.
 
 **Phase 5 decisions to revisit:** all art and audio is procedural and meant as a solid stand-in (a human
 artist and composer will want to redo it); the tier numbers (5 then 10 floors, a mini boss every third),

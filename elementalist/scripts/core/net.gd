@@ -30,6 +30,14 @@ const PROTOCOL := 3   # 2: DAMAGE carries a stun time, and the state flags carry
 const SYNC_RATE := 15.0          # snapshots and position updates per second
 const ARENA_KILLS := 3           # kills that win an arena match
 const PVP_DAMAGE := 0.7          # a player's hit on another player lands at this share
+const HELLO_TIMEOUT := 5.0       # a peer that has not said hello by then is dropped (it holds one of the 3 slots)
+const MAX_HIT_DAMAGE := 400.0    # a client's hit (on a monster or a player) is capped at this
+## A hostile host could hand a guest any reward, and the guest saves it into their real hero: capped generously.
+const KILL_XP_MAX := 4000        # the richest kill is a tier-5 boss, 1000 xp; about 4x
+const KILL_CLASS_XP_MAX := 400   # 1 + xp / 10, so 101 for that boss
+const CLEAR_BONUS_MAX := 1500    # 150 x tier 5 x 1.6 (Warlord) = 1200
+const LOOK_PART_MAX := 32        # a part id ("robe_long") is short
+const LOOK_PALETTE_MAX := 32     # a real look has about 15 colours
 
 var mode := "offline"            # "offline", "host" or "client"
 var roster: Dictionary = {}      # peer id -> {name, class, level, look}
@@ -123,8 +131,15 @@ func leave() -> void:
 	client_node = null
 
 
-func _on_peer_connected(_id: int) -> void:
-	pass  # a new peer must say hello (with its hero) before it counts
+func _on_peer_connected(id: int) -> void:
+	# a new peer must say hello (with its hero) before it counts; one that never does is dropped
+	if is_host():
+		get_tree().create_timer(HELLO_TIMEOUT).timeout.connect(_drop_if_silent.bind(id))
+
+
+func _drop_if_silent(id: int) -> void:
+	if is_host() and multiplayer.get_peers().has(id) and not roster.has(id):
+		multiplayer.multiplayer_peer.disconnect_peer(id)
 
 
 func _on_connected() -> void:
@@ -152,12 +167,56 @@ func _lost(reason: String) -> void:
 
 ## Only plain, bounded data from a stranger's hello.
 func _clean_info(info: Dictionary) -> Dictionary:
+	var name_text: Variant = info.get("name")
+	var class_id: Variant = info.get("class")
 	return {
-		"name": Game.clean_name(String(info.get("name", "Hero"))),
-		"class": String(info.get("class", "wanderer")),
-		"level": clampi(int(info.get("level", 1)), 1, 99),
-		"look": info.get("look", {}) if info.get("look", {}) is Dictionary else {},
+		"name": Game.clean_name(name_text if name_text is String else "Hero"),
+		"class": class_id if class_id is String and Classes.CLASSES.has(class_id) else Classes.NEUTRAL_CLASS,
+		"level": int(clean_num(info.get("level"), 1, 99, 1)),
+		"look": _clean_look(info.get("look")),
 	}
+
+
+## A look exactly as HeroLook.for_character makes it ({parts: {part key: id}, palette: {key: "rrggbb"}}), else {}
+## (the default look of the class): every avatar composes it into pictures, so nothing odd or giant gets through.
+func _clean_look(look: Variant) -> Dictionary:
+	if not (look is Dictionary and look.size() == 2 and look.get("parts") is Dictionary and look.get("palette") is Dictionary):
+		return {}
+	for key in look["parts"]:
+		var part: Variant = look["parts"][key]
+		if not (key in HeroLook.PART_KEYS and part is String and part.length() <= LOOK_PART_MAX):
+			return {}
+	if look["palette"].size() > LOOK_PALETTE_MAX:
+		return {}
+	for key in look["palette"]:
+		var colour: Variant = look["palette"][key]
+		if not (key is String and key.length() <= LOOK_PART_MAX and colour is String and colour.length() <= 7 and Color.html_is_valid(colour)):
+			return {}
+	return look
+
+
+## A number from a peer: wrong types give `fallback`, NaN and INF count as 0, and it is kept within low..high.
+func clean_num(value: Variant, low: float, high: float, fallback: float = 0.0) -> float:
+	if not (value is int or value is float):
+		return fallback
+	var number := float(value)
+	return clampf(number if is_finite(number) else 0.0, low, high)
+
+
+## True if `values` is an Array whose first `count` entries are all numbers (a snapshot or position entry).
+func all_numbers(values: Variant, count: int) -> bool:
+	if not (values is Array and values.size() >= count):
+		return false
+	for i in count:
+		if not (values[i] is int or values[i] is float):
+			return false
+	return true
+
+
+## The sender of an any_peer call, or 0 if it has not passed the hello handshake (a stranger).
+func _known_sender() -> int:
+	var id := multiplayer.get_remote_sender_id()
+	return id if multiplayer.is_server() and roster.has(id) else 0
 
 
 # ---------- the lobby handshake ----------
@@ -167,7 +226,9 @@ func _hello(info: Dictionary) -> void:
 	if not multiplayer.is_server():
 		return
 	var id := multiplayer.get_remote_sender_id()
-	if int(info.get("version", 0)) != PROTOCOL:
+	if roster.has(id):
+		return  # one hello per peer
+	if info.get("version") != PROTOCOL:
 		_refuse.rpc_id(id, "Different game version")
 		multiplayer.multiplayer_peer.disconnect_peer(id)
 		return
@@ -277,7 +338,20 @@ func send_kill(xp: int, class_xp: int) -> void:
 
 @rpc("authority", "reliable")
 func _kill(xp: int, class_xp: int) -> void:
-	kill_received.emit(xp, class_xp)
+	var reward := clean_kill(xp, class_xp)
+	kill_received.emit(reward.x, reward.y)
+
+
+## A kill reward from the host, capped (it is saved into this guest's real hero).
+func clean_kill(xp: int, class_xp: int) -> Vector2i:
+	return Vector2i(clampi(xp, 0, KILL_XP_MAX), clampi(class_xp, 0, KILL_CLASS_XP_MAX))
+
+
+## The clear bonus and tier a guest books from the host's end-of-run info, capped and checked (saved into the real hero).
+func clean_clear_reward(info: Dictionary) -> Dictionary:
+	var tier: Variant = info.get("tier", 0)
+	var known := (tier is int or tier is float) and Game.TIERS.has(int(tier))
+	return {"bonus": int(clean_num(info.get("bonus"), 0, CLEAR_BONUS_MAX)), "tier": int(tier) if known else 0}
 
 
 ## `stun_time` > 0: the hero is stunned that long too if the hit lands (a boss slam).
@@ -311,8 +385,9 @@ func send_position(state: Array) -> void:
 
 @rpc("any_peer", "unreliable")
 func _pos(state: Array) -> void:
-	if multiplayer.is_server() and host_node and host_node.has_method("on_client_state"):
-		host_node.on_client_state(multiplayer.get_remote_sender_id(), state)
+	var sender := _known_sender()
+	if sender != 0 and host_node and host_node.has_method("on_client_state"):
+		host_node.on_client_state(sender, state)
 
 
 ## What a client did to a ghost monster; the host applies it to the real one.
@@ -323,8 +398,9 @@ func send_hit(net_id: int, hit: Dictionary) -> void:
 
 @rpc("any_peer", "reliable")
 func _hit(net_id: int, hit: Dictionary) -> void:
-	if multiplayer.is_server() and host_node and host_node.has_method("on_client_hit"):
-		host_node.on_client_hit(multiplayer.get_remote_sender_id(), net_id, hit)
+	var sender := _known_sender()
+	if sender != 0 and host_node and host_node.has_method("on_client_hit"):
+		host_node.on_client_hit(sender, net_id, hit)
 
 
 ## A client's hero fell.
@@ -335,8 +411,9 @@ func send_down() -> void:
 
 @rpc("any_peer", "reliable")
 func _down() -> void:
-	if multiplayer.is_server() and host_node and host_node.has_method("on_client_down"):
-		host_node.on_client_down(multiplayer.get_remote_sender_id())
+	var sender := _known_sender()
+	if sender != 0 and host_node and host_node.has_method("on_client_down"):
+		host_node.on_client_down(sender)
 
 
 # ---------- the arena: players hit each other ----------
@@ -353,15 +430,30 @@ func send_pvp_hit(target: int, hit: Dictionary) -> void:
 
 @rpc("any_peer", "reliable")
 func _pvp_hit(target: int, hit: Dictionary) -> void:
-	if multiplayer.is_server():
-		_pvp_deliver(target, hit, multiplayer.get_remote_sender_id())
+	var sender := _known_sender()
+	if sender != 0:
+		_pvp_deliver(target, hit, sender)
 
 
+## Players hurt each other only in the arena, and only with the numbers the receiver uses (Dungeon._on_host_pvp_damage,
+## CoopClient._on_pvp_damage). The host's own hits come through here too.
 func _pvp_deliver(target: int, hit: Dictionary, attacker: int) -> void:
+	if String(session.get("kind", "")) != "arena" or not roster.has(target):
+		return
+	var clean := clean_pvp_hit(hit)
 	if target == 1:
-		pvp_damage_received.emit(hit, attacker)
-	elif roster.has(target):
-		_pvp_damage.rpc_id(target, hit, attacker)
+		pvp_damage_received.emit(clean, attacker)
+	else:
+		_pvp_damage.rpc_id(target, clean, attacker)
+
+
+## A PvP hit rebuilt from what the receiver reads: damage (capped) and where it came from.
+func clean_pvp_hit(hit: Dictionary) -> Dictionary:
+	var clean := {"damage": clean_num(hit.get("damage"), 0.0, MAX_HIT_DAMAGE)}
+	var from: Variant = hit.get("from")
+	if from is Vector2 and from.is_finite():
+		clean["from"] = from
+	return clean
 
 
 @rpc("authority", "reliable")
@@ -380,5 +472,6 @@ func send_pvp_down(killer: int) -> void:
 
 @rpc("any_peer", "reliable")
 func _pvp_down(killer: int) -> void:
-	if multiplayer.is_server() and host_node and host_node.has_method("on_pvp_down"):
-		host_node.on_pvp_down(multiplayer.get_remote_sender_id(), killer)
+	var sender := _known_sender()
+	if sender != 0 and host_node and host_node.has_method("on_pvp_down"):
+		host_node.on_pvp_down(sender, killer)

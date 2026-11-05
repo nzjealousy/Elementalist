@@ -91,6 +91,7 @@ func _run_host() -> void:
 	_check("a guest joined", joined)
 	if not joined:
 		return
+	Net.session = {"kind": "arena", "tier": 1, "seed": 0}  # players hurt each other only in the arena (after the hello: a session refuses newcomers)
 	var guest := 0
 	for id in Net.roster:
 		if int(id) != 1:

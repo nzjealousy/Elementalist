@@ -60,8 +60,9 @@ func apply_snapshot(snapshot: Dictionary) -> void:
 	if room_node == null:
 		return
 	for entry in snapshot.get("e", []):
-		if not (entry is Array and entry.size() >= 10 and entry[9] is Array):
-			continue  # a broken entry
+		if not (entry is Array and entry.size() >= 10 and entry[1] is String and entry[2] is String and entry[7] is String and entry[9] is Array \
+				and Net.all_numbers([entry[0], entry[3], entry[4], entry[5], entry[6]], 5)):
+			continue  # a broken entry: [net_id, monster_id, variant, x, y, hp, max_hp, aura, boss, effect kinds, pose]
 		var id := int(entry[0])
 		var ghost: Enemy = ghosts.get(id)
 		if ghost == null or not is_instance_valid(ghost):
@@ -73,7 +74,8 @@ func apply_snapshot(snapshot: Dictionary) -> void:
 		ghost.aura = String(entry[7])
 		ghost.effects.clear()
 		for kind in entry[9]:
-			ghost.effects[String(kind)] = {"time": 0.5, "power": 1.0}
+			if kind is String:
+				ghost.effects[kind] = {"time": 0.5, "power": 1.0}
 		var pose = entry[10] if entry.size() > 10 else 0  # the attack pose (Enemy.POSES)
 		ghost.apply_pose_code(int(pose) if (pose is int or pose is float) else 0)
 		_seen_at[id] = _tick
@@ -88,6 +90,8 @@ func apply_snapshot(snapshot: Dictionary) -> void:
 	var me := Net.my_id()
 	var parent: Node = dungeon.get_parent()
 	for entry in snapshot.get("p", []):
+		if not Net.all_numbers(entry, 8):
+			continue  # a broken entry: [peer, x, y, aim_x, aim_y, hp, max_hp, flags]
 		var peer := int(entry[0])
 		if peer == me:
 			continue

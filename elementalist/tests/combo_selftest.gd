@@ -91,6 +91,7 @@ func _ready() -> void:
 	await _test_hero_stun()
 	await _test_enemy_attack_poses()
 	await _test_net_world()
+	_test_net_trust()
 	_test_items()
 	_test_inventory_and_gear_stats()
 	_test_forge()
@@ -5424,6 +5425,10 @@ func _test_net_world() -> void:
 	var avatar: RemoteAvatar = client.others.get(5)
 	_check("another player appears as an avatar with their name", avatar != null and avatar.peer == 5 and avatar.hero_name == "Pip" and avatar.is_in_group("net_players") and avatar.net_pos == Vector2(60, 70) and avatar.moving)
 	_check("the avatar is a hurtbox for monsters", avatar.hurtbox().size.x > 4.0 and not avatar.is_down())
+	client.apply_snapshot({"e": snapshot["e"], "p": [[5, 61.0, 70.0, 90.0, 70.0, 80.0, 100.0, 1], [6, 1.0], "junk", [7, "x", 1.0, 2.0, 3.0, 4.0, 5.0, 0],
+		[8, {}, 1.0, 2.0, 3.0, 4.0, 5.0, 0], [9, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, []]], "door": false, "t": "after odd players", "boss": 8, "score": {}})
+	_check("short or odd player entries are skipped without an error", Game.run_text == "after odd players" and client.others.size() == 1 \
+		and client.others.get(5) == avatar and avatar.net_pos == Vector2(61, 70))
 	client.apply_snapshot({"e": [], "p": [], "door": false, "t": "", "boss": 0, "score": {}})
 	await get_tree().process_frame
 	await get_tree().process_frame
@@ -5533,3 +5538,114 @@ func _test_net_world() -> void:
 	duel_world.queue_free()
 	Game.mode = "camp"
 	Net.roster = {}
+
+
+# ---------- multiplayer trust: what a stranger (or a hostile host) sends is checked ----------
+
+func _test_net_trust() -> void:
+	# the hello: a real hero passes unchanged, anything odd is replaced
+	var mine := Net.local_info()
+	var expected := mine.duplicate(true)
+	expected.erase("version")
+	_check("a real hero's hello passes the cleaning unchanged", Net._clean_info(mine) == expected)
+	var every_look_passes := true
+	for class_id in Classes.CLASSES:
+		for sub in [""] + Array(Classes.CLASSES[class_id].get("subclasses", [])):
+			var look := HeroLook.for_class(class_id, String(sub), 3, 4)
+			every_look_passes = every_look_passes and Net._clean_look(look) == look
+	_check("every class and subclass look passes the cleaning", every_look_passes)
+	var real_look: Dictionary = mine["look"]
+	var giant := real_look.duplicate(true)
+	for i in 100:
+		giant["palette"]["c%d" % i] = "ff0000"
+	var bad_looks := [
+		[], 5, {"parts": {}, "palette": {}, "extra": 1}, {"parts": [], "palette": {}},
+		{"parts": {"wings": "big"}, "palette": {}}, {"parts": {"outfit": 7}, "palette": {}},
+		{"parts": {"outfit": "x".repeat(500)}, "palette": {}}, {"parts": {}, "palette": {"outfit": "ff0000ff"}},
+		{"parts": {}, "palette": {"outfit": 16711680}}, {"parts": {}, "palette": {"outfit": "nothex"}}, {"parts": {}, "palette": {3: "ff0000"}}, giant,
+	]
+	var all_dropped := true
+	for look in bad_looks:
+		all_dropped = all_dropped and Net._clean_info({"name": "A", "class": "ranger", "level": 3, "look": look})["look"] == {}
+	_check("an oversize or odd-typed look becomes the default look", all_dropped)
+	var odd := Net._clean_info({"name": 5, "class": "dragon", "level": "high"})
+	_check("an unknown class, a name that is no text and a level that is no number are replaced",
+		odd["class"] == Classes.NEUTRAL_CLASS and odd["name"] == "Hero" and odd["level"] == 1 and odd["look"] == {})
+	_check("a class that is no text is replaced too", Net._clean_info({"class": ["ranger"], "level": NAN})["class"] == Classes.NEUTRAL_CLASS)
+
+	# a guest's hit on a monster
+	var host := CoopHost.new()
+	var legit := {"damage": 12.5, "element": "fire", "knockback": 90.0, "from": Vector2(3, 4), "juice": true,
+		"apply": {"kind": "dot", "time": 2.5, "power": 3.0}, "text_offset": Vector2(12, 0)}
+	_check("a normal guest hit is kept as it is", host.clean_hit(legit, Vector2.ZERO) == legit)
+	var bad := host.clean_hit({"damage": NAN, "element": "plasma", "knockback": INF, "from": "here", "juice": {},
+		"apply": {"kind": "explode", "time": 1.0, "power": 1.0}, "text_offset": Vector2(999, 0), "net_id": "x"}, Vector2(1, 1))
+	_check("NaN, unknown and wrong-typed parts of a hit are dropped or replaced", bad == {"damage": 0.0, "element": "", "knockback": 0.0,
+		"from": Vector2(1, 1), "juice": true, "apply": {}})
+	_check("a hit with nothing in it is harmless", host.clean_hit({}, Vector2(2, 2)) == {"damage": 0.0, "element": "", "knockback": 50.0,
+		"from": Vector2(2, 2), "juice": true, "apply": {}})
+	_check("a guest's damage is capped", is_equal_approx(float(host.clean_hit({"damage": 99999.0}, Vector2.ZERO)["damage"]), Net.MAX_HIT_DAMAGE))
+	_check("a burn's time and power are capped", host.clean_apply({"kind": "dot", "time": 999.0, "power": 1e9}) == {"kind": "dot",
+		"time": CoopHost.APPLY_TIME_MAX, "power": CoopHost.DOT_POWER_MAX})
+	_check("a slow can never be more than a full stop", host.clean_apply({"kind": "slow", "time": -5.0, "power": 5.0}) == {"kind": "slow", "time": 0.0, "power": 1.0})
+	_check("a status with missing or wrong-typed keys is no status", host.clean_apply({"kind": "stun"}).is_empty() and host.clean_apply(5).is_empty() \
+		and host.clean_apply({"kind": 3, "time": 1.0}).is_empty() and host.clean_apply({"kind": "root", "time": "long"}).is_empty() \
+		and host.clean_apply({"kind": "root", "time": 1.0, "power": NAN}) == {"kind": "root", "time": 1.0, "power": 0.0})
+	var real_kinds := true
+	for id in SkillDB.DEFS:
+		var apply: Dictionary = SkillDB.DEFS[id].get("apply", {})
+		real_kinds = real_kinds and (apply.is_empty() or (apply["kind"] in CoopHost.APPLY_KINDS and float(apply["time"]) * 1.6 <= CoopHost.APPLY_TIME_MAX))
+	_check("every skill's status passes the guest-hit check", real_kinds)
+	host.free()
+
+	# the hit rate limit
+	var bucket := [CoopHost.HIT_BURST, 10.0]
+	var passed := 0
+	for i in 150:
+		if CoopHost.take_token(bucket, 10.0):
+			passed += 1
+	_check("a guest may send a burst of hits, then the excess is dropped", passed == int(CoopHost.HIT_BURST))
+	var refilled := 0
+	for i in 100:
+		if CoopHost.take_token(bucket, 10.5):
+			refilled += 1
+	_check("the hits refill with time", refilled == int(CoopHost.HIT_RATE * 0.5))
+	var fresh := [CoopHost.HIT_BURST, 0.0]
+	var worst_frame := true
+	for i in 80:  # an imbued spin with all 7 elements on 10 monsters, plus an area on 10
+		worst_frame = worst_frame and CoopHost.take_token(fresh, 0.0)
+	_check("the worst legit frame of hits all passes", worst_frame)
+
+	# PvP: arena only, with only the numbers the receiver uses
+	_check("a PvP hit keeps only damage (capped) and where it came from", Net.clean_pvp_hit({"damage": 1e6, "element": "fire", "from": Vector2(1, 2),
+		"apply": {"kind": "dot", "time": 9.0}, "evil": 1}) == {"damage": Net.MAX_HIT_DAMAGE, "from": Vector2(1, 2)})
+	_check("a PvP hit with odd numbers is harmless", Net.clean_pvp_hit({"damage": "lots", "from": Vector2(NAN, 0)}) == {"damage": 0.0})
+	var got: Array = []
+	var on_pvp := func(hit, attacker): got.append([hit, attacker])
+	Net.pvp_damage_received.connect(on_pvp)
+	Net.roster = {1: Net.local_info(), 5: {"name": "Pip"}}
+	Net.session = {"kind": "coop"}
+	Net._pvp_deliver(1, {"damage": 5.0}, 5)
+	_check("no PvP hits in a co-op session", got.is_empty())
+	Net.session = {"kind": "arena"}
+	Net._pvp_deliver(9, {"damage": 5.0}, 5)
+	_check("no PvP hits on somebody who is not here", got.is_empty())
+	Net._pvp_deliver(1, {"damage": 5.0, "from": Vector2(4, 4), "knockback": 999.0}, 5)
+	_check("an arena hit arrives cleaned", got.size() == 1 and got[0][0] == {"damage": 5.0, "from": Vector2(4, 4)} and got[0][1] == 5)
+	Net.pvp_damage_received.disconnect(on_pvp)
+	Net.roster = {}
+	Net.session = {}
+
+	# what a guest takes from the host is capped (it is saved into their real hero)
+	var richest := 0
+	for id in Monsters.DEFS:
+		richest = maxi(richest, roundi(float(Monsters.DEFS[id].get("xp", 0)) * (1.0 if Monsters.DEFS[id].get("boss", false) else Monsters.VARIANT_XP)))
+	_check("the xp cap leaves room for the richest kill", richest <= Net.KILL_XP_MAX / 2 and 1 + richest / 10 <= Net.KILL_CLASS_XP_MAX)
+	_check("a normal kill reward is kept", Net.clean_kill(12, 2) == Vector2i(12, 2))
+	_check("a huge or negative kill reward is capped", Net.clean_kill(10000000, -5) == Vector2i(Net.KILL_XP_MAX, 0))
+	var best_bonus := roundi(150.0 * Game.TIERS.keys().max() * float(Game.DIFFICULTIES["warlord"]["reward"]))
+	_check("the clear bonus cap leaves room for the best clear", best_bonus <= Net.CLEAR_BONUS_MAX)
+	_check("a normal clear reward is kept", Net.clean_clear_reward({"kind": "coop", "won": true, "bonus": 150, "tier": 1}) == {"bonus": 150, "tier": 1})
+	_check("a huge bonus and an unknown tier are capped", Net.clean_clear_reward({"bonus": 1e12, "tier": 99}) == {"bonus": Net.CLEAR_BONUS_MAX, "tier": 0})
+	_check("odd-typed rewards are nothing", Net.clean_clear_reward({"bonus": "lots", "tier": "5"}) == {"bonus": 0, "tier": 0} \
+		and Net.clean_clear_reward({}) == {"bonus": 0, "tier": 0})
