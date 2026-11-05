@@ -468,7 +468,7 @@ func _update_bar(src: Node2D, mirror: Bar) -> void:
 	mirror.fraction = clampf(enemy.hp / maxf(enemy.max_hp, 1.0), 0.0, 1.0)
 	mirror.bar_width = EnemyHealthBar.SIZE.x
 	mirror.queue_redraw()
-	mirror.position = (project(enemy.global_position) - Vector2(0.0, float(enemy.hit_rect().size.y) + 6.0)).round()
+	mirror.position = (project(enemy.global_position) - Vector2(0.0, maxf(float(enemy.hit_rect().size.y), enemy.picture_height()) + 6.0)).round()
 
 
 # ---------- helpers ----------

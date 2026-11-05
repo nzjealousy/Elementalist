@@ -4311,6 +4311,14 @@ func _test_phase6b() -> void:
 	_check("so the look key changes", HeroComposer.key_of(worn) != plain_key)
 	hero.inventory.unequip("weapon")
 	_check("an empty hand shows no weapon", HeroLook.for_character(hero)["parts"]["weapon"] == "")
+	var rig_ok := true
+	for monster_id in ["skeleton", "duelist", "grave_warden", "ember_matron", "wraith", "shade"]:
+		var enemy := Monsters.spawn(self, monster_id, Vector2.ZERO)
+		var picture := enemy.sprite.texture.get_size()
+		rig_ok = rig_ok and picture == Vector2(24, 38) and AssetDB.get_frames(enemy.sprite_id).size() == 4
+		rig_ok = rig_ok and enemy.hit_rect().size == Enemy.BODY_SIZES[enemy.sprite_id] and enemy.picture_height() == 38.0
+		enemy.queue_free()
+	_check("the humanoid enemies are drawn on the 24 x 38 hero rig with four frames and keep their old hit boxes", rig_ok)
 	var icons_ok := true
 	for item in [helm, mail, boots, axe]:
 		var icon: Texture2D = HeroLook.slot_icon(item)

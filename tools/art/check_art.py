@@ -21,6 +21,7 @@ SPRITES = os.path.join(ROOT, 'sprites')
 TINTED = ('fx_', 'proj_enemy', 'pickup_material', 'pickup_item', 'bolt')   # white by design; code tints them
 PALETTE_ONLY = ('enemy_', 'boss_', 'mini_', 'chest', 'forge', 'board', 'altar', 'training_sign', 'door_locked', 'door_sealed', 'pickup_gold')
 HERO_DIR = os.path.join(SPRITES, 'hero')
+HERO_RIG = ('enemy_skeleton', 'enemy_duelist', 'mini_warden', 'mini_matron', 'enemy_wraith', 'enemy_shade')
 
 ramp_colours = set()
 for name in style.STYLES[style.ACTIVE]["ramps"]:
@@ -58,7 +59,7 @@ for path in list(walk(SPRITES)) + list(walk(os.path.join(ROOT, 'ui'))):
                 break
         continue
     tinted = name.startswith(TINTED)
-    palette_only = name.startswith(PALETTE_ONLY) and not tinted
+    palette_only = name.startswith(PALETTE_ONLY) and not tinted and not name.startswith(HERO_RIG)   # hero-rig enemies are shaded through the hero ramp, like the heroes
     for c in cv.px:
         if c[3] == 255:
             if c[:3] == (0, 0, 0):

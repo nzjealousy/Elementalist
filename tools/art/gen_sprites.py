@@ -539,8 +539,13 @@ MONSTERS = {
 }
 
 
+HUMANOIDS = ('enemy_skeleton', 'enemy_duelist', 'mini_warden', 'mini_matron', 'enemy_wraith', 'enemy_shade')   # redrawn on the hero rig by gen_enemies.py
+
+
 def make_monsters():
     for name, fn in MONSTERS.items():
+        if name in HUMANOIDS:
+            continue
         save(name, unify([finish(restyle.volumize(restyle.pillow(fn(ph)))) for ph in range(FRAMES)]))
 
 

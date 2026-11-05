@@ -20,7 +20,7 @@ func _draw() -> void:
 	if enemy == null:
 		return
 	var frac := clampf(enemy.hp / enemy.max_hp, 0.0, 1.0)
-	var pos := Vector2(-SIZE.x * 0.5, -enemy.hit_rect().size.y * 0.5 - SIZE.y - 3.0)
+	var pos := Vector2(-SIZE.x * 0.5, -maxf(enemy.hit_rect().size.y, enemy.picture_height()) * 0.5 - SIZE.y - 3.0)
 	draw_rect(Rect2(pos - Vector2.ONE, SIZE + Vector2(2, 2)), Color(0, 0, 0, 0.85))
 	draw_rect(Rect2(pos, Vector2(SIZE.x * frac, SIZE.y)), Color("e24b3b").lerp(Color("6bd66b"), frac))
 	if enemy.aura != "":

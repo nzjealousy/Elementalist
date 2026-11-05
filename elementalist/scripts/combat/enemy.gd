@@ -15,6 +15,12 @@ const VULN_MULT := 1.25
 const SHATTER_MULT := 1.5  # physical hit on a rooted or stunned enemy
 const ENRAGE_AT := 0.3   # a boss below this share of its health enrages
 const CONTACT_MARGIN := 1.0  # px; bodies this close count as touching
+## Humanoids are drawn on the hero rig, taller than the bodies they fight with: they keep the hit box they had when their picture
+## was small (the drawing grew, the fight did not).
+const BODY_SIZES := {
+	"enemy_skeleton": Vector2(14, 18), "enemy_duelist": Vector2(16, 19), "mini_warden": Vector2(22, 26), "mini_matron": Vector2(20, 26),
+	"enemy_wraith": Vector2(15, 19), "enemy_shade": Vector2(15, 19),
+}
 
 @export var max_hp := 40.0
 @export var speed := 30.0
@@ -323,7 +329,14 @@ func hit_rect() -> Rect2:
 ## How big the body is: the picture, except for an arena ghost, which wears a 24 x 38 hero picture but has the hero's
 ## 16 x 26 body (Player.HURTBOX_SIZE).
 func _body_size() -> Vector2:
-	return Player.HURTBOX_SIZE if ghost else sprite.texture.get_size()
+	if ghost:
+		return Player.HURTBOX_SIZE
+	return BODY_SIZES.get(sprite_id, sprite.texture.get_size())
+
+
+## The tallest part of the picture, for things that float above it (health bars).
+func picture_height() -> float:
+	return float(sprite.texture.get_height())
 
 
 ## True when this enemy's body overlaps the target's hurtbox on any side. The target needs

@@ -10,7 +10,7 @@ import sys
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 
-for script in ('gen_runes.py', 'gen_vfx.py', 'gen_ui.py', 'gen_tiles.py', 'gen_heroes.py', 'gen_sprites.py', 'gen_portal.py', 'gen_items.py'):
+for script in ('gen_runes.py', 'gen_vfx.py', 'gen_ui.py', 'gen_tiles.py', 'gen_heroes.py', 'gen_sprites.py', 'gen_enemies.py', 'gen_portal.py', 'gen_items.py'):
     print('==', script)
     runpy.run_path(os.path.join(HERE, script), run_name='__main__')
 print('== check_art.py')

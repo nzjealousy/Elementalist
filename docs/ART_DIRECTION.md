@@ -46,7 +46,11 @@ rebuilds all art and runs the art gate. The two other styles stay in `style.py` 
    a hat with band and gem, a mantle, a robe with an open front and rune hem, belts with buckles and pouches, cuffed sleeves, boots with soles and
    cuffs, pauldrons, quivers, horns and antlers, and weapons with guards, bands and glowing gems. Still parts with region/shade pixels, so every class, subclass and piece of gear recolours them;
    `HeroComposer` adds the ink outline and the rim. Class cards show them at 1x (eight in a row), subclass cards at 2x.
-6. **Monsters and bosses** keep their drawings but get soft outlines and rounded volume (`restyle.pillow` and `restyle.volumize`: a height field from
+6. **Humanoid enemies are drawn on the hero rig** (`gen_enemies.py`): the skeleton archer, bone duelist, grave warden, ember matron, wraith and shade share the
+   hero's anatomy, 24 x 38 frame, shading ramp, moonlit rim and selective outline, in four walking frames. Enemy-only parts (skull, ribcage and bone limbs,
+   shield, flame crown, ghost cloak) live in that file; armour, caps, capes, weapons and the body are the hero's own parts. Their hit boxes keep the sizes of
+   the smaller drawings they replaced (`Enemy.BODY_SIZES`), and health bars float above the taller picture.
+6a. **The other monsters and bosses** keep their drawings but get soft outlines and rounded volume (`restyle.pillow` and `restyle.volumize`: a height field from
    the silhouette lit from the upper left, a lit rim and a shaded underside) and are snapped to the ramps. Props pass through `restyle.py`; the altar
    was redrawn with the five element glyphs and a floating light rune.
 6b. **Equipment** has its own 16 x 16 painted icon per gear base (`gen_items.py` -> `item_<base>.png`: swords, daggers, axes, staves, rods, bows, tomes,
@@ -64,6 +68,7 @@ rebuilds all art and runs the art gate. The two other styles stay in `style.py` 
 | ![the training grounds with rune circles, hotbar and heroes](art/moonlit_in_game.png) | ![subclass cards with 24 x 38 heroes](art/moonlit_subclass_cards.png) |
 | ![character sheet](art/moonlit_character_sheet.png) | ![title screen](art/moonlit_title.png) |
 | ![the camp with the portal gate](art/moonlit_portal.png) | ![equipment screen with painted gear icons](art/moonlit_gear.png) |
+| ![the redrawn humanoid enemies](art/moonlit_enemies.png) | |
 
 ## Tools
 
@@ -78,6 +83,7 @@ rebuilds all art and runs the art gate. The two other styles stay in `style.py` 
 | `gen_tiles.py` | `tile_*`, `bg_*` per theme |
 | `gen_heroes.py` | `assets/sprites/hero/<part>_<variant>_<facing>.png` (24 x 38 frames) |
 | `gen_sprites.py` | monsters, bosses, props, pickups |
+| `gen_enemies.py` | the six humanoid enemies on the hero rig |
 | `gen_items.py` | `item_<base>.png`, the 26 equipment icons |
 | `gen_portal.py` | `portal_gate_strip.png`, `door_open_strip.png` |
 | `preview_heroes.py`, `preview.py`, `preview_tiles.py` | contact sheets for eyeballing |
@@ -93,8 +99,8 @@ rebuilds all art and runs the art gate. The two other styles stay in `style.py` 
 
 ## Known gaps and next steps
 
-* Monsters and bosses are softened and rounded, not redrawn: they match the style but are not yet as detailed as the heroes. The humanoid ones
-  (skeleton, duelist, warden, matron, lich, sovereign) are the best candidates to redraw on the hero rig next, with their hit boxes kept as they are.
+* The non-humanoid monsters (slime, bat, wisp, brute, spitter, imp, sapling, wolf, slug, hulk) and the bosses are softened and rounded, not redrawn: they match
+  the style but are not as detailed as the heroes. The lich and the sovereign are humanoid but bigger than the 24 x 38 rig, so they need a larger canvas.
 * Icons exist for gear; potions, materials and gems still use the generic tinted pickup pictures.
 * The floating glyph lantern and per-theme props are not drawn yet; torchlight pools (`style.light_pool`) are not used in-game.
 * Hero walk cycles keep the old 4-frame bob; a richer cycle (arm swing is in, but no cape physics) would be a later polish.
