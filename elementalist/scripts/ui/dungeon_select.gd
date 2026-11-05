@@ -56,7 +56,7 @@ func _input(event: InputEvent) -> void:
 
 
 const ROMAN := ["I", "II", "III", "IV", "V"]
-const CARD_SIZE := Vector2(58, 100)
+const CARD_SIZE := Vector2(58, 84)  # short enough that the whole screen fits the 180 px view
 const DEFAULT_COLORS := {1: "c8503a", 2: "4aa0d8"}
 const ORNAMENTS := {1: "flames", 2: "stars", 3: "leaves", 4: "spikes", 5: "rivets"}
 
@@ -65,7 +65,7 @@ func _build() -> void:
 	for child in get_children():
 		child.queue_free()
 	UiKit.dim(self, 0.88)
-	var column := UiKit.column(self, _theme, 304.0, 3)
+	var column := UiKit.column(self, _theme, 304.0, 2)
 	column.add_child(UiTheme.heading("The Gate", 10))
 	column.add_child(UiKit.label("Choose a dungeon. Falling costs elements and 30% of your gold; clearing one pays well.", UiTheme.TEXT_DIM, 6, HORIZONTAL_ALIGNMENT_CENTER))
 	column.add_child(UiTheme.divider())
@@ -77,7 +77,7 @@ func _build() -> void:
 		cards.add_child(_card(int(tier)))
 	_detail = UiKit.label("", UiTheme.TEXT, 6, HORIZONTAL_ALIGNMENT_CENTER)
 	_detail.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	_detail.custom_minimum_size = Vector2(280, 24)
+	_detail.custom_minimum_size = Vector2(280, 16)  # two lines of the longest description
 	column.add_child(_detail)
 	var row := HBoxContainer.new()
 	row.alignment = BoxContainer.ALIGNMENT_CENTER
@@ -109,7 +109,7 @@ func _card(tier: int) -> Control:
 	box.add_child(UiKit.label(ROMAN[tier - 1], UiTheme.GOLD if unlocked else UiTheme.TEXT_DIM, 9, HORIZONTAL_ALIGNMENT_CENTER))
 	var name_label := UiKit.label(String(spec["name"]).trim_prefix("The "), UiTheme.TEXT if unlocked else UiTheme.TEXT_DIM, 6, HORIZONTAL_ALIGNMENT_CENTER)
 	name_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	name_label.custom_minimum_size = Vector2(0, 28)
+	name_label.custom_minimum_size = Vector2(0, 18)  # room for a two-line name
 	box.add_child(name_label)
 	box.add_child(UiKit.label("%d floors" % int(spec["floors"]), UiTheme.TEXT_DIM, 5, HORIZONTAL_ALIGNMENT_CENTER))
 	var status := "Cleared" if cleared else ("Locked" if not unlocked else "New")

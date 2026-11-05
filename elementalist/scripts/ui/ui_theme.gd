@@ -86,6 +86,11 @@ static func make() -> Theme:
 	theme.set_stylebox("grabber", "VScrollBar", _flat(EDGE, EDGE, 0, 1))
 	theme.set_stylebox("grabber_highlight", "VScrollBar", _flat(EDGE_LIT, EDGE_LIT, 0, 1))
 	theme.set_stylebox("grabber_pressed", "VScrollBar", _flat(EDGE_LIT, EDGE_LIT, 0, 1))
+
+	# Native tooltips (tooltip_text): a small dark slab in the menu font, so they fit the 320x180 view.
+	theme.set_stylebox("panel", "TooltipPanel", _flat(PANEL_BG, EDGE, 1, 3))
+	theme.set_color("font_color", "TooltipLabel", TEXT)
+	theme.set_font_size("font_size", "TooltipLabel", 6)
 	_cached = theme
 	return theme
 

@@ -1199,6 +1199,51 @@ func _test_ui_screens() -> void:
 	await get_tree().process_frame
 	var class_button := sheet.find_children("*", "Button", true, false).filter(func(b): return b.text == "Choose your class...")
 	_check("a level 3 Novice's stats tab points to the class cards", class_button.size() == 1)
+	var pending_right: Array = sheet._content.get_child(1).get_children().filter(func(n): return n is Label).map(func(l): return l.text)
+	var pending_left: Array = sheet._content.get_child(0).find_children("*", "Label", true, false).map(func(l): return l.text)
+	_check("with the class choice pending the derived stats still show, in the right column",
+		pending_right.any(func(t): return t.begins_with("HP ")) and pending_right.has("On a kill:") and not pending_left.any(func(t): return t.begins_with("HP ") or t.begins_with("Recovery") or t.begins_with("On a kill")))
+	# A hero with traits: the derived block comes after Traits, every line on one row, and every attribute row has a tooltip.
+	var traited := CharacterData.create_sandbox("vanguard", ["fire"], 5)
+	traited.traits.assign(["sturdy", "keen_edge"])
+	Game.character = traited
+	sheet.visible = true  # hidden containers skip layout, and the wrap check needs real widths
+	sheet.show_tab("stats")
+	await get_tree().process_frame
+	await get_tree().process_frame  # wrapping labels settle their line count after the first layout
+	var right_labels: Array = sheet._content.get_child(1).get_children().filter(func(n): return n is Label)
+	var right_texts: Array = right_labels.map(func(l): return l.text)
+	var traits_at := right_texts.find("Traits (innate)")
+	var derived_at := -1
+	for i in right_texts.size():
+		if derived_at < 0 and String(right_texts[i]).begins_with("HP "):
+			derived_at = i
+	_check("the derived stats sit under Traits in the right column", traits_at >= 0 and derived_at > traits_at + traited.traits.size() and right_texts.has("Recovery /s:"))
+	var derived_one_line := right_labels.slice(derived_at).all(func(l): return l.get_line_count() == 1)
+	_check("no derived-stat line wraps in the 148 px column", derived_at > 0 and derived_one_line)
+	sheet.visible = false
+	var attr_rows := sheet._content.get_child(0).get_children().filter(func(n): return n is HBoxContainer and n.get_child_count() == 3 and n.get_child(2) is Button and n.get_child(2).text == "+")
+	_check("every attribute row carries its tooltip", attr_rows.size() == Classes.ATTRIBUTES.size()
+		and attr_rows.all(func(r): return r.mouse_filter != Control.MOUSE_FILTER_IGNORE and r.tooltip_text == Classes.attribute_text(Classes.ATTRIBUTES[attr_rows.find(r)])))
+	var texts_ok := true
+	for attr in Classes.ATTRIBUTES:
+		var text := Classes.attribute_text(attr)
+		texts_ok = texts_ok and text.strip_edges() != "" and not (text.contains("%s") or text.contains("%d") or text.contains("%."))
+	_check("every attribute has a tooltip text with no format leftovers", texts_ok)
+	# The flat per-point numbers in the texts are written out; they must match derived().
+	var probe := CharacterData.create_sandbox(Classes.NEUTRAL_CLASS, ["fire"], 1)
+	var d0 := probe.derived()
+	var spell0 := probe.spell_damage_mult("fire")
+	for attr in ["vitality", "intellect", "agility", "strength"]:
+		probe.attributes[attr] += 1
+	var d1 := probe.derived()
+	var spell_step := roundi((probe.spell_damage_mult("fire") - spell0) * 100.0)
+	_check("the attribute tooltips' per-point numbers match the derived stats",
+		Classes.attribute_text("vitality").contains("+%d max HP" % roundi(d1["max_hp"] - d0["max_hp"]))
+		and Classes.attribute_text("intellect").contains("+%d max mana" % roundi(d1["max_mana"] - d0["max_mana"]))
+		and Classes.attribute_text("agility").contains("+%d max stamina and +%d move speed" % [roundi(d1["max_stamina"] - d0["max_stamina"]), roundi(d1["move_speed"] - d0["move_speed"])])
+		and Classes.attribute_text("strength").contains("damage +%d%% per point" % roundi((d1["melee_damage_mult"] - d0["melee_damage_mult"]) * 100.0))
+		and Classes.attribute_text("intellect").contains("Spell damage +%d%% per point" % spell_step))
 	novice.choose_class("ranger")
 	_check("choosing a class applies it", novice.class_id == "ranger")
 	Game.character = CharacterData.create_sandbox("channeler", ["fire", "water"], 5)
@@ -3815,6 +3860,13 @@ func _p5_menus() -> void:
 	await get_tree().process_frame
 	var enter_buttons := gate.find_children("*", "Button", true, false).filter(func(b): return b.text in ["Enter", "Locked"])
 	_check("the gate offers all five dungeons, only the first open at first", enter_buttons.size() == 5 and not enter_buttons[0].disabled and enter_buttons.slice(1).all(func(b): return b.disabled))
+	var gate_panel: Control = gate.find_children("*", "PanelContainer", true, false)[0]
+	var gate_back: Control = gate.find_children("*", "Button", true, false).filter(func(b): return b.text == "Back")[0]
+	_check("the whole gate fits the 180 px view with room above and below", gate_panel.size.y <= 172.0 and gate_back.get_global_rect().end.y <= gate_panel.get_global_rect().end.y)
+	var names_fit := gate.find_children("*", "Label", true, false).filter(func(l): return l.text in ["Thornroot Hollow", "Gloaming Spire"]).all(func(l): return l.get_line_count() <= 2 and l.get_line_count() * l.get_line_height() <= l.size.y)
+	var card_boxes := gate.find_children("*", "VBoxContainer", true, false).filter(func(b): return b.get_parent().custom_minimum_size == DungeonSelect.CARD_SIZE)
+	var cards_fit := card_boxes.size() == 5 and card_boxes.all(func(b): return b.get_combined_minimum_size().y <= b.size.y)
+	_check("long dungeon names still fit their cards", names_fit and cards_fit)
 	gate.close()
 	Game.meta["tier_cleared"] = 1
 	gate.open()

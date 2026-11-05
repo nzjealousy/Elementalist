@@ -28,9 +28,60 @@ const ATTRIBUTES := ["strength", "agility", "intellect", "vitality", "wisdom", "
 const ATTRIBUTE_SHORT := {
 	"strength": "STR", "agility": "AGI", "intellect": "INT", "vitality": "VIT", "wisdom": "WIS", "luck": "LCK", "dexterity": "DEX",
 }
+
+
+## What an attribute does, for the character sheet's tooltip: a few short lines built from the same
+## constants CharacterData.derived() / spell_damage_mult() / potency_mult() / skill_scale() use.
+## The flat per-point numbers (+8 HP, +10 mana, +6 stamina, +2 move) mirror derived() literally.
+static func attribute_text(attr: String) -> String:
+	var lines: Array[String] = []
+	match attr:
+		"strength":
+			lines.append("Melee and martial damage +6% per point above 5")
+		"agility":
+			lines.append("+6 max stamina and +2 move speed per point")
+			lines.append("+%s stamina regen /s per point" % String.num(STAMINA_REGEN_PER_AGI))
+		"intellect":
+			lines.append("+10 max mana, +%s mana regen /s per point" % String.num(MANA_REGEN_PER_INT))
+			lines.append("Spell damage +5% per point above 5")
+		"vitality":
+			lines.append("+8 max HP, +%s HP regen /s per point" % String.num(HP_REGEN_PER_VIT))
+		"wisdom":
+			lines.append("Per point above 5: +%s mana regen /s," % String.num(WISDOM_MANA_REGEN))
+			lines.append("-%s%% spell cooldowns, +%s%% buff and debuff time" % [_pct(WISDOM_COOLDOWN), _pct(WISDOM_BUFF_DURATION)])
+		"luck":
+			lines.append("Per point above 5: +%s%% crit chance," % _pct(LUCK_CRIT))
+			lines.append("+%s%% loot luck (better drops)" % _pct(LUCK_LOOT))
+		"dexterity":
+			lines.append("Attack speed +%s%% per point above 5" % _pct(DEXTERITY_ATTACK_SPEED))
+			lines.append("(slashes, bolts, fused casts; not abilities)")
+			lines.append("Each character level adds +%s%% more" % _pct(LEVEL_ATTACK_SPEED))
+	var governed: Array[String] = []
+	for element in ELEMENT_ATTRIBUTE:
+		if ELEMENT_ATTRIBUTE[element] == attr:
+			governed.append(String(element).capitalize())
+	if not governed.is_empty():
+		lines.append("%s potency +%s%% per point above 5" % [", ".join(governed), _pct(POTENCY_PER_POINT)])
+		lines.append("  (status strength and duration)")
+	var props: Array[String] = []
+	for id in SkillDB.DEFS:
+		var scales: Dictionary = SkillDB.DEFS[id].get("scales", {})
+		for prop in scales:
+			if scales[prop] == attr and not props.has(prop):
+				props.append(String(prop))
+	props.sort()
+	if not props.is_empty():
+		lines.append("Scales some skills' " + ", ".join(props))
+	return "\n".join(lines)
+
+
+static func _pct(fraction: float) -> String:
+	return ("%.1f" % (fraction * 100.0)).trim_suffix(".0")  # 3, 1.5
+
+
 ## What the two newer attributes do (the other four are described in CharacterData), per point
 ## above 5:
-##   wisdom  +0.6 mana regen, -1% spell cooldowns, +4% buff and debuff duration
+##   wisdom  +0.3 mana regen, -1% spell cooldowns, +4% buff and debuff duration
 ##   luck    +1.5% crit chance, +5% loot luck
 ##   dexterity  +3% attack speed (slashes, bolts and fused casts; not abilities); every character
 ##              level also adds +1% attack speed

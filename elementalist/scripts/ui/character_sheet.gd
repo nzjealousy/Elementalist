@@ -161,6 +161,8 @@ func _fill_stats() -> void:
 	left.add_child(_spacer())
 	for attr in Classes.ATTRIBUTES:
 		var row := HBoxContainer.new()
+		row.tooltip_text = Classes.attribute_text(attr)
+		row.mouse_filter = Control.MOUSE_FILTER_PASS  # the labels ignore the mouse, so the row shows the tooltip
 		var name_label := _label(String(attr).capitalize())
 		name_label.custom_minimum_size = Vector2(60, 0)
 		row.add_child(name_label)
@@ -172,13 +174,6 @@ func _fill_stats() -> void:
 		plus.pressed.connect(_spend.bind(attr))
 		row.add_child(plus)
 		left.add_child(row)
-	left.add_child(_spacer())
-	var d := ch.derived()
-	left.add_child(_label("HP %d   Mana %d   Stamina %d" % [d["max_hp"], d["max_mana"], d["max_stamina"]]))
-	left.add_child(_label("Move %d   Melee x%.2f   Reach x%.2f" % [d["move_speed"], d["melee_damage_mult"], d["melee_range_mult"]]))
-	left.add_child(_label("Crit %d%% (x%.2f)   Buffs x%.2f   Attack speed x%.2f" % [roundi(float(d["crit_chance"]) * 100.0), d["crit_mult"], d["buff_duration_mult"], d["attack_speed"]]))
-	left.add_child(_label("Recovery /s: HP %.2f  Stamina %.1f  Mana %.1f" % [d["hp_regen"], d["stamina_regen"], d["mana_regen"]], Color(0.7, 0.9, 1.0)))
-	left.add_child(_label("On a kill: HP +%.0f  Stamina +%.0f  Mana +%.1f" % [d["kill_hp"], d["kill_stamina"], d["kill_mana"]], Color(0.7, 0.9, 1.0)))
 
 	right.add_child(_label(String(cls["desc"]), Color(0.8, 0.85, 1.0)))
 	right.add_child(_label(_affinity_text(ch), Color(0.7, 0.9, 1.0)))
@@ -188,25 +183,38 @@ func _fill_stats() -> void:
 		var choose := _button("Choose your class...")
 		choose.pressed.connect(_open_cards.bind("class"))
 		right.add_child(choose)
-		return
-	if Classes.is_starter(ch.class_id):
-		right.add_child(_label("Class at level %d" % Classes.CLASS_LEVEL, DIM))
-	right.add_child(_label("Traits (innate)", GOLD))
-	if ch.traits.is_empty():
-		right.add_child(_label("None", DIM))
-	for id in ch.traits:
-		var p := Classes.passive_info(id)
-		right.add_child(_label("%s: %s" % [p["name"], p["desc"]], TYPE_COLORS["trait"]))
-	var subclasses := ch.available_subclasses()
-	if not subclasses.is_empty():
-		right.add_child(_spacer())
-		right.add_child(_label("Your class mastery opens a subclass.", GOLD))
-		var choose_sub := _button("Choose a subclass...")
-		choose_sub.pressed.connect(_open_cards.bind("subclass"))
-		right.add_child(choose_sub)
-	elif ch.subclass_id == "" and not Classes.is_starter(ch.class_id):
-		right.add_child(_spacer())
-		right.add_child(_label("Subclass at class mastery %d" % Classes.SUBCLASS_MASTERY, DIM))
+	else:
+		if Classes.is_starter(ch.class_id):
+			right.add_child(_label("Class at level %d" % Classes.CLASS_LEVEL, DIM))
+		right.add_child(_label("Traits (innate)", GOLD))
+		if ch.traits.is_empty():
+			right.add_child(_label("None", DIM))
+		for id in ch.traits:
+			var p := Classes.passive_info(id)
+			right.add_child(_label("%s: %s" % [p["name"], p["desc"]], TYPE_COLORS["trait"]))
+		var subclasses := ch.available_subclasses()
+		if not subclasses.is_empty():
+			right.add_child(_spacer())
+			right.add_child(_label("Your class mastery opens a subclass.", GOLD))
+			var choose_sub := _button("Choose a subclass...")
+			choose_sub.pressed.connect(_open_cards.bind("subclass"))
+			right.add_child(choose_sub)
+		elif ch.subclass_id == "" and not Classes.is_starter(ch.class_id):
+			right.add_child(_spacer())
+			right.add_child(_label("Subclass at class mastery %d" % Classes.SUBCLASS_MASTERY, DIM))
+
+	# Derived stats: short lines so no "name value" pair wraps in the 148 px column.
+	right.add_child(_spacer())
+	var d := ch.derived()
+	var recovery := Color(0.7, 0.9, 1.0)
+	right.add_child(_label("HP %d   Mana %d   Stamina %d" % [d["max_hp"], d["max_mana"], d["max_stamina"]]))
+	right.add_child(_label("Move %d   Melee x%.2f   Reach x%.2f" % [d["move_speed"], d["melee_damage_mult"], d["melee_range_mult"]]))
+	right.add_child(_label("Crit %d%% (x%.2f)   Buffs x%.2f" % [roundi(float(d["crit_chance"]) * 100.0), d["crit_mult"], d["buff_duration_mult"]]))
+	right.add_child(_label("Attack speed x%.2f" % d["attack_speed"]))
+	right.add_child(_label("Recovery /s:", recovery))
+	right.add_child(_label("  HP %.2f   Stamina %.1f   Mana %.1f" % [d["hp_regen"], d["stamina_regen"], d["mana_regen"]], recovery))
+	right.add_child(_label("On a kill:", recovery))
+	right.add_child(_label("  HP +%.0f   Stamina +%.0f   Mana +%.1f" % [d["kill_hp"], d["kill_stamina"], d["kill_mana"]], recovery))
 
 
 ## Equipped gear on the left (click to take off), the bag on the right (click to equip), and a

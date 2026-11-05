@@ -409,6 +409,10 @@ buttons call `show_tab.call_deferred(...)`, so tests `await` a frame after click
 - `CharacterSheet` keeps every tab inside the 320x180 view: the body sits in a fixed-size
   `ScrollContainer`, and a tab's columns plus gaps must fit `CONTENT_WIDTH` (a self-test checks
   this and that the panel stays on screen even when stuffed with content).
+- Stats tab: the derived stats (HP/mana/stamina, move, crit, recovery, on-kill) sit in the right column under Traits
+  (or under the class-choice button), split into short lines that never wrap. Each attribute row shows a native
+  tooltip from `Classes.attribute_text(attr)`, built from the same constants as `CharacterData.derived()`;
+  `UiTheme` styles `TooltipPanel` / `TooltipLabel` so tooltips fit the 320x180 view (they work while paused).
 - The sheet toggles on TAB in `_input` (not `_unhandled_input`), because Godot would otherwise
   use TAB to move GUI focus while a button is focused.
 
