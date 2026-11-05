@@ -73,7 +73,7 @@ var _look := Vector2.ZERO   # the camera look-ahead, smoothed
 func _ready() -> void:
 	add_to_group("player")
 	sprite.texture = AssetDB.get_texture("player")
-	sprite.offset = Vector2(0, -3)  # the hero's feet stand a little below the body's centre
+	sprite.offset = Vector2(0, -9)  # the hero's feet (the 24 x 38 picture's lowest row) stand a little below the node
 	caster = SkillCaster.new()
 	caster.body = self
 	caster.element_changed.connect(_on_element_changed)
@@ -158,9 +158,12 @@ func net_state() -> Array:
 		(1 if velocity.length() > 8.0 else 0) | (2 if is_dodging() else 0)]
 
 
+## Where the hero can be hit: a fixed body, not the picture (the 24 x 38 art is taller than the body it stands for).
+const HURTBOX_SIZE := Vector2(16, 26)
+
+
 func hurtbox() -> Rect2:
-	var size := sprite.texture.get_size()
-	return Rect2(global_position - size * 0.5, size)
+	return Rect2(global_position - HURTBOX_SIZE * 0.5, HURTBOX_SIZE)
 
 
 func is_dodging() -> bool:

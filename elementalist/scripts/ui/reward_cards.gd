@@ -7,7 +7,7 @@ extends CanvasLayer
 
 const OPEN_DELAY := 0.7  # real seconds after the level-up, so its effects play first
 const CARD_SIZE := Vector2(88, 112)
-const TYPE_COLORS := {"skill": Color("b6ff8a"), "passive": Color("8fe3ff")}
+const TYPE_COLORS := {"skill": Color("88e880"), "passive": Color("5cc8ff")}
 
 var _open := false
 var _theme: Theme
@@ -98,7 +98,7 @@ func _build() -> void:
 	column.add_theme_constant_override("separation", 6)
 	center.add_child(column)
 
-	var title := _label("Choose a reward", Color("ffd84a"), 9)
+	var title := _label("Choose a reward", UiTheme.GOLD, 9)
 	title.autowrap_mode = TextServer.AUTOWRAP_OFF
 	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	column.add_child(title)
@@ -147,7 +147,7 @@ func _card(option: Dictionary, index: int) -> Control:
 	picture.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
 	picture.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 	picture.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-	picture.custom_minimum_size = Vector2(0, 26)
+	picture.custom_minimum_size = Vector2(0, 30)
 	picture.modulate = _icon_tint(option)
 	picture.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	content.add_child(picture)
@@ -169,11 +169,12 @@ func _card(option: Dictionary, index: int) -> Control:
 	return holder
 
 
-## A picture for a card: the skill's element bolt, or a gem-like diamond for a passive.
+## A picture for a card: the skill's element rune, or a gem-like diamond for a passive.
 func _icon_for(option: Dictionary) -> Texture2D:
 	if option["type"] == "skill":
 		var set_id := SkillDB.set_of(option["id"])
-		return AssetDB.get_texture("proj_" + set_id)
+		var rune := UiTheme.rune(set_id, "m")
+		return rune if rune != null else AssetDB.get_texture("proj_" + set_id)
 	return AssetDB.get_texture("pickup_material")
 
 

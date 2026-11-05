@@ -450,7 +450,9 @@ func _update_label(src: Label, mirror: Label) -> void:
 		up = 29.0 + rise
 	else:
 		var holder := src.get_parent() as Node2D
-		if holder != null and holder != _world_root and holder.get_parent() != _world_root:
+		if holder is RemoteAvatar:  # the 38 px hero is tall: the name goes above the hat
+			up = 36.0
+		elif holder != null and holder != _world_root and holder.get_parent() != _world_root:
 			anchor = holder.global_position
 			up = 22.0
 	mirror.position = (project(anchor) - Vector2(0.0, up) - mirror.size * 0.5).round()

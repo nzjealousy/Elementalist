@@ -91,6 +91,47 @@ class Canvas:
             f.write(png)
 
 
+def load_png(path):
+    """Reads one of our own PNGs (8-bit RGBA, any filter) back into a Canvas; used by check_art.py and the previews."""
+    data = open(path, 'rb').read()
+    pos, idat, w, h = 8, b'', 0, 0
+    while pos < len(data):
+        n, tag = struct.unpack('>I4s', data[pos:pos + 8])
+        body = data[pos + 8:pos + 8 + n]
+        if tag == b'IHDR':
+            w, h = struct.unpack('>II', body[:8])
+        elif tag == b'IDAT':
+            idat += body
+        pos += 12 + n
+    raw = zlib.decompress(idat)
+    cv = Canvas(w, h)
+    stride = w * 4
+    prev = bytearray(stride)
+    i = 0
+    for y in range(h):
+        kind = raw[i]
+        line = bytearray(raw[i + 1:i + 1 + stride])
+        i += 1 + stride
+        for x in range(stride):
+            a_ = line[x - 4] if x >= 4 else 0
+            b_ = prev[x]
+            c_ = prev[x - 4] if x >= 4 else 0
+            if kind == 1:
+                line[x] = (line[x] + a_) & 255
+            elif kind == 2:
+                line[x] = (line[x] + b_) & 255
+            elif kind == 3:
+                line[x] = (line[x] + (a_ + b_) // 2) & 255
+            elif kind == 4:
+                p_ = a_ + b_ - c_
+                pa, pb, pc = abs(p_ - a_), abs(p_ - b_), abs(p_ - c_)
+                line[x] = (line[x] + (a_ if pa <= pb and pa <= pc else (b_ if pb <= pc else c_))) & 255
+        for x in range(w):
+            cv.px[y * w + x] = tuple(line[x * 4:x * 4 + 4])
+        prev = line
+    return cv
+
+
 def from_ascii(rows, palette):
     """rows: list of equal-width strings; '.' or ' ' is transparent; other chars look up palette."""
     h = len(rows)

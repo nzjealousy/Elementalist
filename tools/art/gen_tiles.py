@@ -1,152 +1,235 @@
-"""Floor, wall, pillar and background tiles for the places (camp and the five dungeons: vault, crypt, hollow, ember, spire).
+"""Floor, wall, pillar and background tiles for the places (camp and the five dungeons: vault, crypt, hollow, ember, spire),
+in the Moonlit Glyphwork style: dark obsidian tinted per place, calm floors so sprites read on top, and thin glowing rune
+seams in the place's own element colour (the glow is kept low on floors: it must never compete with a bolt).
 Run: python tools/art/gen_tiles.py -> elementalist/assets/sprites/tile_*.png and bg_*.png
 
 Per theme: tile_floor_<theme>_0..3, tile_wall_<theme>_0..2, tile_pillar_<theme>, bg_<theme> (32x32, tiles
 seamlessly under the whole screen as the void behind a room).
+Floor variants: 0 plain slabs, 1 a cracked slab with a faint glow, 2 a rune seam, 3 a small glyph. Wall variant 2 has a glowing glyph.
 """
 import os
 import sys
 import zlib
 
 sys.path.insert(0, os.path.dirname(__file__))
-from pixel import Canvas, Rng, hexc, mix, shade
+import style
+from pixel import Canvas, Rng, mix
+
+style.use("moonlit")
 
 OUT = os.path.join(os.path.dirname(__file__), '..', '..', 'elementalist', 'assets', 'sprites')
 os.makedirs(OUT, exist_ok=True)
 T = 16
+STONE = style.ramp("stone")
+INK = style.INK
 
 
 def _seed(*parts):
     """A stable seed (Python's hash() of strings changes every run, which would change the art)."""
     return zlib.crc32('|'.join(str(p) for p in parts).encode()) & 0xffff or 1
 
+
+# tint: the ramp step the obsidian leans toward; amount: how far; accent: the element ramp of the place's runes
 THEMES = {
-    'vault': {'floor': '4a4540', 'floor_hi': '5a544d', 'floor_lo': '332f2b', 'wall': '6b5a4a', 'wall_hi': '8a7762',
-              'wall_lo': '3a2f26', 'accent': 'a05a2a', 'bg': '0e0b0c'},
-    'crypt': {'floor': '3a4650', 'floor_hi': '4a5a66', 'floor_lo': '262e36', 'wall': '4a5a62', 'wall_hi': '6a8088',
-              'wall_lo': '28343a', 'accent': '4a8a6a', 'bg': '070b10'},
-    'hollow': {'floor': '33452e', 'floor_hi': '44593a', 'floor_lo': '212e1f', 'wall': '4a5a30', 'wall_hi': '6a7a44',
-               'wall_lo': '2a3420', 'accent': 'a8d070', 'bg': '070d08'},
-    'ember': {'floor': '3a2622', 'floor_hi': '523630', 'floor_lo': '241512', 'wall': '5a3a30', 'wall_hi': '7a5040',
-              'wall_lo': '30201a', 'accent': 'ff7a2a', 'bg': '0d0605'},
-    'spire': {'floor': '3a3450', 'floor_hi': '4c4668', 'floor_lo': '262238', 'wall': '5a5078', 'wall_hi': '7a70a0',
-              'wall_lo': '302a48', 'accent': 'f2e8ff', 'bg': '0a0814'},
-    'camp': {'floor': '5a6a3a', 'floor_hi': '7a8a4a', 'floor_lo': '3a4a2a', 'wall': '7a5a3a', 'wall_hi': '9a7a4a',
-             'wall_lo': '3f2c1a', 'accent': 'e8c84a', 'bg': '0b100a'},
+    'vault': {'tint': style.ramp("mineral")[1], 'amount': 0.3, 'accent': 'mineral'},
+    'crypt': {'tint': style.ramp("moss")[2], 'amount': 0.3, 'accent': 'air'},
+    'hollow': {'tint': style.ramp("earth")[1], 'amount': 0.32, 'accent': 'earth'},
+    'ember': {'tint': style.ramp("fire")[1], 'amount': 0.4, 'accent': 'fire'},
+    'spire': {'tint': style.ramp("brass")[2], 'amount': 0.3, 'accent': 'light'},
+    'camp': {'tint': style.ramp("moss")[2], 'amount': 0.5, 'accent': 'light'},
 }
 
 
-def floor_tile(theme, variant):
-    p = THEMES[theme]
-    rng = Rng(_seed(theme, variant, 'f'))
-    base, hi, lo = hexc(p['floor']), hexc(p['floor_hi']), hexc(p['floor_lo'])
+def _tones(theme):
+    t = THEMES[theme]
+    k = t['amount']
+    return {
+        'base': mix(STONE[1], t['tint'], k),
+        'hi': mix(STONE[2], t['tint'], k * 0.8),
+        'lit': mix(STONE[3], t['tint'], k * 0.5),
+        'lo': mix(STONE[0], t['tint'], k * 0.4),
+        'accent': style.ramp(t['accent']),
+    }
+
+
+def _seam(cv, x, y, length, vertical, accent):
+    """A glowing rune seam: a dim halo, a body and a lit centre (kept to the dim end of the ramp on floors)."""
+    for i in range(length):
+        px, py = (x, y + i) if vertical else (x + i, y)
+        for dx, dy in ((1, 0), (-1, 0), (0, 1), (0, -1)):
+            if (dx, dy) in ((0, 0),):
+                continue
+            c = cv.get(px + dx, py + dy)
+            cv.set(px + dx, py + dy, mix(c, accent[1], 0.45))
+        cv.set(px, py, accent[2] if i % 3 != 1 else accent[3])
+
+
+def _glyph(cv, x, y, accent, big=False):
+    """A tiny diamond sigil: a lit heart with four arms."""
+    cv.set(x, y, accent[3])
+    for dx, dy in ((1, 0), (-1, 0), (0, 1), (0, -1)):
+        cv.set(x + dx, y + dy, accent[2])
+        if big:
+            cv.set(x + dx * 2, y + dy * 2, accent[1])
+    for dx, dy in ((1, 1), (-1, -1), (1, -1), (-1, 1)):
+        cv.set(x + dx, y + dy, mix(cv.get(x + dx, y + dy), accent[1], 0.6))
+
+
+def camp_floor(variant):
+    """A moonlit clearing: teal grass with pale blades; variant 2 has fireflies, variant 3 pebbles."""
+    rng = Rng(_seed('camp', variant, 'f'))
+    moss = style.ramp("moss")
+    base = mix(moss[1], moss[2], 0.4)
     cv = Canvas(T, T, base)
-    if theme == 'camp':  # grass and dirt
-        for _ in range(60):
-            x, y = rng.rint(0, T - 1), rng.rint(0, T - 1)
-            cv.set(x, y, hi if rng.next() > 0.45 else lo)
-        for _ in range(3 if variant % 2 else 1):  # blades
-            x, y = rng.rint(1, T - 2), rng.rint(2, T - 2)
-            cv.set(x, y, hexc('8aa84a')); cv.set(x, y - 1, hexc('a8c85a'))
-        if variant == 2:
-            for _ in range(2):
-                x, y = rng.rint(2, T - 3), rng.rint(2, T - 3)
-                cv.set(x, y, hexc(p['accent'])); cv.set(x + 1, y, hexc('ffffff'))
-        if variant == 3:
-            for _ in range(10):
-                cv.set(rng.rint(0, T - 1), rng.rint(0, T - 1), hexc('7a6a4a'))
-        return cv
-    # stone slabs: 8x8 with a dark joint and a bevel
-    for sx in range(0, T, 8):
+    for _ in range(64):
+        x, y = rng.rint(0, T - 1), rng.rint(0, T - 1)
+        cv.set(x, y, moss[2] if rng.next() > 0.45 else moss[0])
+    for _ in range(3 if variant % 2 else 2):   # blades
+        x, y = rng.rint(1, T - 2), rng.rint(2, T - 2)
+        cv.set(x, y, moss[3])
+        cv.set(x, y - 1, moss[4])
+    if variant == 2:
+        light = style.ramp("light")
+        for _ in range(2):
+            x, y = rng.rint(2, T - 3), rng.rint(2, T - 3)
+            for dx, dy in ((1, 0), (-1, 0), (0, 1), (0, -1)):
+                cv.set(x + dx, y + dy, mix(cv.get(x + dx, y + dy), light[2], 0.35))
+            cv.set(x, y, light[3])
+    if variant == 3:
+        for _ in range(7):
+            x, y = rng.rint(1, T - 3), rng.rint(1, T - 3)
+            cv.set(x, y, STONE[3])
+            cv.set(x + 1, y, STONE[2])
+            cv.set(x, y + 1, STONE[1])
+    return cv
+
+
+def floor_tile(theme, variant):
+    if theme == 'camp':
+        return camp_floor(variant)
+    c = _tones(theme)
+    rng = Rng(_seed(theme, variant, 'f'))
+    cv = Canvas(T, T, c['base'])
+    for sx in range(0, T, 8):          # stone slabs, 8x8: a lit top-left bevel, a dark joint bottom-right
         for sy in range(0, T, 8):
-            tone = mix(base, hi if rng.next() > 0.5 else lo, 0.25 + rng.next() * 0.15)
+            tone = mix(c['base'], c['hi'] if rng.next() > 0.5 else c['lo'], 0.25 + rng.next() * 0.2)
             for x in range(sx, sx + 8):
                 for y in range(sy, sy + 8):
                     cv.set(x, y, tone)
             for i in range(8):
-                cv.set(sx + i, sy, shade(tone, 1.15)); cv.set(sx, sy + i, shade(tone, 1.15))
-                cv.set(sx + i, sy + 7, lo); cv.set(sx + 7, sy + i, lo)
-    for _ in range(14):  # grit
-        cv.set(rng.rint(0, T - 1), rng.rint(0, T - 1), hi if rng.next() > 0.5 else lo)
-    if variant in (1, 3):  # a crack
-        x, y = rng.rint(2, 12), rng.rint(2, 12)
-        for i in range(rng.rint(3, 6)):
-            cv.set(x + i, y + (i * 2) // 3, hexc(p['accent']) if theme == 'ember' else lo)
-    if variant == 2:
-        col = hexc(p['accent'])
-        for _ in range(4 if theme in ('crypt', 'hollow') else 2):  # moss, embers or sparks
-            x, y = rng.rint(1, T - 2), rng.rint(1, T - 2)
-            cv.set(x, y, col); cv.set(x + 1, y, shade(col, 0.8))
+                cv.set(sx + i, sy, mix(tone, c['lit'], 0.4))
+                cv.set(sx, sy + i, mix(tone, c['lit'], 0.4))
+                cv.set(sx + i, sy + 7, c['lo'])
+                cv.set(sx + 7, sy + i, c['lo'])
+    for _ in range(12):                # grit
+        cv.set(rng.rint(0, T - 1), rng.rint(0, T - 1), c['hi'] if rng.next() > 0.5 else c['lo'])
+    acc = c['accent']
+    if variant == 1:                   # a crack with a faint glow in it
+        x, y = rng.rint(2, 11), rng.rint(2, 11)
+        for i in range(rng.rint(4, 6)):
+            cv.set(x + i, y + (i * 2) // 3, c['lo'])
+            cv.set(x + i, y + (i * 2) // 3 + 1, mix(cv.get(x + i, y + (i * 2) // 3 + 1), acc[1], 0.5))
+    elif variant == 2:                 # a rune seam along a slab joint
+        if rng.next() > 0.5:
+            _seam(cv, rng.rint(1, 6), 7, rng.rint(6, 9), False, acc)
+        else:
+            _seam(cv, 7, rng.rint(1, 6), rng.rint(6, 9), True, acc)
+    elif variant == 3:                 # a small glyph set in a slab
+        _glyph(cv, rng.rint(4, 11), rng.rint(4, 11), acc, big=theme in ('spire', 'ember'))
+    return cv
+
+
+def camp_wall(variant):
+    """A palisade of dark logs, lit on the left, with a pale cap."""
+    rng = Rng(_seed('camp', variant, 'w'))
+    wood = style.ramp("wood")
+    cv = Canvas(T, T, wood[0])
+    for x in range(0, T, 4):
+        tone = mix(wood[2], wood[3] if rng.next() > 0.5 else wood[1], 0.35)
+        for xx in range(x, x + 3):
+            for y in range(T):
+                cv.set(xx, y, tone)
+        for y in range(T):
+            cv.set(x, y, wood[3])
+            cv.set(x + 2, y, wood[1])
+        cv.set(x, 0, wood[4])
+        cv.set(x + 1, 0, wood[3])
+        cv.set(x + 2, 0, wood[2])
+        if rng.next() > 0.6:
+            cv.set(x + 1, rng.rint(4, 12), wood[0])
+    if variant == 2:                   # a hung rune charm
+        light = style.ramp("light")
+        _glyph(cv, 6, 8, light)
     return cv
 
 
 def wall_tile(theme, variant):
-    p = THEMES[theme]
+    if theme == 'camp':
+        return camp_wall(variant)
+    c = _tones(theme)
     rng = Rng(_seed(theme, variant, 'w'))
-    base, hi, lo = hexc(p['wall']), hexc(p['wall_hi']), hexc(p['wall_lo'])
-    cv = Canvas(T, T, lo)
-    if theme == 'camp':  # a log palisade
-        for x in range(0, T, 4):
-            tone = mix(base, hi if rng.next() > 0.5 else lo, 0.2)
-            for xx in range(x, x + 3):
-                for y in range(T):
-                    cv.set(xx, y, tone)
-            for y in range(T):
-                cv.set(x, y, shade(tone, 1.2)); cv.set(x + 2, y, shade(tone, 0.75))
-            cv.set(x, 0, hexc('d8c090')); cv.set(x + 1, 0, hexc('c8a870')); cv.set(x + 2, 0, hexc('a88850'))
-            if rng.next() > 0.6:
-                cv.set(x + 1, rng.rint(4, 12), lo)
-        return cv
-    for row in range(4):  # brick courses, each 4px tall, alternate courses offset by half a brick
+    wall = mix(STONE[1], c['lo'], 0.35)
+    wall_hi = mix(STONE[2], c['lo'], 0.15)
+    cv = Canvas(T, T, c['lo'])
+    for row in range(4):               # brick courses, each 4 px tall, alternate courses offset by half a brick
         y0 = row * 4
         off = 4 if row % 2 else 0
         for bx in range(-8, T, 8):
             x0 = bx + off
-            tone = mix(base, hi if rng.next() > 0.5 else lo, 0.2 + rng.next() * 0.2)
+            tone = mix(wall, wall_hi if rng.next() > 0.5 else c['lo'], 0.2 + rng.next() * 0.2)
             for x in range(max(x0, 0), min(x0 + 7, T)):
                 for y in range(y0, y0 + 3):
                     cv.set(x, y, tone)
-                cv.set(x, y0, shade(tone, 1.2))
-                cv.set(x, y0 + 2, shade(tone, 0.8))
-    for x in range(T):  # a lit top edge: the wall's top face catches the light
-        cv.set(x, 0, hi)
+                cv.set(x, y0, mix(tone, c['lit'], 0.35))
+                cv.set(x, y0 + 2, mix(tone, c['lo'], 0.5))
+    for x in range(T):                 # the wall's top face catches the moon
+        cv.set(x, 0, c['lit'])
     for _ in range(6):
-        cv.set(rng.rint(0, T - 1), rng.rint(1, T - 1), shade(base, 0.65))
-    if variant == 2:
-        col = hexc(p['accent'])
-        for _ in range(3):
-            x, y = rng.rint(1, T - 3), rng.rint(2, T - 2)
-            cv.set(x, y, col); cv.set(x + 1, y + 1, shade(col, 0.8))
+        cv.set(rng.rint(0, T - 1), rng.rint(1, T - 1), mix(wall, c['lo'], 0.6))
+    if variant == 2:                   # a glowing glyph carved into a brick
+        _glyph(cv, rng.rint(4, 11), rng.rint(5, 10), c['accent'])
     return cv
 
 
 def pillar_tile(theme):
-    p = THEMES[theme]
-    base, hi, lo = hexc(p['wall']), hexc(p['wall_hi']), hexc(p['wall_lo'])
+    """A round obsidian column on the theme's floor, a ring of rune light around its top."""
+    c = _tones(theme)
     cv = floor_tile(theme, 0)
-    from pixel import shaded_ellipse, ellipse, OUTLINE
-    for y in range(T):  # a soft shadow: darken the floor under and beside the column
+    for y in range(T):                 # a soft cast shadow under and beside the column
         for x in range(T):
             if ((x - 8.5) / 7.0) ** 2 + ((y - 9.5) / 6.0) ** 2 <= 1.0:
-                cv.set(x, y, shade(cv.get(x, y), 0.6))
-    shaded_ellipse(cv, 8, 7, 6, 6, mix(base, hi, 0.3))
-    for x in range(4, 12):
-        cv.set(x, 7, shade(base, 0.8))
-    ellipse(cv, 8, 6, 2.4, 2.0, shade(hi, 1.1))
+                cv.set(x, y, mix(cv.get(x, y), INK, 0.55))
+    ramp = [c['lo'], mix(STONE[1], c['lo'], 0.3), mix(STONE[2], c['base'], 0.4), c['lit']]
+    cx, cy, rx, ry = 8.0, 7.0, 6.0, 6.0
+    for y in range(T):                 # the column: four bands from a top-left light
+        for x in range(T):
+            nx, ny = (x + 0.5 - cx) / rx, (y + 0.5 - cy) / ry
+            r2 = nx * nx + ny * ny
+            if r2 > 1.0:
+                continue
+            lam = nx * -0.45 + ny * -0.6 + (1.0 - r2) ** 0.5 * 0.66
+            cv.set(x, y, ramp[3] if lam > 0.78 else (ramp[2] if lam > 0.32 else (ramp[1] if lam > -0.1 else ramp[0])))
+    for k in range(10):                # the rune ring at the column's top
+        import math
+        a = k / 10 * math.tau
+        cv.set(int(round(cx + math.cos(a) * 3.6)), int(round(cy - 0.5 + math.sin(a) * 2.6)), c['accent'][2 if k % 2 else 3])
     return cv
 
 
 def bg_tile(theme):
-    p = THEMES[theme]
+    """The void behind a room: near-black tinted per theme, a few cold stars."""
+    c = _tones(theme)
     rng = Rng(_seed(theme, 'bg'))
-    base = hexc(p['bg'])
+    base = mix(INK, c['base'], 0.22)
     cv = Canvas(32, 32, base)
-    for _ in range(24):
+    for _ in range(26):
         x, y = rng.rint(0, 31), rng.rint(0, 31)
-        cv.set(x, y, shade(base, 1.9 + rng.next()))
+        cv.set(x, y, mix(base, STONE[2], 0.4 + rng.next() * 0.3))
     for _ in range(3):
         x, y = rng.rint(0, 28), rng.rint(0, 28)
-        cv.set(x, y, shade(base, 2.6)); cv.set(x + 1, y, shade(base, 2.1)); cv.set(x, y + 1, shade(base, 2.1))
+        cv.set(x, y, c['accent'][3] if theme != 'camp' else STONE[4])
+        cv.set(x + 1, y, mix(base, c['accent'][2], 0.5))
+        cv.set(x, y + 1, mix(base, c['accent'][2], 0.5))
     return cv
 
 

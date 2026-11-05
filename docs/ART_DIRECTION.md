@@ -1,71 +1,94 @@
-# Art direction: three proposals (pick one)
+# Art direction: Moonlit Glyphwork
 
-Status: **proposed, not yet applied to the game.** Three complete styles are drawn by code (`tools/art/style.py`,
-`tools/art/style_board.py`) so they can be compared on the same subjects. Run `python tools/art/style_board.py [gilded|moonlit|storybook]`
-to redraw them into `docs/art/`. Once a style is chosen, the real restyle reuses the same functions.
+Status: **chosen and applied.** Of the three proposals (Gilded Hollow, Moonlit Glyphwork, Autumn Storybook) the project uses
+**Moonlit Glyphwork**. Every picture in the game is still drawn by the scripts in `tools/art` (standard library only), so the style
+is code: `tools/art/style.py` holds the palette ramps, the rune renderer and the outline rule; `python tools/art/build_all.py`
+rebuilds all art and runs the art gate. The two other styles stay in `style.py` and in the comparison boards (`docs/art/style_*.png`,
+`python tools/art/style_board.py [gilded|moonlit|storybook]`) in case a campaign area wants a different mood later.
 
-Every board shows the same things: the seven element **runes**, an isometric dungeon corner (floor, walls, torchlight, a casting
-circle, a bolt, a prop), a **detailed hero** and a monster, the UI kit (frame, hotbar, bars, buttons, text blocks), the twelve colour
-ramps and three item icons.
-
-| | A. Gilded Hollow | B. Moonlit Glyphwork | C. Autumn Storybook |
+| | A. Gilded Hollow | **B. Moonlit Glyphwork (chosen)** | C. Autumn Storybook |
 |---|---|---|---|
 | Board | ![A](art/style_a_gilded_hollow.png) | ![B](art/style_b_moonlit_glyphwork.png) | ![C](art/style_c_autumn_storybook.png) |
 | Mood | Jewel-toned, carved, a candlelit crypt | Cold, deep, everything magic glows | Warm, cosy, painted, a lantern-lit inn |
-| Palette | Violet shadows, warm cream lights | Blue-violet world, saturated emissive accents | Earth tones, plum shadows, honey lights |
-| Outline | Dark shade of the colour it touches | One ink line everywhere | Warm brown, lighter than ink |
-| Environment | Bevelled stone, mossy bricks, brass and wood | Obsidian with glowing rune seams, floating glyph lanterns | Planks, plaster between timber, leaves |
-| UI | Carved wood, brass studs, dark interior | Obsidian slab with a thin glowing rune border, slim light bars | Stitched leather around parchment, chunky bars |
-| Reads best | Dungeons, loot, gear | Spells and combat (magic pops) | Camp, towns, long play sessions |
-| Risk | Busiest to draw by hand | Low contrast between floor and walls | Magic is less dramatic against warm tones |
+| Outline | Dark shade of the colour it touches | One ink line everywhere | Warm brown |
+| UI | Carved wood, brass studs | Obsidian slab with a thin glowing rune border | Stitched leather around parchment |
 
-## What changed from the first proposal
+## What the style is
 
-1. **Elements are runes.** Each element is a carved dark disc with an inscribed ring of tick marks and an angular glowing glyph:
-   fire a rising triangle with a flame sigil, water a falling triangle with waves, air a wind spiral, mineral a cut diamond with
-   facets, earth a boundary square with a sprout, light an eight-ray radiance, dark a crescent with a void. The same rune is drawn
-   as the hotbar slot icon (14 px), the card and altar emblem (32 px) and, squashed to an ellipse, as the **casting circle** on the
-   floor under the hero (`style.rune`, `style.squash`). The glow recipe is white-hot core, saturated body, dark halo, coloured outer glow.
-2. **Heroes are more detailed.** The proposed sprite is 24 x 38 instead of 16 x 26: a hat with band and gem, hair with a fringe and
-   locks, a face with brows, eyes (sclera, iris, glint), nose and mouth, a mantle with a brass trim, an open robe with studs and a rune
-   hem, a belt with buckle, pouch and vial, sleeves with cuffs, boots, a folded cape and a runed staff, with a rim light on the lit
-   side. The size comparison sits beside it on each board. Applying it means growing hero frames to 24 x 38 in `tools/art/gen_heroes.py`
-   (parts stay palette-region strips) and `HeroComposer`; hitboxes stay the same.
+* **A cold world with emissive magic.** Floors, walls, props and the UI are deep blue-violet obsidian; colour is spent on what the player
+  must read: elements, bolts, runes, bars, loot. A glow is always a recipe: white-hot core, saturated body, dark halo, coloured outer glow.
+* **Ramps, not colours.** Twelve five-step ramps (`style.STYLES["moonlit"]["ramps"]`): fire, water, air, mineral, earth, light, dark, stone,
+  wood, brass (cold metal), moss and skin. Shadows lean cool, lights lean warm-pale. No pure black or white: the ink is `0a0618`.
+* **One outline rule:** a single ink line (`0a0618`) round every sprite. Characters also get a moonlit rim (`d8d0ff`) on the lit upper-left edge.
+* **Light from the upper left** in every picture: bevels, runes, wall faces, hero shading.
+* **Calm floors, busy things.** Floors keep their glow low (rune seams in the place's element colour, never brighter than a bolt), so sprites
+  always read on top.
 
-## Rules shared by all three
+## What changed in the game
 
-1. **Ramps, not colours.** Every hue is a 5-step ramp (`style.STYLES[...]["ramps"]`); shadows lean cool, lights lean warm; no pure black or white.
-2. **Light from the top left**: bevel highlights on upper-left edges, a rim light on characters, shaded right faces on walls.
-3. **One outline rule per style** (`style.outline`).
-4. **Glow is a recipe** for spells, runes, gems and torches.
-5. **Shadows are tinted, never black**, dithered blobs on the floor.
-6. **Detail by clusters**: dense detail on heroes, props and UI, calm floors underneath so sprites always read.
+1. **Elements are runes.** A carved dark disc, an inscribed ring with tick marks and an angular glowing glyph: fire a rising triangle, water a
+   falling triangle, air a spiral, mineral a cut diamond, earth a square with a sprout, light eight rays, dark a crescent; martial (not an
+   element) is two crossed blades. Made by `gen_runes.py` in three sizes (`assets/ui/rune_<element>_{s,m,l}.png`: 18, 30 and 40 px) and
+   shown by `UiTheme.rune(element, size)` on the hotbar, the skill slots, the reward cards and the character sheet. Area skills draw the
+   element's own rune circle on the floor (`fx_rune_<element>`), turning while the area lasts.
+2. **Element colours are one table.** `Elements.COLORS` holds the bright step of each ramp (fire `ff8040`, water `5cc8ff`, air `9cf0d8`,
+   mineral `f8d060`, earth `88e880`, light `e8e0ff`, dark `b868ff`, martial `b8b8d8`); bolts, rings, particles, hotbar, damage numbers and
+   cards all read it, and a self-test pins the values.
+3. **VFX** (`gen_vfx.py`): bolts are 18 x 11 glow-recipe sprites with an element-shaped head (flame, droplet, wind streaks, shard, thorn, star,
+   void orb, knife); hits, slashes and rune circles stay white and are tinted by code.
+4. **UI and HUD** (`gen_ui.py`, `ui_theme.gd`, `hud.gd`, `card_frame.gd`): obsidian 9-slice panels with a rune line that has a lit glint every 8 px,
+   slab buttons that glow when hovered or focused, slim glowing bars with a lit top line and bright tip, hotbar slots as slabs with the
+   element rune behind the key and name, amber for what matters (`UiTheme.GOLD`). Layout did not move.
+5. **Heroes are 24 x 38** (they were 16 x 26): a head with brows, eyes, nose and mouth, fringed hair, a hat with band and gem, a mantle, an open robe
+   with placket and rune hem, belts with buckles and pouches, cuffed sleeves, boots with soles, pauldrons, quivers, horns and antlers, and
+   weapons with guards, bands and glowing gems. Still parts with region/shade pixels, so every class, subclass and piece of gear recolours them;
+   `HeroComposer` adds the ink outline and the rim. Class cards show them at 1x (eight in a row), subclass cards at 2x.
+6. **Monsters, bosses, props** pass through `restyle.py` (snap to the ramps, ink outline, lit edge). The altar was redrawn with the five element
+   glyphs and a floating light rune.
+7. **Places** (`gen_tiles.py`): six themes of obsidian tinted per place (vault amber, crypt teal, hollow green, ember crimson, spire violet,
+   camp a moonlit clearing) with rune seams and glyphs in the place's element colour, glowing wall glyphs, pillars with a rune ring, starry voids.
 
-## Element identity colours
+## In the game
 
-The seven element ramps are the identity of everything element-related: bolts, area rings, hotbar slots, damage numbers, card borders,
-status icons, casting circles. One element, one ramp, everywhere.
+| | |
+|---|---|
+| ![the training grounds with rune circles, hotbar and heroes](art/moonlit_in_game.png) | ![subclass cards with 24 x 38 heroes](art/moonlit_subclass_cards.png) |
+| ![character sheet](art/moonlit_character_sheet.png) | ![title screen](art/moonlit_title.png) |
 
-## Production plan (each step ends with the self-tests and a screenshot)
+## Tools
 
-1. **Palette and tools.** The chosen style becomes the default in `style.py`; `pixel.py` gains ramp snapping so older generators can use it.
-2. **Runes and VFX.** Runes replace the element icons (hotbar, cards, altar, combo list); bolts, area rings, hit bursts and status marks follow the glow recipe; area spells draw their casting circle.
-3. **UI and HUD.** `tools/art/gen_ui.py` produces the chosen frame, buttons, bars and slots; `UiTheme` loads them. Layout does not move.
-4. **Heroes.** 24 x 38 frames, ramp-mapped regions, rim light, coloured outline; gear icons match.
-5. **Monsters and bosses.** One family at a time, checked against the readability gate.
-6. **Tiles, walls and props.** Five themes follow the chosen environment rules; props gain cast shadows.
-7. **Items.** Weapons, armour, potions and materials as 16 x 16 icons.
+| Script | Writes |
+|---|---|
+| `tools/art/build_all.py` | runs everything below in order, then `check_art.py` |
+| `style.py` | the palettes, `rune()`, `outline()`, glow and shadow helpers (not a generator) |
+| `restyle.py` | snaps a finished sprite onto the ramps (used by `gen_sprites.py`) |
+| `gen_runes.py` | `assets/ui/rune_*.png` |
+| `gen_vfx.py` | `proj_*`, `fx_hit`, `fx_slash`, `fx_rune`, `fx_rune_<element>` |
+| `gen_ui.py` | `assets/ui/*.png` (9-slice frames) |
+| `gen_tiles.py` | `tile_*`, `bg_*` per theme |
+| `gen_heroes.py` | `assets/sprites/hero/<part>_<variant>_<facing>.png` (24 x 38 frames) |
+| `gen_sprites.py` | monsters, bosses, props, pickups |
+| `preview_heroes.py`, `preview.py`, `preview_tiles.py` | contact sheets for eyeballing |
+| `check_art.py` | the art gate |
 
-## Acceptance gates
+## Acceptance gates (all enforced)
 
-* Every sprite reads at native size, in motion, over every theme's floor (contact sheet plus an in-game screenshot).
-* One light direction, one outline rule, no pure black or white (a script checks every PNG).
-* The same element is the same colour on bolts, areas, hotbar, cards and numbers (self-test).
-* Self-tests stay green after each step; `tools/art` stays dependency-free (standard library only).
+* `python tools/art/check_art.py`: no pure black or white anywhere (except the white pictures the game tints), monsters, bosses and props use only
+  Moonlit ramp colours plus the ink, hero parts keep the region/shade encoding and are 4 frames of 24 x 38.
+* `tests/combo_selftest.gd` `_test_art_style`: the element colours are the ramp colours, every element has its runes, bolt and rune circle, heroes are
+  24 x 38, no hero part of any kind is clipped by its frame in any facing or frame, every hero is inked.
+* All earlier self-tests stay green (the creation screen and the cards still fit the 320 x 180 view with the larger heroes).
+
+## Known gaps and next steps
+
+* Monsters and bosses are recoloured and re-outlined, not redrawn: they are consistent with the style but not yet as detailed as the heroes. The
+  next pass is to redraw them one family at a time (slimes, undead, brutes, then bosses) at 1.5x detail, checked against the readability gate.
+* Item icons are the hero parts and the generic pickup; dedicated 16 x 16 icons for weapons, armour, potions and materials are not drawn.
+* The floating glyph lantern and per-theme props are not drawn yet; torchlight pools (`style.light_pool`) are not used in-game.
+* Hero walk cycles keep the old 4-frame bob; a richer cycle (arm swing is in, but no cape physics) would be a later polish.
 
 ## References and provenance
 
-Six reference images (an elemental emblem set, a painterly top-down action scene, two cosy isometric village scenes, an
-isometric autumn scene and an isometric farm scene) were studied for technique only: ramps, outlines, light pools and block faces.
-No shape, character, prop or layout is copied, none of the images is stored here, and every picture in the repository is drawn by
-the scripts in `tools/art`.
+Six reference images (an elemental emblem set, a painterly top-down action scene, two cosy isometric village scenes, an isometric autumn scene
+and an isometric farm scene) were studied for technique only: ramps, outlines, light pools and block faces. No shape, character, prop or
+layout is copied, none of the images is stored here, and every picture in the repository is drawn by the scripts in `tools/art`.

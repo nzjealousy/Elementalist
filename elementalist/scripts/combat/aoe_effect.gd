@@ -49,5 +49,5 @@ func _apply() -> void:
 func _draw() -> void:
 	var life := maxf(duration, 0.35)
 	var fade := clampf(1.0 - _age / life, 0.0, 1.0)
-	draw_circle(Vector2.ZERO, radius, Color(color, 0.25 * fade))
+	draw_circle(Vector2.ZERO, radius, Color(color, 0.1 * fade))   # a faint pool: the rune circle (SkillFx) is the picture
 	draw_arc(Vector2.ZERO, radius, 0.0, TAU, 32, Color(color, 0.8 * fade), 1.0)

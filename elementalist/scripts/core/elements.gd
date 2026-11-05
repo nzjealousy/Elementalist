@@ -5,15 +5,17 @@ extends Node
 const MAIN := ["fire", "water", "air", "mineral", "earth"]
 const RARE := ["light", "dark"]
 
+## One element, one colour, everywhere (bolts, areas, hotbar, cards, damage numbers): the bright step of its Moonlit
+## ramp in tools/art/style.py. tests/combo_selftest.gd checks they still match the art.
 const COLORS := {
-	"fire": Color("ff6a2b"),
-	"water": Color("3fa7ff"),
-	"air": Color("d9f2ff"),
-	"mineral": Color("b5a58a"),
-	"earth": Color("5fbf4a"),
-	"light": Color("fff3a8"),
-	"dark": Color("7a3fb5"),
-	"martial": Color("c9c9d2"),  # not an element: the physical skill set of non-elementalists
+	"fire": Color("ff8040"),
+	"water": Color("5cc8ff"),
+	"air": Color("9cf0d8"),
+	"mineral": Color("f8d060"),
+	"earth": Color("88e880"),
+	"light": Color("e8e0ff"),
+	"dark": Color("b868ff"),
+	"martial": Color("b8b8d8"),  # not an element: the physical skill set of non-elementalists
 }
 
 ## effect kinds understood by Enemy: dot, slow, root, stun, vuln

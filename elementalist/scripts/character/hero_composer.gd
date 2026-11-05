@@ -3,8 +3,8 @@ extends RefCounted
 ## Paints a HeroLook into pictures. The part pictures (assets/sprites/hero/<part>_<variant>_<facing>.png, made by
 ## tools/art/gen_heroes.py) store a REGION and a SHADE per pixel instead of a colour; here the regions
 ## are stacked, an outline is traced around the whole figure and every pixel is coloured from the
-## look's palette through a ramp (warm highlights, cool shadows, an outline in a dark shade of the colour
-## it surrounds), so one set of shapes serves every class, subclass and piece of gear.
+## look's palette through a ramp (pale highlights, cold shadows, a rim of moonlight on the upper-left edge and one ink
+## outline round the figure), so one set of shapes serves every class, subclass and piece of gear.
 ##
 ## compose(look) -> {"down": [Texture2D x4], "up": [...], "side": [...]}, cached by look. register(look) also
 ## puts the frames in AssetDB as "hero:<n>:<facing>" so sprites can play them with SpriteAnim.
@@ -14,6 +14,9 @@ const FRAME_COUNT := 4
 const REGION_KEYS := {1: "skin", 2: "hair", 3: "outfit", 4: "trim", 5: "pants", 6: "boots", 7: "head", 8: "headtrim",
 	9: "cape", 10: "accent", 11: "metal", 12: "wood", 13: "gem"}
 const EYE_COLOR := Color(0.118, 0.086, 0.173)
+const OUTLINE := Color("0a0618")   # Moonlit Glyphwork: one ink line round the whole figure
+const RIM := Color("d8d0ff")       # moonlight on the lit (upper left) edge
+const RIM_MIX := 0.4
 const WHITE_COLOR := Color(0.988, 0.973, 0.941)
 
 static var _parts: Dictionary = {}      # "<part>_<variant>_<facing>" -> PackedByteArray (RGBA8) of the strip
@@ -111,8 +114,7 @@ static func icon(layers: Array, palette: Dictionary) -> Texture2D:
 				var nx: int = x + step.x
 				var ny: int = y + step.y
 				if nx >= 0 and ny >= 0 and nx < width and ny < height and image.get_pixel(nx, ny).a > 0.0:
-					var neighbour := image.get_pixel(nx, ny)
-					image.set_pixel(x, y, Color(neighbour.r * 0.34 + 0.08, neighbour.g * 0.34 + 0.03, neighbour.b * 0.34 + 0.14))
+					image.set_pixel(x, y, OUTLINE)
 					break
 	var texture := ImageTexture.create_from_image(image)
 	_composed[key] = texture
@@ -180,7 +182,14 @@ static func _frame_image(look: Dictionary, facing: String, frame: int) -> Image:
 			var r := region[y * w + x]
 			if r != 0:
 				image.set_pixel(x, y, _color_of(r, shade[y * w + x], palette))
-	for y in h:  # the outline: empty cells next to the figure take a dark shade of its colour
+	for y in h:  # the rim: lit pixels on the figure's upper-left edge pick up moonlight
+		for x in w:
+			var here := region[y * w + x]
+			if here == 0 or here == 14 or shade[y * w + x] < 2:
+				continue
+			if (x == 0 or region[y * w + x - 1] == 0) or (y == 0 or region[(y - 1) * w + x] == 0):
+				image.set_pixel(x, y, image.get_pixel(x, y).lerp(RIM, RIM_MIX))
+	for y in h:  # the outline: empty cells next to the figure become ink
 		for x in w:
 			if region[y * w + x] != 0:
 				continue
@@ -188,7 +197,7 @@ static func _frame_image(look: Dictionary, facing: String, frame: int) -> Image:
 				var nx: int = x + step.x
 				var ny: int = y + step.y
 				if nx >= 0 and ny >= 0 and nx < w and ny < h and region[ny * w + nx] != 0:
-					image.set_pixel(x, y, _color_of(region[ny * w + nx], 0, palette))
+					image.set_pixel(x, y, OUTLINE)
 					break
 	return image
 

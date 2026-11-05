@@ -46,7 +46,7 @@ func _ready() -> void:
 	add_child(shape)
 	_sprite = Sprite2D.new()
 	_sprite.texture = AssetDB.get_texture(texture_id)
-	_sprite.offset = Vector2(-3.5, 0)  # the art's bright head sits in front of its centre
+	_sprite.offset = Vector2(-5.5, 0)  # the art's bright head sits 5.5 px in front of its centre (18 px wide)
 	_sprite.rotation = velocity.angle()  # the art points right
 	add_child(_sprite)
 	SpriteAnim.attach(_sprite, texture_id, 14.0, self)

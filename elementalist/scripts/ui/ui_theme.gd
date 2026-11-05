@@ -1,20 +1,25 @@
 class_name UiTheme
 extends RefCounted
-## The shared medieval-fantasy look of every menu: dark stone panels with gold trim, leather and
-## brass buttons, parchment text. The frames are 9-slice PNGs in res://assets/ui/ (made by
-## tools/art/gen_ui.py); if one is missing the theme falls back to flat boxes so the game still runs.
+## The shared look of every menu (Moonlit Glyphwork, docs/ART_DIRECTION.md): obsidian slabs under one ink outline with a
+## thin carved rune line, slab buttons that glow when lit, pale lavender text and amber for what matters. The frames are
+## 9-slice PNGs in res://assets/ui/ (made by tools/art/gen_ui.py); if one is missing the theme falls back to flat boxes so
+## the game still runs.
 ## The same Theme is handed to every screen, so restyling happens here and nowhere else.
 
 const UI_DIR := "res://assets/ui/"
-const TEXT := Color("e8dcc0")
-const TEXT_DIM := Color("a89a78")
-const GOLD := Color("f2cf6a")
-const GOLD_DARK := Color("b8892e")
-const RED := Color("ff7a6a")
-const GREEN := Color("9ae87a")
-const PANEL_BG := Color(0.09, 0.07, 0.06, 0.97)
+const TEXT := Color("dcd8f4")
+const TEXT_DIM := Color("8c88b8")
+const GOLD := Color("f8d060")        # the mineral ramp's bright step: the one warm accent on cold slabs
+const GOLD_DARK := Color("c8962c")
+const RED := Color("ff6a60")
+const GREEN := Color("88e880")
+const PANEL_BG := Color(0.047, 0.039, 0.102, 0.97)
+const INK := Color("0a0618")
+const EDGE := Color("6858b0")        # the carved rune line of a slab
+const EDGE_LIT := Color("a098f0")
 
 static var _cached: Theme
+static var _runes: Dictionary = {}
 
 
 static func font() -> Font:
@@ -43,10 +48,10 @@ static func make() -> Theme:
 	for control in ["Button", "OptionButton", "CheckButton", "CheckBox"]:
 		theme.set_color("font_color", control, TEXT)
 		theme.set_color("font_hover_color", control, GOLD)
-		theme.set_color("font_pressed_color", control, Color("fff3c8"))
+		theme.set_color("font_pressed_color", control, Color("fff8ff"))
 		theme.set_color("font_focus_color", control, GOLD)
-		theme.set_color("font_disabled_color", control, Color("6d6454"))
-		theme.set_color("font_hover_pressed_color", control, Color("fff3c8"))
+		theme.set_color("font_disabled_color", control, Color("5c5890"))
+		theme.set_color("font_hover_pressed_color", control, Color("fff8ff"))
 	for state in ["normal", "hover", "pressed", "disabled", "focus"]:
 		var box := frame("button_" + state, 5, 3, 1)
 		for control in ["Button", "OptionButton"]:
@@ -54,33 +59,33 @@ static func make() -> Theme:
 	theme.set_stylebox("hover_pressed", "Button", frame("button_pressed", 5, 3, 1))
 	theme.set_stylebox("focus", "Button", frame("button_focus", 5, 3, 1))
 
-	# Text fields (the hero's name, the join address): a dark well with a gold rim, like the slider groove.
-	var well := _flat(Color("120d0a"), GOLD_DARK, 1, 2)
+	# Text fields (the hero's name, the join address): a dark well with a rune-line rim, like the slider groove.
+	var well := _flat(Color("0c0a1a"), EDGE, 1, 2)
 	well.content_margin_left = 3
 	well.content_margin_right = 3
 	theme.set_stylebox("normal", "LineEdit", well)
-	theme.set_stylebox("focus", "LineEdit", _flat(Color("1a130d"), GOLD, 1, 2))
+	theme.set_stylebox("focus", "LineEdit", _flat(Color("14102a"), EDGE_LIT, 1, 2))
 	theme.set_stylebox("read_only", "LineEdit", well)
 	theme.set_color("font_color", "LineEdit", TEXT)
 	theme.set_color("font_placeholder_color", "LineEdit", TEXT_DIM)
-	theme.set_color("caret_color", "LineEdit", GOLD)
-	theme.set_color("selection_color", "LineEdit", Color(GOLD_DARK, 0.55))
+	theme.set_color("caret_color", "LineEdit", EDGE_LIT)
+	theme.set_color("selection_color", "LineEdit", Color(EDGE, 0.55))
 	theme.set_constant("caret_width", "LineEdit", 1)
 
-	# Sliders (settings): a dark groove with a gold fill.
-	theme.set_stylebox("slider", "HSlider", _flat(Color("120d0a"), Color("4a3512"), 1, 2))
-	theme.set_stylebox("grabber_area", "HSlider", _flat(GOLD_DARK, GOLD_DARK, 0, 2))
-	theme.set_stylebox("grabber_area_highlight", "HSlider", _flat(GOLD, GOLD, 0, 2))
+	# Sliders (settings): a dark groove with a glowing rune-coloured fill.
+	theme.set_stylebox("slider", "HSlider", _flat(Color("0c0a1a"), Color("3a3068"), 1, 2))
+	theme.set_stylebox("grabber_area", "HSlider", _flat(EDGE, EDGE, 0, 2))
+	theme.set_stylebox("grabber_area_highlight", "HSlider", _flat(EDGE_LIT, EDGE_LIT, 0, 2))
 	var knob := _knob_texture()
 	for name in ["grabber", "grabber_highlight", "grabber_disabled"]:
 		theme.set_icon(name, "HSlider", knob)
 	theme.set_constant("center_grabber", "HSlider", 1)
 
-	var scroll := _flat(Color("120d0a"), Color("4a3512"), 1, 1)
+	var scroll := _flat(Color("0c0a1a"), Color("3a3068"), 1, 1)
 	theme.set_stylebox("scroll", "VScrollBar", scroll)
-	theme.set_stylebox("grabber", "VScrollBar", _flat(GOLD_DARK, GOLD_DARK, 0, 1))
-	theme.set_stylebox("grabber_highlight", "VScrollBar", _flat(GOLD, GOLD, 0, 1))
-	theme.set_stylebox("grabber_pressed", "VScrollBar", _flat(GOLD, GOLD, 0, 1))
+	theme.set_stylebox("grabber", "VScrollBar", _flat(EDGE, EDGE, 0, 1))
+	theme.set_stylebox("grabber_highlight", "VScrollBar", _flat(EDGE_LIT, EDGE_LIT, 0, 1))
+	theme.set_stylebox("grabber_pressed", "VScrollBar", _flat(EDGE_LIT, EDGE_LIT, 0, 1))
 	_cached = theme
 	return theme
 
@@ -121,23 +126,23 @@ static func _knob_texture() -> Texture2D:
 	for y in 9:
 		for x in 5:
 			var edge := x == 0 or x == 4 or y == 0 or y == 8
-			img.set_pixel(x, y, Color("4a3512") if edge else (Color("f6df94") if x == 1 else Color("d4a94a")))
+			img.set_pixel(x, y, INK if edge else (Color("e0d8ff") if x == 1 else EDGE_LIT))
 	return ImageTexture.create_from_image(img)
 
 
-## Gold section heading used at the top of screens.
+## Amber section heading used at the top of screens.
 static func heading(text: String, size: int = 10) -> Label:
 	var label := Label.new()
 	label.text = text
 	label.add_theme_font_size_override("font_size", size)
 	label.add_theme_color_override("font_color", GOLD)
-	label.add_theme_color_override("font_outline_color", Color("2a1c08"))
+	label.add_theme_color_override("font_outline_color", INK)
 	label.add_theme_constant_override("outline_size", 2)
 	label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	return label
 
 
-## A thin gold rule with a diamond in the middle.
+## A thin rune line with a diamond in the middle.
 static func divider() -> TextureRect:
 	var rect := TextureRect.new()
 	var path := UI_DIR + "divider.png"
@@ -146,3 +151,14 @@ static func divider() -> TextureRect:
 	rect.stretch_mode = TextureRect.STRETCH_KEEP_CENTERED
 	rect.custom_minimum_size = Vector2(0, 5)
 	return rect
+
+
+## The element's rune picture, res://assets/ui/rune_<element>_<size>.png (made by tools/art/gen_runes.py): size "s" is
+## 18 px (hotbar), "m" 30 px (lists, character sheet), "l" 40 px with a glow (cards, altars). "" means martial (the
+## physical skill set). null when the picture is missing.
+static func rune(element: String, size: String = "m") -> Texture2D:
+	var id := "rune_%s_%s" % [element if element != "" else "martial", size]
+	if not _runes.has(id):
+		var path := UI_DIR + id + ".png"
+		_runes[id] = load(path) if ResourceLoader.exists(path) else null
+	return _runes[id]

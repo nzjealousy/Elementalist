@@ -44,13 +44,13 @@ func _ready() -> void:
 	shape.position = Vector2(0, 4)
 	add_child(shape)
 	sprite = Sprite2D.new()
-	sprite.offset = Vector2(0, -3)
+	sprite.offset = Vector2(0, -9)
 	add_child(sprite)
 	_anim = SpriteAnim.attach(sprite, _prefix + ":down", 8.0, self)
 	_label = Label.new()
 	_label.text = hero_name
 	_label.add_theme_font_size_override("font_size", 6)
-	_label.add_theme_color_override("font_color", Color("ffe9a8"))
+	_label.add_theme_color_override("font_color", Color("dcd8f4"))
 	_label.add_theme_color_override("font_outline_color", Color.BLACK)
 	_label.add_theme_constant_override("outline_size", 3)
 	_label.position = Vector2(-20, -24)
@@ -93,8 +93,7 @@ func _physics_process(delta: float) -> void:
 
 
 func hurtbox() -> Rect2:
-	var size := sprite.texture.get_size()
-	return Rect2(global_position - size * 0.5, size)
+	return Rect2(global_position - Player.HURTBOX_SIZE * 0.5, Player.HURTBOX_SIZE)  # the same body as on its own machine
 
 
 ## Monsters hit this on the host; the damage is carried out on the machine that plays the hero.

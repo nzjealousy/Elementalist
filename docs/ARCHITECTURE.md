@@ -383,8 +383,10 @@ Put it in a loadout's `support` slot.
   buttons with click/tick sounds, `focus_first`, `wrap_focus`) are the only places screens get their look.
   Every menu opens with a button focused so a gamepad works. `HUD` draws in four scaled corner groups.
 - **Art pipeline:** `tools/art/*.py` write `assets/sprites/<id>.png` (idle frame) and `<id>_strip.png` (frames side
-  by side). `AssetDB.get_frames(id)` slices a strip; `SpriteAnim` plays it. Players look up
-  `player_<class>_<down|up|side>`; tiles are `tile_<floor|wall>_<theme>_<n>`, themes camp / vault / crypt.
+  by side). `AssetDB.get_frames(id)` slices a strip; `SpriteAnim` plays it. Heroes are composed at run time (below); tiles are
+  `tile_<floor|wall>_<theme>_<n>` for the themes camp / vault / crypt / hollow / ember / spire. The style is Moonlit Glyphwork
+  (docs/ART_DIRECTION.md): `style.py` owns the ramps, `restyle.py` snaps older sprites onto them, `check_art.py` is the gate, `build_all.py` runs
+  everything. Element runes live in `assets/ui/rune_<element>_<s|m|l>.png` (`UiTheme.rune`), area-skill rune circles are `fx_rune_<element>`.
 - **Audio pipeline:** `tools/audio/gen_audio.py` writes `assets/audio/sfx/<name>[_2..5].wav` (variations are picked
   at random) and `music/<track>.wav` (looped). `Sfx.music()` is called by `Dungeon._play_music`.
 
@@ -424,8 +426,8 @@ buttons call `show_tab.call_deferred(...)`, so tests `await` a frame after click
 **Heroes are parts, not pictures.** `tools/art/gen_heroes.py` writes interchangeable parts (body, boots, outfit, hair, head gear, back item,
 accent, weapon) per facing as strips of four frames in `assets/sprites/hero/`. A pixel stores a *region* (skin, hair, outfit, trim ...) and a
 *shade*, not a colour. `HeroLook` (data in `data/hero_looks.json`, shared with `tools/art/preview_heroes.py`) works out which parts and palette
-a hero wears from class, subclass and equipped items; `HeroComposer` stacks the parts, traces a soft outline and paints them through a ramp
-(warm highlights, cool shadows). Results are cached by look and registered in `AssetDB` as `hero:<n>:<facing>` so `SpriteAnim` plays them.
+a hero wears from class, subclass and equipped items; `HeroComposer` stacks the parts (24 x 38 frames), paints them through a ramp (pale
+highlights, cold shadows), adds a moonlit rim on the upper-left edge and traces one ink outline (`HeroComposer.OUTLINE`). Results are cached by look and registered in `AssetDB` as `hero:<n>:<facing>` so `SpriteAnim` plays them.
 `HeroDoll`, `CardFrame` (class borders) and the equipment paper doll in the character sheet reuse the same pictures.
 
 **The isometric view (`IsoView`).** Gameplay stays flat and so does the picture: `IsoView` (a child of the Dungeon) is a 2D renderer, no

@@ -42,8 +42,8 @@ func _build_backdrop() -> void:
 	back.layer = -5
 	add_child(back)
 	var gradient := Gradient.new()
-	gradient.set_color(0, Color("0e0a12"))
-	gradient.set_color(1, Color("2a1410"))
+	gradient.set_color(0, Color("0a0618"))
+	gradient.set_color(1, Color("1c1838"))
 	var texture := GradientTexture2D.new()
 	texture.gradient = gradient
 	texture.fill_from = Vector2(0.5, 0.0)
@@ -71,8 +71,8 @@ func _build_backdrop() -> void:
 	embers.scale_amount_min = 0.6
 	embers.scale_amount_max = 1.4
 	var fade := Gradient.new()
-	fade.set_color(0, Color("ffb347"))
-	fade.set_color(1, Color(1.0, 0.3, 0.1, 0.0))
+	fade.set_color(0, Color("cfc8ff"))
+	fade.set_color(1, Color(0.4, 0.35, 1.0, 0.0))
 	embers.color_ramp = fade
 	back.add_child(embers)
 
@@ -90,7 +90,7 @@ func _clear_view() -> VBoxContainer:
 
 func _title(column: VBoxContainer) -> void:
 	var title := UiKit.label("ELEMENTALIST", UiTheme.GOLD, 16, HORIZONTAL_ALIGNMENT_CENTER)
-	title.add_theme_color_override("font_outline_color", Color("2a1c08"))
+	title.add_theme_color_override("font_outline_color", Color("0a0618"))
 	title.add_theme_constant_override("outline_size", 3)
 	column.add_child(title)
 	column.add_child(UiKit.label("Elements come from the world. Skills are learned.", UiTheme.TEXT_DIM, 6, HORIZONTAL_ALIGNMENT_CENTER))

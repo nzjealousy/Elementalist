@@ -84,6 +84,7 @@ func _ready() -> void:
 	_test_generation_soak()
 	await _test_iso()
 	await _test_fixes()
+	_test_art_style()
 	await _test_net_world()
 	_test_items()
 	_test_inventory_and_gear_stats()
@@ -4618,6 +4619,68 @@ func _test_fixes() -> void:
 		var shown: Control = online._view.find_children("*", "PanelContainer", true, false)[0]
 		_check("multiplayer screen %s sits inside the window" % screen_name, screen.encloses(shown.get_global_rect()))
 	online.queue_free()
+
+
+# ---------- Art style: Moonlit Glyphwork (docs/ART_DIRECTION.md) ----------
+
+## The identity colour of each element is the bright step of its Moonlit ramp (tools/art/style.py).
+const MOONLIT_ELEMENT_COLORS := {"fire": "ff8040", "water": "5cc8ff", "air": "9cf0d8", "mineral": "f8d060", "earth": "88e880", "light": "e8e0ff", "dark": "b868ff", "martial": "b8b8d8"}
+const HERO_PART_KEYS := {"outfit": ["tunic", "robe", "mail", "leather", "fur"], "hair": ["short", "long", "bun"],
+	"head": ["cap", "helm", "hood", "hat", "circlet", "mask", "horns", "antlers", "feather"], "back": ["cape", "quiver", "satchel"],
+	"boots": ["shoes", "boots"], "weapon": ["sword", "staff", "bow", "rod", "dagger", "axe", "tome"],
+	"accent": ["sash", "pauldrons", "collar", "gem", "tabard"]}
+
+
+func _test_art_style() -> void:
+	for element in MOONLIT_ELEMENT_COLORS:
+		_check("%s keeps its Moonlit colour" % element, Elements.color_of(element).to_html(false) == MOONLIT_ELEMENT_COLORS[element])
+		var runes_ok := true
+		for size in ["s", "m", "l"]:
+			runes_ok = runes_ok and UiTheme.rune(element, size) != null
+		_check("%s has its rune in every size" % element, runes_ok)
+		_check("%s has a rune circle for its areas and a bolt" % element, AssetDB.has_art("fx_rune_" + element) and AssetDB.has_art("proj_" + element))
+	_check("no element asks for the martial rune", UiTheme.rune("", "s") == UiTheme.rune("martial", "s"))
+	_check("a rune picture is as big as the hotbar slot", UiTheme.rune("fire", "s").get_size() == Vector2(18, 18))
+
+	var size := HeroComposer.size()
+	_check("heroes are 24 x 38", size == Vector2i(24, 38))
+	var strips_ok := true
+	for part in ["base_body", "outfit_robe", "head_hat", "weapon_staff", "back_cape", "boots_boots"]:
+		for facing in HeroComposer.FACINGS:
+			var strip := load("res://assets/sprites/hero/%s_%s.png" % [part, facing]) as Texture2D
+			strips_ok = strips_ok and strip != null and strip.get_size() == Vector2(size.x * HeroComposer.FRAME_COUNT, size.y)
+	_check("the hero part strips are 4 frames of 24 x 38", strips_ok)
+
+	# every part of every kind, in every facing and frame, stays off the frame's edge cells (only the ink outline may reach
+	# them, so nothing is clipped) and is inked
+	var edge_hits: Array[String] = []
+	var inked_all := true
+	for key in HERO_PART_KEYS:
+		for variant in HERO_PART_KEYS[key]:
+			var look := HeroLook.for_class("wanderer", "", 0, 1)
+			look["parts"][key] = variant
+			if key != "weapon":
+				look["parts"]["weapon"] = "sword"
+			var frames: Dictionary = HeroComposer.compose(look)
+			for facing in HeroComposer.FACINGS:
+				for frame in HeroComposer.FRAME_COUNT:
+					var image := (frames[facing][frame] as Texture2D).get_image()
+					var inked := false
+					for y in image.get_height():
+						for x in image.get_width():
+							var px := image.get_pixel(x, y)
+							if px.is_equal_approx(HeroComposer.OUTLINE):
+								inked = true
+							if px.a > 0.0 and not px.is_equal_approx(HeroComposer.OUTLINE) and (x == 0 or y == 0 or x == image.get_width() - 1 or y == image.get_height() - 1):
+								edge_hits.append("%s_%s %s f%d" % [key, variant, facing, frame])
+					inked_all = inked_all and inked
+	_check("no hero part is clipped by its frame (%s)" % ", ".join(edge_hits.slice(0, 4)), edge_hits.is_empty())
+	_check("every hero is drawn with the one ink outline", inked_all)
+	var palette_ok := true
+	for class_id in Classes.playable():
+		var picture := (HeroComposer.compose(HeroLook.for_class(class_id))["down"][0] as Texture2D).get_image()
+		palette_ok = palette_ok and picture.get_width() == size.x and picture.get_height() == size.y
+	_check("every class composes a 24 x 38 picture", palette_ok)
 
 
 # ---------- Phase 6d: multiplayer, the parts that need no network ----------

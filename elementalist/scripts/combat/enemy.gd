@@ -139,7 +139,7 @@ func _ready() -> void:
 	if variant != "":
 		_base_tint = Color.WHITE.lerp(Elements.color_of(variant), 0.5)
 	var circle := CircleShape2D.new()  # sized to the sprite (the scene's shape is shared, so not edited)
-	circle.radius = clampf(minf(sprite.texture.get_size().x, sprite.texture.get_size().y) * 0.45, 4.0, 16.0)
+	circle.radius = clampf(minf(_body_size().x, _body_size().y) * 0.45, 4.0, 16.0)
 	$CollisionShape2D.shape = circle
 	var bar := EnemyHealthBar.new()
 	bar.enemy = self
@@ -316,8 +316,14 @@ func _try_dodge(hit: Dictionary) -> bool:
 
 ## The enemy's body rectangle in world space (its sprite's footprint).
 func hit_rect() -> Rect2:
-	var size := sprite.texture.get_size()
+	var size := _body_size()
 	return Rect2(global_position - size * 0.5, size)
+
+
+## How big the body is: the picture, except for an arena ghost, which wears a 24 x 38 hero picture but has the hero's
+## 16 x 26 body (Player.HURTBOX_SIZE).
+func _body_size() -> Vector2:
+	return Player.HURTBOX_SIZE if ghost else sprite.texture.get_size()
 
 
 ## True when this enemy's body overlaps the target's hurtbox on any side. The target needs

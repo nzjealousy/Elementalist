@@ -8,14 +8,14 @@ extends RefCounted
 ## amount: particles; life: seconds; speed: min/max px/s; gravity: px/s^2; size: min/max scale;
 ## spin: degrees/s of rotation; colors: start/end of each particle's life.
 const PROFILES := {
-	"fire": {"amount": 20, "life": 0.4, "speed": Vector2(6, 26), "gravity": Vector2(0, -55), "size": Vector2(1.0, 2.4), "spin": 0.0, "colors": [Color("ffe27a"), Color("ff5a1f")]},
-	"water": {"amount": 16, "life": 0.45, "speed": Vector2(10, 34), "gravity": Vector2(0, 70), "size": Vector2(1.0, 1.8), "spin": 0.0, "colors": [Color("d6efff"), Color("2f8fff")]},
-	"earth": {"amount": 12, "life": 0.5, "speed": Vector2(10, 40), "gravity": Vector2(0, 110), "size": Vector2(1.6, 3.0), "spin": 200.0, "colors": [Color("8fd45a"), Color("5a4630")]},
-	"air": {"amount": 18, "life": 0.3, "speed": Vector2(30, 75), "gravity": Vector2.ZERO, "size": Vector2(0.8, 1.4), "spin": 0.0, "colors": [Color("ffffff"), Color("9fd8ff")]},
-	"mineral": {"amount": 14, "life": 0.45, "speed": Vector2(20, 60), "gravity": Vector2(0, 40), "size": Vector2(1.4, 2.6), "spin": 520.0, "colors": [Color("fff1cf"), Color("8a7a5a")]},
-	"light": {"amount": 16, "life": 0.4, "speed": Vector2(8, 32), "gravity": Vector2(0, -20), "size": Vector2(0.9, 2.0), "spin": 0.0, "colors": [Color("ffffff"), Color("ffe27a")]},
-	"dark": {"amount": 16, "life": 0.5, "speed": Vector2(6, 28), "gravity": Vector2(0, -10), "size": Vector2(1.2, 2.6), "spin": 120.0, "colors": [Color("b58af0"), Color("2a1040")]},
-	"martial": {"amount": 12, "life": 0.25, "speed": Vector2(25, 70), "gravity": Vector2.ZERO, "size": Vector2(1.0, 1.8), "spin": 0.0, "colors": [Color.WHITE, Color("8a8a96")]},
+	"fire": {"amount": 20, "life": 0.4, "speed": Vector2(6, 26), "gravity": Vector2(0, -55), "size": Vector2(1.0, 2.4), "spin": 0.0, "colors": [Color("ffd8a0"), Color("e0403a")]},
+	"water": {"amount": 16, "life": 0.45, "speed": Vector2(10, 34), "gravity": Vector2(0, 70), "size": Vector2(1.0, 1.8), "spin": 0.0, "colors": [Color("e0f8ff"), Color("2a78e0")]},
+	"earth": {"amount": 12, "life": 0.5, "speed": Vector2(10, 40), "gravity": Vector2(0, 110), "size": Vector2(1.6, 3.0), "spin": 200.0, "colors": [Color("d8ffc8"), Color("1a6a48")]},
+	"air": {"amount": 18, "life": 0.3, "speed": Vector2(30, 75), "gravity": Vector2.ZERO, "size": Vector2(0.8, 1.4), "spin": 0.0, "colors": [Color("f0fffa"), Color("3cc0b0")]},
+	"mineral": {"amount": 14, "life": 0.45, "speed": Vector2(20, 60), "gravity": Vector2(0, 40), "size": Vector2(1.4, 2.6), "spin": 520.0, "colors": [Color("fff8c0"), Color("6a4a20")]},
+	"light": {"amount": 16, "life": 0.4, "speed": Vector2(8, 32), "gravity": Vector2(0, -20), "size": Vector2(0.9, 2.0), "spin": 0.0, "colors": [Color("ffffff"), Color("d8d0ff")]},
+	"dark": {"amount": 16, "life": 0.5, "speed": Vector2(6, 28), "gravity": Vector2(0, -10), "size": Vector2(1.2, 2.6), "spin": 120.0, "colors": [Color("f0c8ff"), Color("3a1070")]},
+	"martial": {"amount": 12, "life": 0.25, "speed": Vector2(25, 70), "gravity": Vector2.ZERO, "size": Vector2(1.0, 1.8), "spin": 0.0, "colors": [Color("e0e0f8"), Color("5c5890")]},
 }
 
 static var _glow_texture: GradientTexture2D
@@ -143,14 +143,17 @@ static func impact(parent: Node, pos: Vector2, element: String) -> void:
 static func area_burst(area: Node2D, element: String, radius: float, duration: float) -> void:
 	var color := Elements.color_of(element)
 	ring(area, Vector2.ZERO, radius, color, 0.4, 1.5, true)
-	if AssetDB.has_art("fx_rune"):  # a rune circle under the area, turning while it lasts
+	var rune_id := "fx_rune_" + (element if element != "" else "martial")  # the element's own rune circle...
+	if not AssetDB.has_art(rune_id):
+		rune_id = "fx_rune"                                                  # ...or the plain one
+	if AssetDB.has_art(rune_id):  # a rune circle under the area, turning while it lasts
 		var rune := Sprite2D.new()
-		rune.modulate = Color(color, 0.8)
+		rune.modulate = Color(color.lightened(0.2), 1.0)   # additive on a dark floor: it reads as light
 		rune.material = additive_material()
 		rune.scale = Vector2.ONE * (radius * 2.0 / 38.0)
-		rune.z_index = -7
+		rune.z_index = 1   # relative to the area (z -5): above the floor (-10) and its faint pool
 		area.add_child(rune)
-		var spin := SpriteAnim.attach(rune, "fx_rune", 8.0, rune)
+		var spin := SpriteAnim.attach(rune, rune_id, 8.0, rune)
 		var fade := rune.create_tween()
 		fade.tween_property(rune, "modulate:a", 0.0, maxf(duration, 0.5))
 		fade.tween_callback(rune.queue_free)
@@ -165,7 +168,7 @@ static func area_burst(area: Node2D, element: String, radius: float, duration: f
 	area.add_child(node)
 	node.emitting = true
 	var flash := glow_sprite(Color(color, 0.5), radius / 10.0)
-	flash.z_index = -6
+	flash.z_index = -1   # relative to the area (z -5): above the floor
 	area.add_child(flash)
 	var tween := flash.create_tween()
 	tween.tween_property(flash, "modulate:a", 0.0, maxf(duration, 0.4))

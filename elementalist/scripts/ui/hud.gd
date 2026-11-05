@@ -9,8 +9,10 @@ const SLOT := 18.0
 const LOCK_SLOT := 26.0  # wider, so a combo's name fits
 const GAP := 2.0
 const BOTTOM := -22.0    # slots sit this far above the bottom edge (corner-relative)
-const GOLD := Color("f2cf6a")
-const FRAME := Color("4a3512")
+const GOLD := UiTheme.GOLD
+const FRAME := Color("3c3868")   # the quiet edge of an obsidian slab
+const INK := Color("0a0618")
+const SLAB := Color("16122e")
 
 static var _font_cache: Font
 
@@ -52,15 +54,15 @@ func _draw_hud() -> void:
 	var font := _hud_font()
 
 	_corner(Vector2.ZERO)  # top-left: bars, level, gold, what needs doing
-	_bar(Vector2(3, 3), Vector2(70, 5), _player.hp / _player.max_hp, Color("c8372f"))
+	_bar(Vector2(3, 3), Vector2(70, 5), _player.hp / _player.max_hp, Color("e0403a"))
 	if character.uses_mana():  # no elements, no mana pool
-		_bar(Vector2(3, 9), Vector2(70, 3), caster.mana / caster.max_mana, Color("3f7fff"))
-	_bar(Vector2(3, 13), Vector2(70, 3), _player.stamina / _player.max_stamina, Color("d6b13a"))
+		_bar(Vector2(3, 9), Vector2(70, 3), caster.mana / caster.max_mana, Color("2a78e0"))
+	_bar(Vector2(3, 13), Vector2(70, 3), _player.stamina / _player.max_stamina, Color("f8d060"))
 	var xp_frac := float(character.xp) / float(CharacterData.xp_to_next(character.level))
-	_bar(Vector2(3, 17), Vector2(70, 2), xp_frac, Color("a98fe8"))
+	_bar(Vector2(3, 17), Vector2(70, 2), xp_frac, Color("b868ff"))
 	_ctrl.draw_string(font, Vector2(77, 8), "Lv %d" % character.level, HORIZONTAL_ALIGNMENT_LEFT, -1, 7, GOLD)
 	var inv := character.inventory
-	_ctrl.draw_string(font, Vector2(77, 16), "%dg" % inv.gold, HORIZONTAL_ALIGNMENT_LEFT, -1, 6, Color("e8d8a0"))
+	_ctrl.draw_string(font, Vector2(77, 16), "%dg" % inv.gold, HORIZONTAL_ALIGNMENT_LEFT, -1, 6, Color("f8e8b8"))
 	_draw_status(font, caster, character)
 	_draw_buffs(font)
 
@@ -83,21 +85,48 @@ func _draw_hud() -> void:
 	_draw_hurt()
 
 
-## Bottom left: the element tabs (1-5), the selected one lit, a white mark on each locked one.
+## An obsidian slab under one ink outline. `lit` glows in `color` (the slot's element); otherwise a quiet stone edge.
+func _slab(rect: Rect2, color: Color, lit: bool) -> void:
+	_ctrl.draw_rect(rect.grow(1.0), INK)
+	_ctrl.draw_rect(rect, SLAB)
+	if lit:
+		_ctrl.draw_rect(rect.grow(-1.0), Color(color, 0.2))
+	_ctrl.draw_rect(Rect2(rect.position, Vector2(rect.size.x, 1.0)), color if lit else FRAME)       # the lit top edge
+	_ctrl.draw_rect(Rect2(rect.position, Vector2(1.0, rect.size.y)), color if lit else FRAME)
+	_ctrl.draw_rect(Rect2(rect.position + Vector2(0, rect.size.y - 1.0), Vector2(rect.size.x, 1.0)), Color(color if lit else FRAME, 0.55))
+	_ctrl.draw_rect(Rect2(rect.position + Vector2(rect.size.x - 1.0, 0), Vector2(1.0, rect.size.y)), Color(color if lit else FRAME, 0.55))
+
+
+## The element's rune picture (18 px) with its top-left corner at `at`.
+func _rune(element: String, at: Vector2, alpha: float = 1.0) -> void:
+	var texture := UiTheme.rune(element, "s")
+	if texture != null:
+		_ctrl.draw_texture(texture, at, Color(1, 1, 1, alpha))
+
+
+## Text with a one pixel ink shadow, so it reads on any slab.
+func _label(font: Font, at: Vector2, text: String, size: int, color: Color, width: float = -1.0) -> void:
+	_ctrl.draw_string(font, at + Vector2(1, 1), text, HORIZONTAL_ALIGNMENT_LEFT, width, size, Color(INK, 0.9))
+	_ctrl.draw_string(font, at, text, HORIZONTAL_ALIGNMENT_LEFT, width, size, color)
+
+
+## Bottom left: the element tabs, each a rune on an obsidian slab. The selected one is lit in its colour; a locked one
+## carries a small lit mark.
 func _draw_elements(font: Font, caster: SkillCaster) -> void:
 	var x := 3.0
-	var y := BOTTOM - 4.0
+	var y := BOTTOM
 	for i in caster.elements.size():
 		var element := caster.elements[i]
-		var rect := Rect2(Vector2(x, y + 4.0), Vector2(SLOT, SLOT - 4.0))
+		var rect := Rect2(Vector2(x, y), Vector2(SLOT, SLOT))
 		var color := Elements.color_of(element)
 		var active := i == caster.selected
-		_ctrl.draw_rect(rect, Color(color, 0.9 if active else 0.25))
-		_ctrl.draw_rect(rect, Color.WHITE if active else FRAME, false, 1.0)
-		_ctrl.draw_string(font, rect.position + Vector2(2, 8), str(i + 1), HORIZONTAL_ALIGNMENT_LEFT, -1, 6, Color.BLACK if active else Color.WHITE)
-		_ctrl.draw_string(font, rect.position + Vector2(2, 14), element.substr(0, 3), HORIZONTAL_ALIGNMENT_LEFT, -1, 5, Color.BLACK if active else Color.WHITE)
+		_slab(rect, color, active)
+		_rune(element, rect.position, 1.0 if active else 0.5)
+		_label(font, rect.position + Vector2(2, 6), str(i + 1), 5, Color.WHITE if active else Color(1, 1, 1, 0.75))
 		if element in caster.locked:
-			_ctrl.draw_rect(Rect2(rect.position + Vector2(rect.size.x - 4, 0), Vector2(4, 4)), Color.WHITE)  # locked marker
+			var mark := Rect2(rect.position + Vector2(rect.size.x - 5, 2), Vector2(3, 3))
+			_ctrl.draw_rect(mark.grow(1.0), INK)
+			_ctrl.draw_rect(mark, color.lightened(0.55))
 		x += SLOT + GAP
 
 
@@ -132,8 +161,8 @@ func _draw_boss_bar(font: Font) -> void:
 	var boss := Game.boss as Enemy
 	if boss == null or boss.hp <= 0.0:
 		return
-	_ctrl.draw_string(font, Vector2(-160, 8), boss.display_name, HORIZONTAL_ALIGNMENT_CENTER, 320.0, 7, Color("ff9a6a"))
-	_bar(Vector2(-70, 10), Vector2(140, 4), boss.hp / boss.max_hp, Color("c0392b"))
+	_ctrl.draw_string(font, Vector2(-160, 8), boss.display_name, HORIZONTAL_ALIGNMENT_CENTER, 320.0, 7, Color("ffb080"))
+	_bar(Vector2(-70, 10), Vector2(140, 4), boss.hp / boss.max_hp, Color("e0403a"))
 
 
 ## Active buffs under the gold line: name and seconds left.
@@ -203,7 +232,7 @@ func _lmb_slot(pos: Vector2, caster: SkillCaster) -> void:
 		"knife":
 			_skill_slot(pos, caster, caster.primary_id(), "LMB", "Knife")
 		"slash":
-			_plain_slot(pos, "LMB", "Slash", Color(0.75, 0.75, 0.78, 0.6))
+			_plain_slot(pos, "LMB", "Slash", Color("9090c0"))
 		_:
 			_plain_slot(pos, "LMB", "Fuse", Color(0.2, 0.22, 0.3, 0.9))
 			_ctrl.draw_rect(Rect2(pos, Vector2(SLOT, SLOT)), Color(0, 0, 0, 0.45))
@@ -222,17 +251,17 @@ func _fusion_slot(pos: Vector2, caster: SkillCaster, id: String) -> void:
 	var rect := Rect2(pos, Vector2(SLOT, SLOT))
 	var parts := caster.locked
 	var stripe := SLOT / parts.size()
+	_slab(rect, Elements.color_of(parts[0]), true)
 	for i in parts.size():  # one coloured band per fused element
-		_ctrl.draw_rect(Rect2(pos + Vector2(i * stripe, 0), Vector2(stripe, SLOT)), Color(Elements.color_of(parts[i]), 0.65))
+		_ctrl.draw_rect(Rect2(pos + Vector2(i * stripe, 0), Vector2(stripe, SLOT)).grow(-1.0), Color(Elements.color_of(parts[i]), 0.45))
 	var cd := caster.cooldown_fraction(id)
 	if cd > 0.0:
-		_ctrl.draw_rect(Rect2(pos, Vector2(SLOT, SLOT * cd)), Color(0, 0, 0, 0.65))
+		_ctrl.draw_rect(Rect2(pos, Vector2(SLOT, SLOT * cd)), Color(INK, 0.7))
 	if not caster.can_afford(id):
-		_ctrl.draw_rect(rect, Color(0, 0, 0.3, 0.45))
-	_ctrl.draw_rect(rect, FRAME, false, 1.0)
-	_ctrl.draw_string(font, pos + Vector2(2, 6), "LMB", HORIZONTAL_ALIGNMENT_LEFT, -1, 5, Color(1, 1, 1, 0.7))
-	_ctrl.draw_string(font, pos + Vector2(2, 17), "Fuse", HORIZONTAL_ALIGNMENT_LEFT, -1, 6, Color.WHITE)
-	_ctrl.draw_string(font, pos + Vector2(12, 6), "x%d" % parts.size(), HORIZONTAL_ALIGNMENT_LEFT, -1, 5, Color.WHITE)
+		_ctrl.draw_rect(rect, Color(0.05, 0.1, 0.35, 0.45))
+	_label(font, pos + Vector2(2, 6), "LMB", 5, Color(1, 1, 1, 0.8))
+	_label(font, pos + Vector2(2, 17), "Fuse", 6, Color.WHITE)
+	_label(font, pos + Vector2(12, 6), "x%d" % parts.size(), 5, Color.WHITE)
 
 
 ## Q: shows the combination the locked elements make: the pair's combo name and colour for two
@@ -242,56 +271,56 @@ func _lock_slot(pos: Vector2, caster: SkillCaster) -> void:
 	var rect := Rect2(pos, Vector2(LOCK_SLOT, SLOT))
 	var available := caster.lock_available()
 	var label: Dictionary = Elements.fusion_label(caster.locked)
-	_ctrl.draw_rect(rect, Color(0.18, 0.2, 0.28, 0.9))
+	_slab(rect, label["color"], not caster.locked.is_empty())
 	if not caster.locked.is_empty():
 		if caster.locked.size() >= 3:  # a stripe per element
 			var stripe := LOCK_SLOT / caster.locked.size()
 			for i in caster.locked.size():
-				_ctrl.draw_rect(Rect2(pos + Vector2(i * stripe, 0), Vector2(stripe, SLOT)), Color(Elements.color_of(caster.locked[i]), 0.55))
+				_ctrl.draw_rect(Rect2(pos + Vector2(i * stripe, 0), Vector2(stripe, SLOT)).grow(-1.0), Color(Elements.color_of(caster.locked[i]), 0.5))
 		else:
-			_ctrl.draw_rect(rect, Color(label["color"], 0.7))
-	_ctrl.draw_rect(rect, FRAME, false, 1.0)
-	_ctrl.draw_string(font, pos + Vector2(2, 6), "Q", HORIZONTAL_ALIGNMENT_LEFT, -1, 5, Color(1, 1, 1, 0.7))
+			_ctrl.draw_rect(rect.grow(-1.0), Color(label["color"], 0.45))
+	_label(font, pos + Vector2(2, 6), "Q", 5, Color(1, 1, 1, 0.8))
 	var text := String(label["name"]).substr(0, 8)
-	var dark := not caster.locked.is_empty() and Color(label["color"]).get_luminance() > 0.6
 	if not available:  # needs two elements to have anything to fuse
 		text = "none" if Game.character.castable_elements().is_empty() else "2 el"
-		_ctrl.draw_rect(rect, Color(0, 0, 0, 0.55))
-	_ctrl.draw_string(font, pos + Vector2(2, 17), text, HORIZONTAL_ALIGNMENT_LEFT, LOCK_SLOT - 3.0, 5, Color.BLACK if dark else Color.WHITE)
+		_ctrl.draw_rect(rect, Color(INK, 0.55))
+	_label(font, pos + Vector2(2, 17), text, 5, Color.WHITE, LOCK_SLOT - 3.0)
 
 
-## F, V and R: key at the top, the skill's name below. A gold frame marks the chain discount:
-## the next ability of a different element than your last costs less mana.
+## F, V and R: key at the top, the skill's name below, the skill's element rune behind. A gold edge marks the chain
+## discount: the next ability of a different element than your last costs less mana.
 func _skill_slot(pos: Vector2, caster: SkillCaster, skill_id: String, key: String, name_override: String = "") -> void:
 	var def: Dictionary = SkillDB.DEFS[skill_id]
 	var font := _hud_font()
 	var rect := Rect2(pos, Vector2(SLOT, SLOT))
-	_ctrl.draw_rect(rect, Color(Elements.color_of(SkillDB.set_of(skill_id)), 0.6))
+	var element := SkillDB.set_of(skill_id)
+	var learned := Game.character.can_use_skill(skill_id)
+	var chained := learned and caster.chain_discount(skill_id) < 1.0
+	_slab(rect, GOLD if chained else Elements.color_of(element), chained)
+	_rune(element, pos, 0.55 if learned else 0.2)
 	var cd := caster.cooldown_fraction(skill_id)
 	if cd > 0.0:
-		_ctrl.draw_rect(Rect2(pos, Vector2(SLOT, SLOT * cd)), Color(0, 0, 0, 0.65))
-	var learned := Game.character.can_use_skill(skill_id)
+		_ctrl.draw_rect(Rect2(pos, Vector2(SLOT, SLOT * cd)), Color(INK, 0.7))
 	if not learned:
-		_ctrl.draw_rect(rect, Color(0, 0, 0, 0.75))
+		_ctrl.draw_rect(rect, Color(INK, 0.55))
 	elif not caster.can_afford(skill_id):
-		_ctrl.draw_rect(rect, Color(0, 0, 0.3, 0.45))
-	var chained := learned and caster.chain_discount(skill_id) < 1.0
-	_ctrl.draw_rect(rect, GOLD if chained else FRAME, false, 1.0)
-	_ctrl.draw_string(font, pos + Vector2(2, 6), key, HORIZONTAL_ALIGNMENT_LEFT, -1, 5, Color(1, 1, 1, 0.7))
+		_ctrl.draw_rect(rect, Color(0.05, 0.1, 0.35, 0.45))
+	_label(font, pos + Vector2(2, 6), key, 5, Color(1, 1, 1, 0.85))
 	if learned:
 		var label := name_override if name_override != "" else String(def["name"]).substr(0, 4)
-		_ctrl.draw_string(font, pos + Vector2(2, 17), label, HORIZONTAL_ALIGNMENT_LEFT, SLOT - 3.0, 6, Color.WHITE)
+		_label(font, pos + Vector2(2, 17), label, 6, Color.WHITE, SLOT - 3.0)
 	else:
-		_ctrl.draw_string(font, pos + Vector2(2, 17), ("Lv%d" % Game.character.skill_unlock_level(skill_id)) if Game.character.skill_unlock_level(skill_id) > 0 else "Rwd", HORIZONTAL_ALIGNMENT_LEFT, -1, 6, Color("ffd84a"))
+		var level := Game.character.skill_unlock_level(skill_id)
+		_label(font, pos + Vector2(2, 17), ("Lv%d" % level) if level > 0 else "Rwd", 6, Color("f8d060"))
 
 
-func _plain_slot(pos: Vector2, key: String, label: String, color: Color) -> void:
+func _plain_slot(pos: Vector2, key: String, label: String, color: Color, lit: bool = false) -> void:
 	var font := _hud_font()
 	var rect := Rect2(pos, Vector2(SLOT, SLOT))
-	_ctrl.draw_rect(rect, color)
-	_ctrl.draw_rect(rect, FRAME, false, 1.0)
-	_ctrl.draw_string(font, pos + Vector2(2, 6), key, HORIZONTAL_ALIGNMENT_LEFT, -1, 5, Color(1, 1, 1, 0.7))
-	_ctrl.draw_string(font, pos + Vector2(2, 17), label, HORIZONTAL_ALIGNMENT_LEFT, SLOT - 3.0, 6, Color.WHITE)
+	_slab(rect, color, lit)
+	_rune("martial" if label == "Slash" or label == "Knife" else "", pos, 0.45)
+	_label(font, pos + Vector2(2, 6), key, 5, Color(1, 1, 1, 0.85))
+	_label(font, pos + Vector2(2, 17), label, 6, Color.WHITE, SLOT - 3.0)
 
 
 ## The slash (RMB): grey normally, the imbued element's colour while the blade is coated.
@@ -299,15 +328,21 @@ func _melee_slot(pos: Vector2) -> void:
 	var m: Dictionary = SkillDB.MELEE
 	var rect := Rect2(pos, Vector2(SLOT, SLOT))
 	var imbued_elements: Array[String] = _player.imbue_elements()
-	var color := Color(0.75, 0.75, 0.78, 0.6)
-	if _player.imbued and not imbued_elements.is_empty():
-		color = Color(Elements.color_of(imbued_elements[0]), 0.85)
-	_plain_slot(pos, "RMB", "Slash", color)
+	var color := Color("9090c0")
+	var lit: bool = _player.imbued and not imbued_elements.is_empty()
+	if lit:
+		color = Elements.color_of(imbued_elements[0])
+	_plain_slot(pos, "RMB", "Slash", color, lit)
 	if _player.stamina < float(m["stamina"]):
-		_ctrl.draw_rect(rect, Color(0, 0, 0, 0.55))
+		_ctrl.draw_rect(rect, Color(INK, 0.55))
 
 
 func _bar(pos: Vector2, size: Vector2, frac: float, color: Color) -> void:
-	_ctrl.draw_rect(Rect2(pos, size), Color(0.05, 0.03, 0.02, 0.75))
-	_ctrl.draw_rect(Rect2(pos, Vector2(size.x * clampf(frac, 0.0, 1.0), size.y)), color)
-	_ctrl.draw_rect(Rect2(pos - Vector2(0.5, 0.5), size + Vector2(1, 1)), FRAME, false, 1.0)
+	frac = clampf(frac, 0.0, 1.0)
+	_ctrl.draw_rect(Rect2(pos - Vector2.ONE, size + Vector2(2, 2)), INK)  # the one ink outline
+	_ctrl.draw_rect(Rect2(pos, size), Color("0c0a1a"))
+	var fill := Rect2(pos, Vector2(size.x * frac, size.y))
+	_ctrl.draw_rect(fill, color.darkened(0.15))
+	if size.y >= 3.0 and fill.size.x > 0.0:  # a lit top line and a bright tip: the bar glows rather than fills
+		_ctrl.draw_rect(Rect2(fill.position, Vector2(fill.size.x, 1.0)), color.lightened(0.4))
+		_ctrl.draw_rect(Rect2(fill.position + Vector2(maxf(fill.size.x - 1.0, 0.0), 0), Vector2(1.0, size.y)), color.lightened(0.55))

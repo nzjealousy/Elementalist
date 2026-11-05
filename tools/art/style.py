@@ -46,7 +46,7 @@ STYLES = {
             "air":     ["0c2e3a", "1e6a78", "3cc0b0", "9cf0d8", "f0fffa"],
             "mineral": ["2a1810", "6a4a20", "c8962c", "f8d060", "fff8c0"],
             "earth":   ["0c2a20", "1a6a48", "38b060", "88e880", "d8ffc8"],
-            "light":   ["302a50", "8878c8", "d8d0ff", "fff8ff", "ffffff"],
+            "light":   ["302a50", "8878c8", "d8d0ff", "fff8ff", "f8f4ff"],
             "dark":    ["10082a", "3a1070", "7a30d0", "b868ff", "f0c8ff"],
             "stone":   ["0c0a1a", "24204a", "3c3868", "5c5890", "9090c0"],
             "wood":    ["140c1c", "30203a", "503450", "785070", "a87898"],
@@ -82,7 +82,7 @@ STYLES = {
     },
 }
 
-ACTIVE = "gilded"
+ACTIVE = "moonlit"     # the chosen style (docs/ART_DIRECTION.md); the others stay for the comparison boards
 INK = hexc(STYLES[ACTIVE]["ink"])
 
 
@@ -140,6 +140,9 @@ def step(index):
 # runes: spell glyphs on a dark carved disc, the element icon of the whole game
 # ---------------------------------------------------------------------------------------------
 
+RAMP_OF = {"martial": "light"}   # the physical skill set is not an element: it glows pale metal
+
+
 def _glyph(element):
     """Polylines in [-1, 1] space (y down): angular, runic, readable by silhouette. Each is (points, is_closed)."""
     c, s = math.cos, math.sin
@@ -167,6 +170,9 @@ def _glyph(element):
         rays = [[(c(a) * 0.36, s(a) * 0.36), (c(a) * (0.94 if i % 2 == 0 else 0.7), s(a) * (0.94 if i % 2 == 0 else 0.7))]
                 for i, a in enumerate([math.tau * k / 8 for k in range(8)])]
         return rays + [[(-0.16, -0.16), (0.16, -0.16), (0.16, 0.16), (-0.16, 0.16), (-0.16, -0.16)]]
+    if element == "martial":   # not an element: two crossed blades with guards
+        return [[(-0.74, 0.74), (0.74, -0.74)], [(0.74, 0.74), (-0.74, -0.74)],
+                [(-0.58, 0.1), (-0.1, 0.58)], [(0.1, 0.58), (0.58, 0.1)]]
     outer = [(c(a) * 0.86, s(a) * 0.86) for a in [math.radians(40 + k * 280 / 18) for k in range(19)]]   # dark: a crescent
     inner = [(0.24 + c(a) * 0.6, s(a) * 0.6) for a in [math.radians(320 - k * 270 / 14) for k in range(15)]]
     return [outer + inner + [outer[0]], [(0.34, -0.06), (0.46, -0.06), (0.46, 0.06), (0.34, 0.06), (0.34, -0.06)]]
@@ -175,7 +181,7 @@ def _glyph(element):
 def rune(element, size=32, glow=True, disc=True):
     """The element's spell rune: a carved dark disc with an inscribed ring and a glowing glyph. `disc=False` draws
     only the ring ticks and glyph on transparent (for ground circles)."""
-    cols = ramp(element)
+    cols = ramp(RAMP_OF.get(element, element))
     stone = ramp("stone")
     plate = [mix(stone[i], cols[0], 0.45) for i in range(5)]
     pad = 5 if glow else 2

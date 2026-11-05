@@ -19,7 +19,7 @@ static func make(parent: Node, peer: int, info: Dictionary) -> Enemy:
 	enemy.sprite_id = prefix + ":down"
 	enemy.set_meta("prefix", prefix)
 	parent.add_child(enemy)
-	enemy.sprite.offset = Vector2(0, -3)  # the hero stands as it does on its own machine
+	enemy.sprite.offset = Vector2(0, -9)  # the hero stands as it does on its own machine
 	enemy.net_pos = enemy.global_position
 	return enemy
 

@@ -17,6 +17,8 @@ REGION_KEY = {1: 'skin', 2: 'hair', 3: 'outfit', 4: 'trim', 5: 'pants', 6: 'boot
               10: 'accent', 11: 'metal', 12: 'wood', 13: 'gem'}
 
 _cache = {}
+INK = (10, 6, 24, 255)
+RIM = (216, 208, 255)
 
 
 def part_frames(name, builder):
@@ -128,14 +130,22 @@ def compose(look, pal, facing, frame):
             cell = grid[y][x]
             if cell is not None:
                 out.set(x, y, color_of(cell[0], cell[1], pal))
-    for y in range(H):  # outline
+    for y in range(H):  # rim light on the upper-left edge (as HeroComposer does)
+        for x in range(W):
+            cell = grid[y][x]
+            if cell is None or cell[0] == 14 or cell[1] < 2:
+                continue
+            if x == 0 or grid[y][x - 1] is None or y == 0 or grid[y - 1][x] is None:
+                c = out.get(x, y)
+                out.set(x, y, tuple(int(c[i] + (RIM[i] - c[i]) * 0.4) for i in range(3)) + (255,))
+    for y in range(H):  # one ink outline
         for x in range(W):
             if grid[y][x] is not None:
                 continue
             for dx, dy in ((1, 0), (-1, 0), (0, 1), (0, -1)):
                 nx, ny = x + dx, y + dy
                 if 0 <= nx < W and 0 <= ny < H and grid[ny][nx] is not None:
-                    out.set(x, y, color_of(grid[ny][nx][0], 0, pal))
+                    out.set(x, y, INK)
                     break
     return out
 
@@ -166,7 +176,7 @@ def main():
     for cls, subs in sub_of.items():
         for sub in subs:
             cells.append(resolve(cls, sub))
-    cols = 9
+    cols = 8
     rows = (len(cells) + cols - 1) // cols
     sheet_cv = Canvas(cols * W * k + 8, (rows + 2) * H * k + 8, (44, 52, 40, 255))
     for i, (look, pal) in enumerate(cells):

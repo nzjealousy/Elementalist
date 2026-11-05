@@ -6,8 +6,8 @@ extends CanvasLayer
 ## Esc postpones; the character sheet's stats tab can open the cards again any time.
 
 const OPEN_DELAY := 0.7
-const CLASS_CARD := Vector2(36, 84)
-const SUBCLASS_CARD := Vector2(120, 104)
+const CLASS_CARD := Vector2(36, 70)      # eight in a row: the 24 x 38 hero is shown at its game size
+const SUBCLASS_CARD := Vector2(120, 118)  # two cards: the hero at twice its size
 const STYLE_COLORS := {"melee": Color("ff9a5a"), "ranged": Color("6fb8ff")}
 
 var mode := ""
@@ -130,7 +130,7 @@ func _build() -> void:
 	column.add_theme_constant_override("separation", 4)
 	center.add_child(column)
 
-	var title := _label("Choose your class" if mode == "class" else "Choose a subclass for your %s" % Classes.CLASSES[Game.character.class_id]["name"], Color("ffd84a"), 9)
+	var title := _label("Choose your class" if mode == "class" else "Choose a subclass for your %s" % Classes.CLASSES[Game.character.class_id]["name"], UiTheme.GOLD, 9)
 	title.autowrap_mode = TextServer.AUTOWRAP_OFF
 	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	column.add_child(title)
@@ -177,7 +177,7 @@ func _card(id: String, index: int) -> Control:
 	content.add_theme_constant_override("separation", 1)
 	content.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	holder.add_child(content)
-	var picture := HeroDoll.make(look, 2)
+	var picture := HeroDoll.make(look, 1 if is_class else 2)
 	picture.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
 	content.add_child(picture)
 	var info := ""

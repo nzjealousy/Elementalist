@@ -131,7 +131,7 @@ func _fill_stats() -> void:
 		title += " / " + String(Classes.SUBCLASSES[ch.subclass_id]["name"])
 	var head := HBoxContainer.new()
 	head.add_theme_constant_override("separation", 5)
-	var portrait := HeroDoll.of_character(ch, 2)
+	var portrait := HeroDoll.of_character(ch, 1)
 	head.add_child(portrait)
 	var who := VBoxContainer.new()
 	who.add_theme_constant_override("separation", 1)
@@ -264,7 +264,7 @@ func _paper_doll(ch: CharacterData, detail: Label) -> Control:
 	for slot in ["weapon", "ring", "amulet"]:
 		right_slots.add_child(_slot_button(slot, ch.inventory, detail))
 	row.add_child(left_slots)
-	var doll := HeroDoll.of_character(ch, 3)
+	var doll := HeroDoll.of_character(ch, 2)
 	doll.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	row.add_child(doll)
 	row.add_child(right_slots)
@@ -361,9 +361,25 @@ func _fill_elements() -> void:
 			var text := "%s  mastery %d (%d/%d)   potency x%.2f from %s" % [String(element).capitalize(), m["level"], m["xp"], CharacterData.mastery_xp_to_next(m["level"]), potency, governing.capitalize()]
 			if not SkillDB.LOADOUTS.has(element):
 				text += "   (no skills yet)"
-			col.add_child(_label(text, color))
+			col.add_child(_element_row(element, _label(text, color), true))
 		else:
-			col.add_child(_label("%s  not attuned   (governed by %s)" % [String(element).capitalize(), governing.capitalize()], Color(color, 0.4)))
+			col.add_child(_element_row(element, _label("%s  not attuned   (governed by %s)" % [String(element).capitalize(), governing.capitalize()], Color(color, 0.4)), false))
+
+
+## A row for an element: its rune (dim while not attuned) and the label.
+func _element_row(element: String, label: Label, attuned: bool) -> Control:
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 4)
+	var rune := TextureRect.new()
+	rune.texture = UiTheme.rune(element, "s")
+	rune.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+	rune.custom_minimum_size = Vector2(18, 18)
+	rune.modulate = Color.WHITE if attuned else Color(1, 1, 1, 0.35)
+	rune.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	row.add_child(rune)
+	label.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	row.add_child(label)
+	return row
 
 
 func _fill_passives() -> void:

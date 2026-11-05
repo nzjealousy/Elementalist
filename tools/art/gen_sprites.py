@@ -11,6 +11,8 @@ import sys
 
 sys.path.insert(0, os.path.dirname(__file__))
 from pixel import *  # noqa: F401,F403
+import restyle  # noqa: E402
+import style  # noqa: E402
 
 OUT = os.path.join(os.path.dirname(__file__), '..', '..', 'elementalist', 'assets', 'sprites')
 os.makedirs(OUT, exist_ok=True)
@@ -18,8 +20,11 @@ FRAMES = 4
 WAVE = [0, 1, 0, -1]  # idle breathing phase per frame
 
 
-def save(name, frames):
-    """frames: list of Canvas, all the same size."""
+def save(name, frames, moonlit=True):
+    """frames: list of Canvas, all the same size. Pictures are snapped onto the Moonlit Glyphwork ramps (restyle.py);
+    `moonlit=False` keeps a white picture white, for the ones code tints (pickups)."""
+    if moonlit:
+        frames = [restyle.restyle(f) for f in frames]
     frames[0].save(os.path.join(OUT, name + '.png'))
     if len(frames) > 1:
         sheet(frames, os.path.join(OUT, name + '_strip.png'))
@@ -614,23 +619,33 @@ def pickups():
     poly(mat, [(3, 0), (6, 3), (3, 6), (0, 3)], (255, 255, 255, 255))
     poly(mat, [(3, 1), (5, 3), (3, 5), (1, 3)], (215, 215, 225, 255))
     mat.set(2, 2, (255, 255, 255, 255))
-    save('pickup_material', [finish(mat)])
+    save('pickup_material', [finish(mat)], moonlit=False)
     item = Canvas(9, 9)
     shaded_ellipse(item, 4, 5.5, 3.4, 3.0, (255, 255, 255, 255))
     rect(item, 3, 1, 3, 2, (225, 225, 235, 255))
     item.set(4, 4, (150, 150, 165, 255))
-    save('pickup_item', [finish(item)])
+    save('pickup_item', [finish(item)], moonlit=False)
 
 
 def altar():
-    cv = Canvas(22, 18)
-    stone = hexc('9aa0c8')
-    shaded_rect(cv, 1, 12, 20, 6, shade(stone, 0.8))
-    shaded_rect(cv, 3, 7, 16, 6, stone)
-    shaded_rect(cv, 5, 4, 12, 4, shade(stone, 1.1))
-    for i, c in enumerate(['ff6a2b', '3fa7ff', '5fbf4a', 'd9f2ff', 'b5a58a']):  # the five elements on its face
-        rect(cv, 5 + i * 2 + (i // 5), 9, 2, 2, hexc(c))
-    shaded_ellipse(cv, 11, 3, 2.4, 2.4, hexc('fff3a8'))  # a glowing orb on top
+    """The elements altar: a stepped obsidian plinth with the five main element glyphs glowing on its face and a light
+    rune floating above it (docs/ART_DIRECTION.md: every element is a rune)."""
+    cv = Canvas(24, 26)
+    shaded_rect(cv, 5, 17, 14, 3, hexc('5c5890'))
+    shaded_rect(cv, 3, 20, 18, 3, hexc('3c3868'))
+    shaded_rect(cv, 1, 23, 22, 3, hexc('5c5890'))
+    for i, element in enumerate(['fire', 'water', 'earth', 'air', 'mineral']):   # glowing glyph dots on the middle step
+        ramp = style.ramp(element)
+        x = 5 + i * 3
+        cv.set(x, 21, ramp[4])
+        cv.set(x + 1, 21, ramp[3])
+        cv.set(x, 22, ramp[2])
+        cv.set(x + 1, 22, ramp[1])
+    light = style.ramp('light')
+    for y in (16, 14):                                                           # a thread of light up to the rune
+        cv.set(11, y, light[2])
+        cv.set(12, y, light[3])
+    cv.blit(style.rune('light', size=10, glow=False), 4, 0)
     return finish(cv)
 
 
@@ -669,7 +684,7 @@ def props():
 
 
 if __name__ == '__main__':
-    make_heroes()
+    # the layered heroes come from gen_heroes.py; make_heroes() (the old single-sheet heroes) is no longer run
     make_monsters()
     props()
     print('sprites ->', os.path.abspath(OUT), len(os.listdir(OUT)), 'files')
