@@ -234,12 +234,7 @@ func stun(time: float) -> bool:
 func _sync_stun_fx() -> void:
 	if is_stunned():
 		if _stun_sprite == null or not is_instance_valid(_stun_sprite):
-			_stun_sprite = Sprite2D.new()
-			var id := SkillFx.stun_id(int(float(sprite.texture.get_height()) * sprite.scale.y) + 12)
-			_stun_sprite.texture = AssetDB.get_texture(id)
-			_stun_sprite.z_index = 30
-			add_child(_stun_sprite)
-			SpriteAnim.attach(_stun_sprite, id, 8.0, _stun_sprite)
+			_stun_sprite = SkillFx.stun_stars(self, sprite, int(float(sprite.texture.get_height()) * sprite.scale.y))
 	elif _stun_sprite != null:
 		if is_instance_valid(_stun_sprite):
 			_stun_sprite.queue_free()

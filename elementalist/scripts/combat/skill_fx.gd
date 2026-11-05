@@ -238,6 +238,19 @@ static func stun_id(height: int) -> String:
 	return id
 
 
+## The stun stars over a stunned body, a child of `body` 12 px taller than its `picture` (`height` px). The isometric view stands it on the
+## body's position; the offset lines its bottom up with the picture's in the flat view, so the stars float over the head in both.
+static func stun_stars(body: Node2D, picture: Sprite2D, height: int) -> Sprite2D:
+	var id := stun_id(height + 12)
+	var stars := Sprite2D.new()
+	stars.texture = AssetDB.get_texture(id)
+	stars.z_index = 30
+	stars.offset = Vector2(0.0, picture.offset.y - 6.0)
+	body.add_child(stars)
+	SpriteAnim.attach(stars, id, 8.0, stars)
+	return stars
+
+
 ## The charge of a skill that has a wind-up: a ring that closes round the hero, and for an area skill a growing circle where it will land.
 static func charge(body: Node2D, element: String, area_radius: float, caster: Node, id: String) -> Node2D:
 	var node := FxCharge.new()

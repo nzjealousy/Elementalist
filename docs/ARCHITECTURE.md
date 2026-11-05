@@ -491,7 +491,9 @@ they are used.
 * **Enemy attack poses:** `Enemy._update_pose` shifts the sprite by whole pixels (`sprite.offset = _rest_offset + pose`; never scale or rotation) and
   holds one walk frame: a dash wind-up crouches back 2 px (tall pictures 2 down, others 1) and trembles in its last third, the dash leans in 2 px, a shot
   recoils 2 px for 0.12 s, a bite lunges 2 px for 0.1 s, a slam rises 3 px (2 for small pictures) over its telegraph and drops 1 px for 0.15 s; every pose
-  eases back over `POSE_RECOVER` (0.15 s); a stun drops it at once; ghosts do not pose. The isometric mirror adds `Enemy.pose.y` to the standing picture
+  eases back over `POSE_RECOVER` (0.15 s); a stun drops it at once. On the host the pose comes from the monster's own state (`Enemy.pose_code()`); each
+  monster in `CoopHost.snapshot()["e"]` ends with that code (`Enemy.POSES`: "", windup, tremble, dash, shot, bite, rise, land: append, never reorder; `Net.PROTOCOL`
+  3) and a co-op ghost starts the same pose from it (`apply_pose_code`), arena rivals never pose. The isometric mirror adds `Enemy.pose.y` to the standing picture
   (`IsoView._update_sprite`), the sideways part is already in `offset.x`. `CROUCH_FRAME` (the lowest walk frame of each strip) is hand-measured: re-measure
   it when enemy art is redrawn.
 * **Stun:** a boss or mini-boss slam that lands stuns the hero (`Enemy.SLAM_STUN` 0.5 s, `Player.stun`): no moving, slashing, dodging, casting or imbuing, the stun
@@ -499,4 +501,4 @@ they are used.
   rides with the damage (`Net.send_damage(peer, amount, from, stun_time)`; `Net.PROTOCOL` is 2).
 * **Net flags:** `Player.net_state()` is `[x, y, aim_x, aim_y, hp, max_hp, flags]`; `Player.pack_flags`/`unpack_flags`: 1 moving, 2 dodging, 4 stunned, glow code from
   bit 3 (0 none, 1..7 = fire water air mineral earth light dark: append new elements, never reorder). `RemoteAvatar` and the arena ghosts re-register their look
-  with `HeroLook.with_glow` when the code changes.
+  with `HeroLook.with_glow` when the code changes; a stunned partner or rival gets the stars (`SkillFx.stun_stars`, which also lines them up in the flat view).

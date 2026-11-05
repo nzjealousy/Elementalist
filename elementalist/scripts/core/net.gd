@@ -26,7 +26,7 @@ signal said(text: String)
 
 const DEFAULT_PORT := 24680
 const MAX_PLAYERS := 4
-const PROTOCOL := 2   # 2: DAMAGE carries a stun time, and the state flags carry stunned and the glow
+const PROTOCOL := 3   # 2: DAMAGE carries a stun time, and the state flags carry stunned and the glow; 3: each monster carries its pose code
 const SYNC_RATE := 15.0          # snapshots and position updates per second
 const ARENA_KILLS := 3           # kills that win an arena match
 const PVP_DAMAGE := 0.7          # a player's hit on another player lands at this share

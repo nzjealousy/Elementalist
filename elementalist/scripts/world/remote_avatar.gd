@@ -24,6 +24,7 @@ var _base_look: Dictionary = {}   # the hero's look before the glow; recoloured 
 var _anim: SpriteAnim
 var _hurt_cd := 0.0
 var _label: Label
+var _stun_sprite: Sprite2D
 
 
 func setup(peer_id: int, info: Dictionary) -> void:
@@ -101,6 +102,18 @@ func _physics_process(delta: float) -> void:
 	sprite.flip_h = facing == "side" and look_dir.x < 0.0
 	sprite.modulate = Color(1, 1, 1, 0.45) if (dodging or is_down()) else Color.WHITE
 	_label.visible = not is_down()
+	_sync_stun_fx()
+
+
+## Three stars circle over a stunned partner, as over the local hero (Player._sync_stun_fx).
+func _sync_stun_fx() -> void:
+	if stunned:
+		if _stun_sprite == null or not is_instance_valid(_stun_sprite):
+			_stun_sprite = SkillFx.stun_stars(self, sprite, sprite.texture.get_height())
+	elif _stun_sprite != null:
+		if is_instance_valid(_stun_sprite):
+			_stun_sprite.queue_free()
+		_stun_sprite = null
 
 
 func hurtbox() -> Rect2:

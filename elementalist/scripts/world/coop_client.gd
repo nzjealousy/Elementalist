@@ -60,6 +60,8 @@ func apply_snapshot(snapshot: Dictionary) -> void:
 	if room_node == null:
 		return
 	for entry in snapshot.get("e", []):
+		if not (entry is Array and entry.size() >= 10 and entry[9] is Array):
+			continue  # a broken entry
 		var id := int(entry[0])
 		var ghost: Enemy = ghosts.get(id)
 		if ghost == null or not is_instance_valid(ghost):
@@ -72,6 +74,8 @@ func apply_snapshot(snapshot: Dictionary) -> void:
 		ghost.effects.clear()
 		for kind in entry[9]:
 			ghost.effects[String(kind)] = {"time": 0.5, "power": 1.0}
+		var pose = entry[10] if entry.size() > 10 else 0  # the attack pose (Enemy.POSES)
+		ghost.apply_pose_code(int(pose) if (pose is int or pose is float) else 0)
 		_seen_at[id] = _tick
 	for id in ghosts.keys():
 		if _seen_at.get(id, 0) != _tick:

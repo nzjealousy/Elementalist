@@ -94,6 +94,10 @@ var _telegraph: Telegraph
 ## Attack poses (code only, pixel-exact): the sprite shifts by whole pixels and may hold one walk frame. `pose` is the shift now
 ## (IsoView adds its y to the standing picture); _pose is a timed strike: "shot" recoil, "bite" lunge, "rise" (slam telegraph), "land".
 const POSE_RECOVER := 0.15
+## Pose codes (the index; 0 none), sent per monster in the host's snapshot (CoopHost.snapshot): append new poses, never reorder.
+## "tremble" is the last third of a dash wind-up.
+const POSES := ["", "windup", "tremble", "dash", "shot", "bite", "rise", "land"]
+const POSE_TIMES := {"shot": 0.12, "bite": 0.1, "land": 0.15}  # the timed strikes; the others last as long as their attack state
 ## The walk frame whose top is lowest (measured from the strips), held while crouching; others crouch on frame 0.
 ## shortcut: hand-measured, re-measure if the enemy strips are redrawn.
 const CROUCH_FRAME := {"boss_lich": 3, "boss_slime_king": 3, "boss_titan": 1, "boss_tyrant": 1, "enemy_bat": 1, "enemy_shade": 2,
@@ -105,6 +109,7 @@ var _pose_time := 0.0
 var _recover_from := Vector2i.ZERO
 var _recover_left := 0.0
 var _rest_offset := Vector2.ZERO
+var net_pose := 0   # a ghost: the host's pose code (apply_pose_code)
 
 @onready var sprite: Sprite2D = $Sprite2D
 
@@ -315,7 +320,10 @@ func _ghost_tick(delta: float) -> void:
 			if absf(toward.x) > 2.0:
 				sprite.flip_h = toward.x < 0.0
 		_status_fx(delta)
+		_age += delta  # the wind-up tremble's clock
+		_update_pose(delta)
 	_update_tint(delta)
+	_sync_stun_fx()
 
 
 ## The player a monster goes for: the nearest of the local hero and the other players.
@@ -362,16 +370,11 @@ func _body_size() -> Vector2:
 	return BODY_SIZES.get(sprite_id, sprite.texture.get_size())
 
 
-## Three stars circle above a stunned enemy (a picture that stands on this enemy's position, so they float over its head in both views).
+## Three stars circle above a stunned enemy, and above an arena rival whose hero is stunned (net_stunned).
 func _sync_stun_fx() -> void:
-	if is_stunned():
+	if is_stunned() or net_stunned:
 		if _stun_sprite == null or not is_instance_valid(_stun_sprite):
-			_stun_sprite = Sprite2D.new()
-			var id := SkillFx.stun_id(int(picture_height()) + 12)
-			_stun_sprite.texture = AssetDB.get_texture(id)
-			_stun_sprite.z_index = 30
-			add_child(_stun_sprite)
-			SpriteAnim.attach(_stun_sprite, id, 8.0, _stun_sprite)
+			_stun_sprite = SkillFx.stun_stars(self, sprite, int(picture_height()))
 	elif _stun_sprite != null:
 		if is_instance_valid(_stun_sprite):
 			_stun_sprite.queue_free()
@@ -471,7 +474,7 @@ func _physics_process(delta: float) -> void:
 			var lunge := float(dash["damage_mult"]) if _dash_state == "dash" else 1.0
 			if target.take_damage(damage_out(contact_damage * lunge), global_position):
 				_contact_cd = 0.9
-				_start_pose("bite", 0.1)
+				_start_pose("bite", POSE_TIMES["bite"])
 
 	_attack(delta, target)
 	_update_tint(delta)
@@ -529,7 +532,7 @@ func _attack(delta: float, target: Node2D) -> void:
 		_attack_cd = float(shot["cooldown"]) * _enrage_cooldown()
 		EnemyProjectile.spawn(get_parent(), global_position, target.global_position - global_position,
 			float(shot["speed"]), damage_out(float(shot["damage"])), variant)
-		_start_pose("shot", 0.12)
+		_start_pose("shot", POSE_TIMES["shot"])
 
 
 ## Imp / duelist dash: warn, then lunge at where you are.
@@ -562,7 +565,7 @@ func _tick_dash(delta: float, target: Node2D) -> void:
 func _land_slam() -> void:
 	var circle_centre := _telegraph.global_position if is_instance_valid(_telegraph) else global_position
 	_telegraph = null
-	_start_pose("land", 0.15)
+	_start_pose("land", POSE_TIMES["land"])
 	SkillFx.ring(get_parent(), circle_centre, float(slam["radius"]), Color("ff6a4a"), 0.4, 2.0)
 	HitFx.burst(get_parent(), circle_centre, Color("ff6a4a"), 16, 90.0)
 	Juice.shake(3.0, 0.3)
@@ -669,36 +672,63 @@ func _start_pose(kind: String, time: float) -> void:
 	_pose_time = time
 
 
-## This frame's attack pose, put on the sprite: dash wind-up crouches back (trembling at the end), the dash leans in, a shot recoils,
-## a bite lunges, a slam rises then lands; afterwards it eases back to rest. A stun drops it at once.
+## The attack pose now, as a code into POSES: from the dash state and the timed strike (a ghost's strike is started from the
+## host's code, apply_pose_code). Stunned, or an arena rival: 0.
+func pose_code() -> int:
+	if is_stunned() or pvp_peer != 0:
+		return 0
+	if _dash_state == "windup":
+		return 2 if _dash_left < float(dash["windup"]) / 3.0 else 1
+	if _dash_state == "dash":
+		return 3
+	return maxi(0, POSES.find(_pose))
+
+
+## A ghost takes the host's pose code. A new code starts that pose here, so a timed strike plays its full length even when a
+## snapshot misses it; a held pose (wind-up, dash, slam rise) ends when the host's code moves off it. Bad codes count as 0.
+func apply_pose_code(code: int) -> void:
+	if pvp_peer != 0 or code == net_pose:
+		return
+	net_pose = code
+	var kind: String = POSES[code] if code > 0 and code < POSES.size() else ""
+	if kind != "":
+		var time := float(POSE_TIMES.get(kind, 2.0))  # a held pose lasts until the code changes (2 s at most)
+		if kind == "rise":
+			time = float(slam.get("telegraph", time))  # the rise grows over the telegraph
+		_start_pose(kind, time)
+	elif not POSE_TIMES.has(_pose):
+		_pose = ""
+
+
+## This frame's attack pose (pose_code), put on the sprite: dash wind-up crouches back (trembling at the end), the dash leans in, a shot
+## recoils, a bite lunges, a slam rises then lands; afterwards it eases back to rest. A stun drops it at once.
 func _update_pose(delta: float) -> void:
 	_pose_left -= delta
 	if _pose_left <= 0.0 or is_stunned():
 		_pose = ""
+	var kind: String = POSES[pose_code()]
 	var side := -1 if sprite.flip_h else 1  # the target's side of the screen (flip_h does not mirror offset.x)
 	var tall := picture_height() >= 24.0
 	var want := Vector2i.ZERO
 	var hold := -1  # a walk frame to hold, -1: keep walking
-	if is_stunned():
-		pass
-	elif _dash_state == "windup":
+	if kind == "windup" or kind == "tremble":
 		want = Vector2i(-2 * side, 2 if tall else 1)
-		if _dash_left < float(dash["windup"]) / 3.0:
+		if kind == "tremble":
 			want.x += 1 if int(_age * 30.0) % 2 == 0 else -1  # tremble before the lunge
 		hold = int(CROUCH_FRAME.get(sprite_id, 0))
-	elif _dash_state == "dash":
+	elif kind == "dash":
 		want = Vector2i(2 * side, 0)
 		hold = 0
-	elif _pose == "shot":
+	elif kind == "shot":
 		want = Vector2i(-2 * side, 0)
 		hold = 0
-	elif _pose == "bite":
+	elif kind == "bite":
 		want = Vector2i(2 * side, 0)
-	elif _pose == "rise":
+	elif kind == "rise":
 		var t := 1.0 - _pose_left / maxf(_pose_time, 0.001)
 		want = Vector2i(0, -roundi((3.0 if tall else 2.0) * minf(1.0, t * 2.0)))
 		hold = 0
-	elif _pose == "land":
+	elif kind == "land":
 		want = Vector2i(0, 1)
 		hold = int(CROUCH_FRAME.get(sprite_id, 0))
 	if want != Vector2i.ZERO or is_stunned():

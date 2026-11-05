@@ -99,7 +99,7 @@ func _run_host() -> void:
 	await get_tree().create_timer(0.5).timeout
 
 	Net.send_room(DungeonGen.camp_room(), 0, 0, "Floor 1/5")
-	Net.send_state({"e": [[7, "slime", "", 40.0, 50.0, 30.0, 40.0, "fire", 0, ["dot"]]], "p": [[1, 10.0, 20.0, 30.0, 20.0, 80.0, 100.0, Player.pack_flags(true, false, false, Player.glow_code("fire"))]], "door": true, "t": "Floor 1/5", "boss": 0, "score": {}})
+	Net.send_state({"e": [[7, "slime", "", 40.0, 50.0, 30.0, 40.0, "fire", 0, ["dot"], 1]], "p": [[1, 10.0, 20.0, 30.0, 20.0, 80.0, 100.0, Player.pack_flags(true, false, false, Player.glow_code("fire"))]], "door": true, "t": "Floor 1/5", "boss": 0, "score": {}})
 	Net.send_loot([{"kind": "gold", "amount": 5}], Vector2(10, 20))
 	Net.send_kill(12, 2)
 	Net.send_damage(guest, 7.5, Vector2(1, 2), Enemy.SLAM_STUN)
@@ -140,6 +140,7 @@ func _run_client() -> void:
 
 	_check("the room arrived intact", got_room.has("room") and int(got_room["room"]["cols"]) == 24 and got_room["run_text"] == "Floor 1/5" and Net.room_data == got_room)
 	_check("the snapshot arrived", got_state.has("e") and got_state["e"][0][1] == "slime" and got_state["door"] == true and Net.last_snapshot == got_state)
+	_check("each monster carries its pose code", got_state.has("e") and got_state["e"][0].size() == 11 and int(got_state["e"][0][10]) == 1)
 	_check("the loot arrived", got_loot.size() == 2 and got_loot[0][0]["amount"] == 5 and got_loot[1] == Vector2(10, 20))
 	_check("the kill reward arrived", got_kill == [12, 2])
 	_check("the damage arrived, with the slam's stun", got_damage.size() == 3 and absf(float(got_damage[0]) - 7.5) < 0.001 and got_damage[1] == Vector2(1, 2) and is_equal_approx(float(got_damage[2]), Enemy.SLAM_STUN))

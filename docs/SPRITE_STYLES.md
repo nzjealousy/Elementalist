@@ -91,9 +91,13 @@ shows some uneven pixels at some window sizes; the redraw in the chosen style re
   lunges, a boss slam rises over its telegraph and drops on landing; each eases back to rest in 0.15 s and holds one walk frame while it lasts
   (`Enemy._update_pose`). A stun cancels the pose. ![an imp winding up a dash](art/enemy_attack_imp_windup.png)
 
+* **Partners, rivals and the host's monsters show it too.** A stunned co-op partner or arena rival carries the three stars (`SkillFx.stun_stars`), and a co-op
+  guest sees the host's monsters pose their attacks: each monster in the snapshot carries a pose code (`Enemy.POSES`: windup, tremble, dash, shot, bite, rise,
+  land; `Net.PROTOCOL` is 3) and the ghost plays the same pose, a short strike for its full length even when a snapshot misses it. The flat (non-isometric)
+  view was checked as well. ![the flat view](art/flat_stun.png)
+
 ### Known gaps
-* Partners and arena rivals show the stun pose but no stars.
-* Co-op and arena copies of enemies (ghosts) do not pose their attacks: they only follow the host's positions.
+* Co-op ghosts do not show a dash wind-up's red flash.
 * Enemies have no drawn attack frames: the poses are shifts of the walk frames. The humanoids could get real attack and cast frames from the rig's poses
   (the enemy-only parts, bones, hooded cloaks, would need posing too).
 * The non-humanoid monsters and bosses are noirized and shrunk, not redrawn; the lich and the sovereign are bigger than the 20 x 32 rig.

@@ -141,7 +141,7 @@ func snapshot() -> Dictionary:
 		_enemies[enemy.net_id] = enemy
 		var kinds: Array = enemy.effects.keys()
 		entries.append([enemy.net_id, enemy.monster_id, enemy.variant, enemy.global_position.x, enemy.global_position.y,
-			enemy.hp, enemy.max_hp, enemy.aura, 1 if enemy.boss else 0, kinds])
+			enemy.hp, enemy.max_hp, enemy.aura, 1 if enemy.boss else 0, kinds, enemy.pose_code()])
 	for id in _enemies.keys():
 		if not is_instance_valid(_enemies[id]) or _enemies[id].is_queued_for_deletion():
 			_enemies.erase(id)

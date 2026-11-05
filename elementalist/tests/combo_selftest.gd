@@ -4980,15 +4980,92 @@ func _test_enemy_attack_poses() -> void:
 	_check("and a shot's recoil", posed and _at_rest(spitter))
 	_check("hit boxes never change", boxes == [imp.hit_rect().size, spitter.hit_rect().size, boss.hit_rect().size, slime.hit_rect().size])
 
-	# a ghost is left alone
+	# the pose code the host sends for each state
+	imp.effects.erase("stun")
+	spitter.effects.erase("stun")
+	var windup := float(imp.dash["windup"])
+	var codes := []
+	imp._pose = ""
+	imp._dash_state = ""
+	codes.append(imp.pose_code())
+	imp._dash_state = "windup"
+	imp._dash_left = windup
+	codes.append(imp.pose_code())
+	imp._dash_left = windup * 0.2
+	codes.append(imp.pose_code())
+	imp._dash_state = "dash"
+	codes.append(imp.pose_code())
+	imp._dash_state = ""
+	for kind in ["shot", "bite"]:
+		imp._start_pose(kind, Enemy.POSE_TIMES[kind])
+		codes.append(imp.pose_code())
+	boss._start_pose("rise", float(boss.slam["telegraph"]))
+	codes.append(boss.pose_code())
+	boss._start_pose("land", Enemy.POSE_TIMES["land"])
+	codes.append(boss.pose_code())
+	imp._dash_state = "windup"
+	imp.effects["stun"] = {"time": 2.0, "power": 1.0}
+	codes.append(imp.pose_code())
+	imp.effects.erase("stun")
+	_check("each host state has its pose code: none, wind-up, tremble, dash, shot, bite, rise, land; stunned none", codes == [0, 1, 2, 3, 4, 5, 6, 7, 0])
+	imp._dash_state = ""
+	imp._pose = ""
+	boss._pose = ""
+
+	# a ghost plays the host's code with the same offsets
 	var ghost := _fresh_monster("imp", "", Vector2(3000, 4600))
+	var ghost_boss := _fresh_monster("slime_king", "", Vector2(3000, 5000))
 	await get_tree().process_frame
 	ghost.ghost = true
-	ghost.sprite.offset = Vector2(0, -8)
-	ghost._dash_state = "windup"
+	ghost_boss.ghost = true
+	for node in [imp, boss, ghost, ghost_boss]:
+		node.sprite.flip_h = false
+		node._age = 0.0
+		node._update_pose(1.0)  # settle at rest
+	var same := true
+	for code in range(1, Enemy.POSES.size()):
+		var kind: String = Enemy.POSES[code]
+		var host_side: Enemy = boss if kind in ["rise", "land"] else imp
+		var ghost_side: Enemy = ghost_boss if kind in ["rise", "land"] else ghost
+		host_side._dash_state = kind if kind in ["windup", "dash"] else ("windup" if kind == "tremble" else "")
+		host_side._dash_left = windup * (0.2 if kind == "tremble" else 1.0)
+		host_side._pose = ""
+		if host_side._dash_state == "":
+			host_side._start_pose(kind, float(boss.slam["telegraph"]) if kind == "rise" else float(Enemy.POSE_TIMES[kind]))
+		ghost_side.apply_pose_code(code)
+		var step := float(boss.slam["telegraph"]) * 0.6 if kind == "rise" else 0.0
+		host_side._update_pose(step)
+		ghost_side._update_pose(step)
+		same = same and host_side.pose_code() == code and host_side.pose != Vector2i.ZERO and ghost_side.pose == host_side.pose \
+			and ghost_side.sprite.offset - ghost_side._rest_offset == host_side.sprite.offset - host_side._rest_offset and ghost_side.anim.clip_count == host_side.anim.clip_count
+		ghost_side.apply_pose_code(0)
+		host_side._dash_state = ""
+		host_side._pose = ""
+		host_side._update_pose(1.0)
+		ghost_side._update_pose(1.0)
+	_check("a ghost given each code poses exactly as the host does", same)
+	_check("a ghost with code 0 is at rest", _at_rest(ghost) and _at_rest(ghost_boss) and ghost.sprite.offset == ghost._rest_offset)
+	ghost.apply_pose_code(5)
+	ghost.apply_pose_code(0)
+	ghost._update_pose(0.05)
+	var still_biting := ghost.pose != Vector2i.ZERO
+	ghost._update_pose(0.06)
+	ghost._update_pose(0.3)
+	_check("a missed strike still plays its full length on the ghost, then rests", still_biting and _at_rest(ghost))
+	ghost.apply_pose_code(1)
+	ghost._update_pose(0.0)
+	var crouched := ghost.pose != Vector2i.ZERO
+	ghost.apply_pose_code(0)
+	ghost._update_pose(0.3)
+	_check("a held wind-up ends when the host's code does", crouched and _at_rest(ghost))
+	ghost.apply_pose_code(99)
+	ghost._update_pose(0.0)
+	ghost.apply_pose_code(-3)
+	ghost._update_pose(0.0)
+	_check("a bad code is no pose", _at_rest(ghost))
 	ghost._physics_process(1.0 / 60.0)
-	_check("a ghost monster is never posed", ghost.pose == Vector2i.ZERO and ghost.sprite.offset == Vector2(0, -8))
-	for node in [imp, spitter, boss, slime, ghost, player]:
+	_check("a ghost's own tick runs its pose", _at_rest(ghost))
+	for node in [imp, spitter, boss, slime, ghost, ghost_boss, player]:
 		node.queue_free()
 	await get_tree().process_frame
 	Game.character = saved
@@ -5101,7 +5178,7 @@ func _test_hero_stun() -> void:
 	player.caster.selected = 1
 	var glow_flags := Player.unpack_flags(int(player.net_state()[6]))
 	_check("the hero's state carries its glow", Player.glow_color(int(glow_flags["glow"])).to_html(false) == player._glow_hex() and int(glow_flags["glow"]) == Player.glow_code(String(player.caster.elements[1])))
-	_check("the protocol was bumped for the new messages", Net.PROTOCOL == 2)
+	_check("the protocol was bumped for the new messages (3: monster pose codes)", Net.PROTOCOL == 3)
 
 	# a co-op partner: their pictures follow their glow, and they show the stun
 	var ranger_look := HeroLook.for_class("ranger")
@@ -5115,7 +5192,20 @@ func _test_hero_stun() -> void:
 	avatar.apply_state([0.0, 0.0, 10.0, 0.0, 100.0, 100.0, Player.pack_flags(false, false, true, Player.glow_code("water"))])
 	avatar._physics_process(0.016)
 	_check("a stunned partner plays the stun poses", avatar.stunned and avatar._anim.clip_start == HeroComposer.CLIPS["stun"].x)
+	var partner_stars: Sprite2D = avatar._stun_sprite
+	_check("and three stars circle over the partner", partner_stars != null and partner_stars.get_parent() == avatar and partner_stars.z_index == 30 \
+		and partner_stars.offset.y == avatar.sprite.offset.y - 6.0)
+	avatar.apply_state([0.0, 0.0, 10.0, 0.0, 100.0, 100.0, Player.pack_flags(false, false, false, Player.glow_code("water"))])
+	avatar._physics_process(0.016)
+	_check("the partner's stars go when the stun does", avatar._stun_sprite == null and partner_stars.is_queued_for_deletion())
+	avatar.apply_state([0.0, 0.0, 10.0, 0.0, 100.0, 100.0, Player.pack_flags(false, false, true, Player.glow_code("water"))])
+	avatar._physics_process(0.016)
+	partner_stars = avatar._stun_sprite
+	var partner_stars_made := partner_stars != null
 	avatar.queue_free()
+	await get_tree().process_frame
+	await get_tree().process_frame
+	_check("and with the partner", partner_stars_made and not is_instance_valid(partner_stars))
 
 	# an arena rival does the same
 	var rival := PvpGhost.make(self, 6, {"name": "Rex", "class": "ranger", "look": ranger_look})
@@ -5125,7 +5215,25 @@ func _test_hero_stun() -> void:
 	_check("an arena rival takes the glow and the stun", String(rival.get_meta("prefix")) == HeroComposer.register(HeroLook.with_glow(ranger_look, Elements.color_of("dark"))) \
 		and rival.net_stunned and rival.anim.clip_start == HeroComposer.CLIPS["stun"].x)
 	_check("and is reported back with them", int(PvpGhost.state_of(6, rival)[7]) == Player.pack_flags(true, false, true, Player.glow_code("dark")))
+	var rival_stars: Sprite2D = rival._stun_sprite
+	_check("three stars circle over a stunned rival", rival_stars != null and rival_stars.get_parent() == rival and not rival.is_stunned())
+	rival.apply_pose_code(4)
+	rival._dash_state = "dash"
+	rival._ghost_tick(0.016)
+	_check("a rival wears a hero picture and never takes a monster pose", rival.pose_code() == 0 and rival.net_pose == 0 and rival.pose == Vector2i.ZERO \
+		and rival.sprite.offset == Vector2(0, -8))
+	rival._dash_state = ""
+	PvpGhost.apply_state(rival, [0.0, 0.0, 10.0, 0.0, 100.0, 100.0, Player.pack_flags(true, false, false, Player.glow_code("dark"))])
+	rival._ghost_tick(0.016)
+	_check("the rival's stars go when the stun does", rival._stun_sprite == null and rival_stars.is_queued_for_deletion())
+	PvpGhost.apply_state(rival, [0.0, 0.0, 10.0, 0.0, 100.0, 100.0, Player.pack_flags(true, false, true, Player.glow_code("dark"))])
+	rival._ghost_tick(0.016)
+	rival_stars = rival._stun_sprite
+	var rival_stars_made := rival_stars != null
 	rival.queue_free()
+	await get_tree().process_frame
+	await get_tree().process_frame
+	_check("and with the rival", rival_stars_made and not is_instance_valid(rival_stars))
 
 	# the slam's stun goes to the machine that plays that hero, with the damage
 	var world := Node2D.new()
@@ -5178,11 +5286,17 @@ func _test_net_world() -> void:
 	var client := guest_dungeon.coop_client
 	_check("a guest's dungeon builds the room and spawns nothing", client != null and guest_dungeon.state == "viewer" and get_tree().get_nodes_in_group("enemies").size() == 0)
 	Net.roster = {1: Net.local_info(), 5: {"name": "Pip", "class": "ranger", "level": 4, "look": HeroLook.for_class("ranger")}}
-	var snapshot := {"e": [[7, "slime", "fire", 100.0, 80.0, 30.0, 52.0, "water", 0, ["dot"]], [8, "grave_warden", "", 140.0, 90.0, 200.0, 300.0, "", 1, []]],
+	var snapshot := {"e": [[7, "slime", "fire", 100.0, 80.0, 30.0, 52.0, "water", 0, ["dot"], 5], [8, "grave_warden", "", 140.0, 90.0, 200.0, 300.0, "", 1, []],
+			[1], "junk", [9, "slime", "", 1.0, 2.0, 3.0, 4.0, "", 0, 5], [10, "slime", "", 1.0, 2.0, 3.0, 4.0, "", 0, [], "odd"]],
 		"p": [[5, 60.0, 70.0, 90.0, 70.0, 80.0, 100.0, 1]], "door": false, "t": "Floor 2/5", "boss": 8, "score": {}}
 	client.apply_snapshot(snapshot)
 	await get_tree().process_frame
 	var ghost: Enemy = client.ghosts.get(7)
+	_check("broken monster entries are skipped; an odd pose code is no pose", client.ghosts.size() == 3 and client.ghosts.has(10) and client.ghosts[10].net_pose == 0 \
+		and not client.ghosts.has(9) and not client.ghosts.has(1))
+	_check("a ghost takes the host's pose code (an entry without one is at rest)", ghost != null and ghost.net_pose == 5 and client.ghosts[8].net_pose == 0)
+	client.ghosts[10].queue_free()
+	client.ghosts.erase(10)
 	_check("a ghost monster appears for each monster", client.ghosts.size() == 2 and ghost != null and ghost.ghost and ghost.net_id == 7 and ghost.monster_id == "slime" and ghost.variant == "fire")
 	_check("it takes the host's health and state", is_equal_approx(ghost.hp, 30.0) and is_equal_approx(ghost.max_hp, 52.0) and ghost.aura == "water" and ghost.effects.has("dot"))
 	_check("the boss bar follows the ghost boss", Game.boss == client.ghosts.get(8))
@@ -5257,6 +5371,7 @@ func _test_net_world() -> void:
 	await get_tree().process_frame
 	var shot := host.snapshot()
 	_check("the host's snapshot lists monsters and every player", shot["e"].size() == 1 and shot["e"][0][1] == "slime" and int(shot["e"][0][0]) > 0 and shot["p"].size() == 2 and int(shot["p"][0][0]) == 1)
+	_check("each monster entry ends with its pose code", shot["e"][0].size() == 11 and int(shot["e"][0][10]) == target.pose_code())
 	_check("a guest's avatar is on the host", host.avatars.has(5) and host.avatars[5] is RemoteAvatar)
 	host.on_client_state(5, [30.0, 40.0, 50.0, 40.0, 70.0, 100.0, 2])
 	_check("a guest's position update moves their avatar", host.avatars[5].net_pos == Vector2(30, 40) and host.avatars[5].dodging)
