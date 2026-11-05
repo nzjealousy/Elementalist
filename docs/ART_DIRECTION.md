@@ -64,6 +64,23 @@ rebuilds all art and runs the art gate. The two other styles stay in `style.py` 
    is a row of turning portal pads (`door_open_strip.png`), both from `gen_portal.py`; they replace the old green-barred square.
 7. **Places** (`gen_tiles.py`): six themes of obsidian tinted per place (vault amber, crypt teal, hollow green, ember crimson, spire violet,
    camp a moonlit clearing) with rune seams and glyphs in the place's element colour, glowing wall glyphs, pillars with a rune ring, starry voids.
+8. **Light** (`Lighting`, isometric view only). Dark and moody: each place sinks to its own dim ambient and the only bright things are the glows,
+   the hero carries a soft pool in their element colour, monsters a small one in theirs, bolts light the floor as they fly, bosses breathe a wide
+   pool, the camp's gate, forge and altar glow. Only the floor, walls and props are dimmed; creatures, telegraphs, spell effects and the HUD keep
+   their full colour, so the element glow on the ink silhouettes reads better than before. The ambient is tint x strength (`Lighting.AMBIENT`;
+   setting "soft" moves it 40% back toward unlit):
+
+   | place | mood | tint | strength | ambient |
+   |---|---|---|---|---|
+   | camp | moonlit blue-violet | 0.78, 0.82, 1.0 | 0.82 | 0.64, 0.67, 0.82 |
+   | vault | dim ash, warm grey-brown | 1.0, 0.93, 0.86 | 0.74 | 0.74, 0.69, 0.64 |
+   | crypt | deep teal | 0.76, 0.95, 1.0 | 0.72 | 0.55, 0.68, 0.72 |
+   | hollow | deep green | 0.84, 1.0, 0.8 | 0.74 | 0.62, 0.74, 0.59 |
+   | ember | dark red-brown (the lava cracks keep their red) | 1.0, 0.76, 0.66 | 0.72 | 0.72, 0.55, 0.48 |
+   | spire | deep violet | 0.9, 0.8, 1.0 | 0.72 | 0.65, 0.58, 0.72 |
+
+   The floors are already near black, so the strengths sit higher (0.72 to 0.82) than a typical moody grade would; lower and the far floor of a
+   vault room drops to about RGB 20. Screenshots: `art/lighting_<place>.png`, `art/lighting_telegraph.png`, `art/lighting_soft.png`, `art/lighting_off.png`.
 
 ## In the game
 

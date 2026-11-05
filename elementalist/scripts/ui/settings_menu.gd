@@ -130,15 +130,28 @@ func _slider(text: String, key: String, low: float = 0.0, high: float = 1.0, sho
 # ---------- game ----------
 
 func _build_game() -> void:
+	var scroll := ScrollContainer.new()  # the rows are taller than the 180 px screen: they scroll, like the controls list
+	scroll.custom_minimum_size = Vector2(0, 84)
+	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	scroll.follow_focus = true
+	_body.add_child(scroll)
+	var rows := VBoxContainer.new()
+	rows.add_theme_constant_override("separation", 3)
+	rows.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	scroll.add_child(rows)
+	var outer := _body
+	_body = rows  # the row builders add to _body
 	_check("Fullscreen", "fullscreen")
 	_check("Isometric view (next scene)", "iso_view")
 	_check("Damage numbers", "damage_numbers")
 	_check("Melee range ring", "melee_indicator")
 	_check("Tips and hints", "show_tips")
+	_choice("Lighting (next scene)", "lighting", Settings.LIGHTING_MODES)
 	_slider("Screen shake", "screen_shake")
 	_slider("HUD size", "hud_scale", 0.75, 1.5, false)
 	_slider("Aim assist (pad)", "aim_assist")
 	_slider("Stick deadzone", "stick_deadzone", 0.05, 0.6, false)
+	_body = outer
 	var reset := UiKit.button("Reset to defaults", func():
 		Settings.reset_to_defaults()
 		open(1), 110.0)
@@ -154,6 +167,23 @@ func _check(text: String, key: String) -> void:
 		Sfx.ui("ui_click")
 		Settings.set_value(key, on, false))
 	_body.add_child(box)
+
+
+## A setting with a few named values: the button shows the current one and steps to the next on each press.
+func _choice(text: String, key: String, options: Array) -> void:
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 4)
+	_body.add_child(row)
+	var name_label := UiKit.label(text, UiTheme.TEXT, 7)
+	name_label.custom_minimum_size = Vector2(80, 0)
+	row.add_child(name_label)
+	var button := UiKit.button("", func(): pass, 60.0)
+	button.text = String(Settings.get_value(key)).capitalize()
+	button.pressed.connect(func():
+		var next: String = options[(options.find(Settings.get_value(key)) + 1) % options.size()]
+		Settings.set_value(key, next, false)
+		button.text = next.capitalize())
+	row.add_child(button)
 
 
 # ---------- controls ----------

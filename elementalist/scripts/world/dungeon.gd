@@ -194,7 +194,7 @@ func _load_room(floor_number: int, room_number: int) -> void:
 	Game.boss = null
 	Game.danger = (int(room.get("depth", floor_number + 1)) - 1) * 3 + room_number
 	if iso_view:
-		iso_view.begin_room(room, TILE)
+		iso_view.begin_room(room, TILE, _theme())
 	_build_room()
 
 	var player := _player()
@@ -404,6 +404,7 @@ func _add_tile(texture: Texture2D, tile: Vector2i, solid: bool) -> void:
 	sprite.centered = false
 	sprite.position = Vector2(tile) * TILE
 	sprite.z_index = -10
+	sprite.light_mask = Lighting.LIT  # the floor takes the room's light (see Lighting); effects on it keep their colour
 	_room_node.add_child(sprite)
 	if solid and iso_view:
 		var is_pillar := texture == AssetDB.get_texture("tile_pillar_" + _theme())

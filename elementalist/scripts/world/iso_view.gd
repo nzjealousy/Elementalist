@@ -18,7 +18,7 @@ extends Node
 ## twice: LAYER_GROUND goes to the ground picture, LAYER_ENTITY (the things mirrored by standing sprites) to nobody.
 ## The stage sits in its own CanvasLayer below the HUD and is scrolled to follow the hero.
 ##
-## Settings "iso_view" off keeps the plain top-down picture; IsoView is then not created at all.
+## Settings "iso_view" off keeps the plain top-down picture; IsoView is then not created at all (nor its Lighting).
 
 const TILE := 16.0
 const WALL_HEIGHT := 22.0         # screen pixels a wall rises
@@ -37,6 +37,7 @@ static var active: IsoView = null  # the running view (null in flat mode and in 
 
 var dungeon: Node2D
 var ground_viewport: SubViewport
+var lighting: Lighting              # the ambient and the light pools (null when the setting is "off")
 
 var _layer: CanvasLayer             # the scrolling stage
 var _back_layer: CanvasLayer        # the colour behind the room
@@ -160,6 +161,11 @@ func _build_stage() -> void:
 	_stage.y_sort_enabled = true
 	_layer.add_child(_stage)
 	_apply_room_size()
+	if String(Settings.get_value("lighting")) != "off":  # "off" builds no light at all
+		lighting = Lighting.new()
+		lighting.view = self
+		lighting.stage = _layer
+		add_child(lighting)
 
 
 func _apply_room_size() -> void:
@@ -168,8 +174,8 @@ func _apply_room_size() -> void:
 
 # ---------- rooms ----------
 
-## A new room is about to be built: forget the old walls and size the ground.
-func begin_room(room: Dictionary, tile: int) -> void:
+## A new room is about to be built: forget the old walls, size the ground and dim it to the place's `theme`.
+func begin_room(room: Dictionary, tile: int, theme: String = "vault") -> void:
 	for wall in _walls:
 		if is_instance_valid(wall):
 			wall.queue_free()
@@ -177,6 +183,8 @@ func begin_room(room: Dictionary, tile: int) -> void:
 	_room_size = Vector2(int(room["cols"]), int(room["rows"])) * float(tile)
 	_apply_room_size()
 	_snap = true
+	if lighting:
+		lighting.set_theme(theme)
 
 
 ## One solid tile of the room (a wall, a door's seal or a pillar) becomes a block.
@@ -188,6 +196,7 @@ func add_wall(tile: Vector2i, texture: Texture2D, cols: int, rows: int, pillar: 
 	block.texture = texture
 	block.height = height
 	block.pillar = pillar
+	block.light_mask = Lighting.LIT
 	block.position = project((Vector2(tile) + Vector2(0.5, 0.5)) * TILE)
 	_stage.add_child(block)
 	_walls.append(block)
@@ -283,6 +292,8 @@ func _on_node_added(node: Node) -> void:
 	var kind := _classify(node)
 	if kind == 0:
 		return
+	if lighting:
+		lighting.track(node)
 	(node as CanvasItem).visibility_layer = kind
 	if kind == LAYER_ENTITY:
 		_mirrors[node] = _make_mirror(node)
@@ -315,6 +326,8 @@ func _make_mirror(node: CanvasItem) -> CanvasItem:
 	if node is Sprite2D:
 		var sprite := Sprite2D.new()
 		sprite.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+		if node.get_parent() is Interactable:  # props take the room's light; creatures, bolts and loot keep their own
+			sprite.light_mask = Lighting.LIT
 		_stage.add_child(sprite)
 		var shadow := Sprite2D.new()
 		shadow.texture = _blob

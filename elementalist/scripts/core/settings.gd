@@ -18,12 +18,14 @@ const DEFAULTS := {
 	"screen_shake": 1.0,       # 0 turns shake off
 	"damage_numbers": true,
 	"iso_view": true,          # the isometric HD-2D picture (off: the flat top-down one); applies from the next scene
+	"lighting": "full",        # "full", "soft" (brighter, dimmer pools, no flicker) or "off"; isometric view only, from the next scene
 	"melee_indicator": true,   # the slash reach ring and wedge around the hero
 	"hud_scale": 1.0,          # 0.75 .. 1.5
 	"aim_assist": 0.5,         # controller only: pulls the aim toward the nearest enemy
 	"stick_deadzone": 0.2,
 	"show_tips": true,
 }
+const LIGHTING_MODES := ["full", "soft", "off"]
 
 var values: Dictionary = DEFAULTS.duplicate()
 var path := PATH  # tests point this somewhere else
@@ -69,6 +71,8 @@ func _clean(key: String, value: Variant) -> Variant:
 				return clampf(number, 0.05, 0.6)
 			_:
 				return clampf(number, 0.0, 1.0)
+	if key == "lighting":
+		return value if value is String and value in LIGHTING_MODES else default
 	return value
 
 

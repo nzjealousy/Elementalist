@@ -520,3 +520,33 @@ they are used.
 * **Net flags:** `Player.net_state()` is `[x, y, aim_x, aim_y, hp, max_hp, flags]`; `Player.pack_flags`/`unpack_flags`: 1 moving, 2 dodging, 4 stunned, glow code from
   bit 3 (0 none, 1..7 = fire water air mineral earth light dark: append new elements, never reorder). `RemoteAvatar` and the arena ghosts re-register their look
   with `HeroLook.with_glow` when the code changes; a stunned partner or rival gets the stars (`SkillFx.stun_stars`, which also lines them up in the flat view).
+
+## Lighting (`scripts/world/lighting.gd`)
+
+* **Where.** `Lighting` is a child of `IsoView`, built in `IsoView._build_stage` unless the setting `lighting` is "off"; the flat top-down view
+  (`iso_view` off) has no IsoView and so no lighting at all. `Dungeon._load_room` passes the place (`_theme()`) through
+  `IsoView.begin_room(room, tile, theme)`; `IsoView._on_node_added` hands every world node to `Lighting.track`.
+* **What is lit.** Only canvas items with the light-mask bit `Lighting.LIT` take light: the floor tiles (`Dungeon._add_tile`), the wall blocks
+  (`IsoView.add_wall`) and the prop mirrors (`Interactable`s, `IsoView._make_mirror`). Creatures, bolts, loot, telegraphs, rings, spell effects,
+  labels, health bars and the HUD keep the default mask and their full colour, so the ink silhouettes' element glow pops on the darker world.
+* **Layering, and why.** The floor and every flat effect share one ground picture (the SubViewport), so dimming the stage layer as a whole
+  (`CanvasModulate`, or a multiply overlay) would dull the telegraphs and could not spare the labels and bars that live on the stage. Instead the
+  floor is lit *inside the flat world*: the floor tiles carry a small shader (`Lighting.FLOOR_SHADER`) that multiplies them by the ambient, and 24
+  `PointLight2D`s in the world canvas add the pools (a ground circle of radius r / sqrt 2 becomes the r-wide ellipse after the skew); the shader also
+  adds a touch of the light's own colour (`tint` 0.15), because the floors are near black and a plain light only multiplies them. On the stage,
+  one subtracting `PointLight2D` (an all-white 8 x 8 texture spanning 8192 px) takes 1 - ambient off the walls and props, and 24 more lights sit at
+  `project(p) - 8 px`. Lessons from testing: a `DirectionalLight2D` ignores the item cull mask (it dimmed the telegraphs), and a light only reaches
+  canvas layers inside its `range_layer_min..max` (the stage lights use `_layer.layer`, -2). One radial `GradientTexture2D` (128 px, soft falloff)
+  serves every pool; no PNG.
+* **Budget.** `MAX_LIGHTS` = 24 light pairs, built once and reused. Each frame the tracked nodes on screen become candidates in fixed packed
+  arrays; `Lighting.light_key(kind, distance to the hero, index)` ranks them and the pure `Lighting.choose(keys, cap)` keeps, in order: the hero,
+  partners (co-op avatars, arena rivals), bosses (mini bosses too), the 6 nearest bolts (`MAX_BOLTS`), monsters by distance, props (gate, forge,
+  altar), loot of rare or better. Colours: the hero's glow (`Player._glow`), a partner's glow code, a monster's variant element or the colour its
+  art glows in (mean of its bright, saturated pixels, read once per picture), a bolt's element, loot's rarity colour.
+* **Motion and comfort.** In "full", orange and red lights flicker by at most +-8% (2.1 and 3.7 Hz sines) and bosses breathe +-8% at 0.45 Hz;
+  "soft" and "off" never move.
+* **Setting.** `Settings.lighting`: "full" (default), "soft" (ambient 40% of the way back to unlit, pools at 60%, no flicker) or "off" (nothing
+  built); validated in `Settings._clean`, applies from the next scene (`Lighting (next scene)` in the Game tab, which now scrolls like the
+  controls list so it fits the 180 px screen). Per-place ambients are data in `Lighting.AMBIENT` (see docs/ART_DIRECTION.md).
+* **Cost** (RTX 4050 laptop, 1280 x 720, vsync off, a vault room with 22 monsters, bolts in flight, 24 lights on): 203 fps / 4.9 ms a frame with
+  "full", 220 fps / 4.55 ms with "off"; `Lighting._process` itself takes about 0.23 ms; 1000 updates created 0 objects and 0 bytes.

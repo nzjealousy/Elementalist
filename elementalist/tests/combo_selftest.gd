@@ -84,6 +84,7 @@ func _ready() -> void:
 	_test_dungeons5()
 	_test_generation_soak()
 	await _test_iso()
+	_test_lighting()
 	await _test_fixes()
 	_test_art_style()
 	await _test_feel_changes()
@@ -3625,6 +3626,17 @@ func _p5_settings_and_controls() -> void:
 	Juice.shake(5.0, 0.5)
 	_check("screen shake off means no camera offset", Juice.offset() == Vector2.ZERO)
 	Juice.enabled = false
+	_check("lighting is full by default", Settings.DEFAULTS["lighting"] == "full")
+	Settings.set_value("lighting", "soft")
+	var soft_ok: bool = Settings.get_value("lighting") == "soft"
+	Settings.set_value("lighting", "neon")
+	_check("the lighting setting takes full, soft and off; anything else is full", soft_ok and Settings.get_value("lighting") == "full")
+	Settings.set_value("lighting", 3)
+	_check("a lighting value of the wrong type is full", Settings.get_value("lighting") == "full")
+	Settings.set_value("lighting", "off")
+	Settings.values["lighting"] = "full"
+	Settings.load_settings()
+	_check("the lighting setting survives a save and load", Settings.get_value("lighting") == "off")
 	Settings.reset_to_defaults()
 	DirAccess.remove_absolute(Settings.path)
 	Settings.path = real_path
@@ -3840,6 +3852,19 @@ func _p5_menus() -> void:
 	settings.open(1)
 	await get_tree().process_frame
 	_check("the game tab has toggles and sliders", settings.find_children("*", "CheckButton", true, false).size() == 5 and settings.find_children("*", "HSlider", true, false).size() == 4)
+	var screen_size := Vector2(ProjectSettings.get_setting("display/window/size/viewport_width"), ProjectSettings.get_setting("display/window/size/viewport_height"))
+	await get_tree().process_frame  # the scroll's layout settles
+	var game_panel: Vector2 = (settings._body.get_parent().get_parent() as Control).size
+	_check("the game tab fits the game screen (%dx%d; its rows scroll)" % [int(game_panel.x), int(game_panel.y)], game_panel.y <= screen_size.y and game_panel.x <= screen_size.x \
+		and settings.find_children("*", "ScrollContainer", true, false).size() == 1)
+	var real_lighting: String = Settings.get_value("lighting")
+	var light_button: Button = settings.find_children("*", "Button", true, false).filter(func(b): return b.text == real_lighting.capitalize())[0]
+	light_button.pressed.emit()
+	var stepped: String = Settings.get_value("lighting")
+	light_button.pressed.emit()
+	light_button.pressed.emit()  # three steps: back where it was (closing the menu saves the real settings)
+	_check("the lighting button steps to the next value and round again", stepped == Settings.LIGHTING_MODES[(Settings.LIGHTING_MODES.find(real_lighting) + 1) % 3] \
+		and Settings.get_value("lighting") == real_lighting and light_button.text == real_lighting.capitalize())
 	settings.open(2)
 	await get_tree().process_frame
 	_check("the controls tab lists every action with a key and a pad button", settings.find_children("*", "Button", true, false).size() >= Controls.ACTIONS.size() * 2)
@@ -4653,6 +4678,8 @@ func _test_iso() -> void:
 	dungeon.layout = [[DungeonGen.camp_room()]]
 	world.add_child(dungeon)
 	await get_tree().process_frame
+	var real_lighting: String = Settings.get_value("lighting")
+	Settings.values["lighting"] = "full"
 	var view := IsoView.attach(dungeon)
 	dungeon.iso_view = view
 	await get_tree().process_frame
@@ -4671,6 +4698,10 @@ func _test_iso() -> void:
 			floor_sprite = node
 			break
 	_check("floor tiles go to the ground layer", floor_sprite != null and floor_sprite.visibility_layer == IsoView.LAYER_GROUND)
+	_check("the view lights the room: its lights built once, the floor and walls take the light", view.lighting != null \
+		and view.find_children("*", "PointLight2D", true, false).size() == Lighting.MAX_LIGHTS * 2 + 1 \
+		and floor_sprite.light_mask == Lighting.LIT and floor_sprite.material is ShaderMaterial and view._walls[0].light_mask == Lighting.LIT)
+	_check("the hero carries a light; their own sprite is never dimmed", view.lighting.lights_on() >= 1 and hero.get_node("Sprite2D").light_mask & Lighting.LIT == 0)
 	_check("the hero's sprite is redrawn standing up", hero.get_node("Sprite2D").visibility_layer == IsoView.LAYER_ENTITY and view.mirror_count() >= 1)
 	var before := view.mirror_count()
 	var enemy := Monsters.spawn(dungeon._room_node, "slime", Vector2(120, 100), "", Vector2.ONE, 1)
@@ -4702,7 +4733,55 @@ func _test_iso() -> void:
 	view.queue_free()
 	await get_tree().process_frame
 	_check("closing the view gives the window its flat world back", IsoView.active == null and get_viewport().canvas_cull_mask == 0xFFFFFFFF)
+	Settings.values["lighting"] = "off"
+	var unlit_view := IsoView.attach(dungeon)
+	await get_tree().process_frame
+	_check("lighting off builds no light at all", unlit_view.lighting == null and unlit_view.find_children("*", "Light2D", true, false).is_empty())
+	unlit_view.queue_free()
+	await get_tree().process_frame
+	Settings.values["lighting"] = real_lighting
 	world.queue_free()
+
+
+# ---------- lighting ----------
+
+func _test_lighting() -> void:
+	var themes := ["camp"]
+	var probe := Dungeon.new()  # the place names come from the dungeon's own rule, every tier and the camp
+	for tier in Game.TIERS:
+		probe.tier = int(tier)
+		probe.room = {"kind": "combat"}
+		themes.append(probe._theme())
+	probe.free()
+	var ambient_ok := true
+	for theme in themes:
+		var c := Lighting.ambient(theme)
+		ambient_ok = ambient_ok and Lighting.AMBIENT.has(theme) and c.v >= 0.5 and c.v <= 0.9 and minf(c.r, minf(c.g, c.b)) > 0.05 and c.a == 1.0
+	_check("every place has a dim ambient, never pure black or white (%s)" % ", ".join(themes), ambient_ok and themes.size() == 6)
+	_check("soft lighting is brighter than full", Lighting.ambient("vault", "soft").v > Lighting.ambient("vault").v)
+	# The budget: hero, a far boss, 30 monsters and 10 bolts compete for MAX_LIGHTS lights.
+	var keys := PackedInt64Array()
+	keys.append(Lighting.light_key(Lighting.BOSS, 400.0, 0))
+	for i in 30:
+		keys.append(Lighting.light_key(Lighting.ENEMY, 300.0 - i * 9.0, 1 + i))  # index 30 is the nearest monster
+	for i in 10:
+		keys.append(Lighting.light_key(Lighting.BOLT, 50.0 + i, 31 + i))
+	keys.append(Lighting.light_key(Lighting.HERO, 0.0, 41))
+	keys.append(Lighting.UNUSED)
+	var kept := Lighting.choose(keys, Lighting.MAX_LIGHTS)
+	var kinds := {}
+	var enemy_far := 0
+	for i in kept:
+		var kind: int = keys[i] >> 40
+		kinds[kind] = int(kinds.get(kind, 0)) + 1
+		if kind == Lighting.ENEMY:
+			enemy_far = maxi(enemy_far, (keys[i] >> 8) & 0xFFFFFFFF)
+	var enemies_kept: int = kinds.get(Lighting.ENEMY, 0)
+	_check("the light budget keeps the hero first and the boss, however far", kept == Lighting.MAX_LIGHTS and keys[0] >> 40 == Lighting.HERO and keys[1] >> 40 == Lighting.BOSS)
+	_check("only the nearest few bolts light up", kinds.get(Lighting.BOLT, 0) == Lighting.MAX_BOLTS)
+	_check("the farthest monsters are the ones left dark", enemies_kept == Lighting.MAX_LIGHTS - 2 - Lighting.MAX_BOLTS and enemy_far == int(300.0 - (30 - enemies_kept) * 9.0))
+	var few := PackedInt64Array([Lighting.light_key(Lighting.ENEMY, 5.0, 0), Lighting.UNUSED, Lighting.UNUSED])
+	_check("fewer candidates than lights: each gets one, empty slots none", Lighting.choose(few, Lighting.MAX_LIGHTS) == 1)
 
 
 # ---------- the fixes after Phase 6: screens inside the window, sharp text, light and dark keys ----------
