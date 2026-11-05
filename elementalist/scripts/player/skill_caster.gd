@@ -301,7 +301,7 @@ func cooldown_fraction(id: String) -> float:
 
 
 func try_cast(id: String) -> bool:
-	if is_winding_up() or not can_cast(id):
+	if is_winding_up() or (body is Player and body.is_stunned()) or not can_cast(id):
 		return false
 	var cost := costs(id)
 	mana -= cost.x

@@ -426,7 +426,7 @@ buttons call `show_tab.call_deferred(...)`, so tests `await` a frame after click
 **Heroes are parts, not pictures.** `tools/art/gen_heroes.py` writes interchangeable parts (body, boots, outfit, hair, head gear, back item,
 accent, weapon) per facing as strips of four frames in `assets/sprites/hero/`. A pixel stores a *region* (skin, hair, outfit, trim ...) and a
 *shade*, not a colour. `HeroLook` (data in `data/hero_looks.json`, shared with `tools/art/preview_heroes.py`) works out which parts and palette
-a hero wears from class, subclass and equipped items; `HeroComposer` stacks the parts (24 x 38 frames), paints them through a ramp (pale
+a hero wears from class, subclass and equipped items; `HeroComposer` stacks the parts (34 x 32 frames), paints them through a ramp (pale
 highlights, cold shadows), adds a moonlit rim on the upper-left edge and traces a selective outline (a deep violet shade of the colour it borders). Gear has painted icons (`item_<base>.png`, `HeroLook.slot_icon`). Results are cached by look and registered in `AssetDB` as `hero:<n>:<facing>` so `SpriteAnim` plays them.
 `HeroDoll`, `CardFrame` (class borders) and the equipment paper doll in the character sheet reuse the same pictures.
 
@@ -462,14 +462,15 @@ they are used.
 
 ## Sprites after Noir Silhouette (docs/SPRITE_STYLES.md)
 
-* **Poses.** A hero part strip holds 21 poses in a 40 x 38 cell (`gen_heroes.POSES`, `HeroComposer.FRAME_COUNT`, `HeroComposer.CLIPS`). The figure is the
-  middle 24 columns (`HeroComposer.portrait_size()`); portraits and the doll cards show only that.
+* **Poses.** A hero part strip holds 21 poses in a 34 x 32 cell (`gen_heroes.POSES`, `HeroComposer.FRAME_COUNT`, `HeroComposer.CLIPS`). The figure is the
+  middle 20 columns (`HeroComposer.portrait_size()`); portraits and the doll cards show only that. The rig is drawn on a 40 x 38 grid and reduced to
+  34 x 32 when the strips are written (`gen_heroes.RC.shrunk`, `tools/art/shrink.py`).
 * **Colour.** `HeroComposer._color_of` is the Noir colouring (twin of `tools/art/noir.py`); the look's `palette["glow"]` is the accent. `Player._refresh_look`
   sets it from the selected or imbued element (`_glow_hex`, checked every physics frame), so a new element is a new composed look (cached per glow).
 * **Lazy frames.** `HeroComposer.register(look)` registers each facing with `AssetDB.register_lazy`; the 21 poses are composed the first time a facing is
   used (`compose_facing`), not up front.
 * **Clips.** `SpriteAnim.set_clip(start, count, fps, looping)` plays a run of a strip; `Player._update_sprite` picks the clip from the state (swirl, dodge,
-  hurt, cast, attack, walk, idle); remote avatars and arena ghosts play walk, idle and dodge.
+  hurt, cast, attack, walk, idle); remote avatars and arena ghosts play walk, idle, dodge and stun.
 * **Enemies.** Humanoid enemies come from `gen_enemies.py` on the same rig with a per-enemy glow; the other monsters pass through `restyle.noirize`.
   `Enemy._sync_stun_fx` shows the stun stars; hit boxes are unchanged (`Enemy.BODY_SIZES`).
 
@@ -484,4 +485,18 @@ they are used.
 * **Dodge:** i-frames last 0.3 s from the start of a roll (`dodge_iframes`; the roll is 0.18 s, so they outlast it), a swirl attack is immune for 0.5 s
   (`Player.SPIN_DURATION`), and a roll passes through ordinary enemies: for its length the hero and each non-boss, non-mini-boss enemy carry collision
   exceptions, lifted once the two no longer overlap. Terrain, bosses and mini bosses still block.
-* **Sprite size:** the hero and every enemy are drawn at `Player.SPRITE_SCALE` = 0.85 (15% smaller). Hit boxes did not change.
+* **Sprite size:** the hero and every enemy are 15% smaller than they were, baked into the pictures (`tools/art/shrink.py`); nothing is scaled at runtime
+  (`Player.SPRITE_SCALE` is gone) and the sprites' offset is (0, -8). Hit boxes did not change (`Player.HURTBOX_SIZE`, `Enemy.BODY_SIZES`, which now also
+  lists the other monsters' old picture sizes).
+* **Enemy attack poses:** `Enemy._update_pose` shifts the sprite by whole pixels (`sprite.offset = _rest_offset + pose`; never scale or rotation) and
+  holds one walk frame: a dash wind-up crouches back 2 px (tall pictures 2 down, others 1) and trembles in its last third, the dash leans in 2 px, a shot
+  recoils 2 px for 0.12 s, a bite lunges 2 px for 0.1 s, a slam rises 3 px (2 for small pictures) over its telegraph and drops 1 px for 0.15 s; every pose
+  eases back over `POSE_RECOVER` (0.15 s); a stun drops it at once; ghosts do not pose. The isometric mirror adds `Enemy.pose.y` to the standing picture
+  (`IsoView._update_sprite`), the sideways part is already in `offset.x`. `CROUCH_FRAME` (the lowest walk frame of each strip) is hand-measured: re-measure
+  it when enemy art is redrawn.
+* **Stun:** a boss or mini-boss slam that lands stuns the hero (`Enemy.SLAM_STUN` 0.5 s, `Player.stun`): no moving, slashing, dodging, casting or imbuing, the stun
+  clip and three stars; `Player.STUN_IMMUNITY` (1.5 s) follows, so no stun-lock. Dodge and spin i-frames refuse it. For a partner on another machine the stun
+  rides with the damage (`Net.send_damage(peer, amount, from, stun_time)`; `Net.PROTOCOL` is 2).
+* **Net flags:** `Player.net_state()` is `[x, y, aim_x, aim_y, hp, max_hp, flags]`; `Player.pack_flags`/`unpack_flags`: 1 moving, 2 dodging, 4 stunned, glow code from
+  bit 3 (0 none, 1..7 = fire water air mineral earth light dark: append new elements, never reorder). `RemoteAvatar` and the arena ghosts re-register their look
+  with `HeroLook.with_glow` when the code changes.

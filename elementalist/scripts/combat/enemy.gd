@@ -14,13 +14,20 @@ const AURA_TIME := 4.0
 const VULN_MULT := 1.25
 const SHATTER_MULT := 1.5  # physical hit on a rooted or stunned enemy
 const ENRAGE_AT := 0.3   # a boss below this share of its health enrages
+const SLAM_STUN := 0.5   # a slam that lands stuns the hero this long (it is telegraphed, so it can be dodged)
 var _stun_sprite: Sprite2D
 const CONTACT_MARGIN := 1.0  # px; bodies this close count as touching
 ## Humanoids are drawn on the hero rig, taller than the bodies they fight with: they keep the hit box they had when their picture
-## was small (the drawing grew, the fight did not).
+## was small (the drawing grew, the fight did not). The other monsters keep the size their picture had before the pictures were baked
+## 15% smaller (tools/art/shrink.py), so no hit box changed.
 const BODY_SIZES := {
 	"enemy_skeleton": Vector2(14, 18), "enemy_duelist": Vector2(16, 19), "mini_warden": Vector2(22, 26), "mini_matron": Vector2(20, 26),
 	"enemy_wraith": Vector2(15, 19), "enemy_shade": Vector2(15, 19),
+	"enemy_slime": Vector2(16, 13), "enemy_bat": Vector2(16, 11), "enemy_wisp": Vector2(12, 14), "enemy_brute": Vector2(24, 24),
+	"enemy_spitter": Vector2(15, 14), "enemy_imp": Vector2(15, 17), "enemy_sapling": Vector2(15, 19), "enemy_wolf": Vector2(22, 14),
+	"enemy_slug": Vector2(20, 13), "enemy_dummy": Vector2(14, 20), "mini_hulk": Vector2(26, 26), "boss_slime_king": Vector2(34, 28),
+	"boss_colossus": Vector2(34, 36), "boss_lich": Vector2(36, 36), "boss_titan": Vector2(48, 40), "boss_matriarch": Vector2(34, 38),
+	"boss_tyrant": Vector2(38, 38), "boss_sovereign": Vector2(42, 40),
 }
 
 @export var max_hp := 40.0
@@ -49,6 +56,8 @@ var net_pos := Vector2.ZERO  # where the host says it is
 var net_aim := Vector2.RIGHT
 var net_moving := false
 var net_dodging := false
+var net_stunned := false     # arena: the hero it stands for is stunned
+var net_glow := -1           # arena: that hero's glow code (Player.glow_code); -1 until the first state
 var knock_resist := 0.0      # share of knockback ignored
 var attack_range := 0.0      # ranged: shoots from this far
 var keep_distance := 0.0     # ranged: tries to stay about this far away
@@ -82,6 +91,20 @@ var _dodge_cd := 0.0
 var _summon_stage := 0
 var _base_tint := Color.WHITE
 var _telegraph: Telegraph
+## Attack poses (code only, pixel-exact): the sprite shifts by whole pixels and may hold one walk frame. `pose` is the shift now
+## (IsoView adds its y to the standing picture); _pose is a timed strike: "shot" recoil, "bite" lunge, "rise" (slam telegraph), "land".
+const POSE_RECOVER := 0.15
+## The walk frame whose top is lowest (measured from the strips), held while crouching; others crouch on frame 0.
+## shortcut: hand-measured, re-measure if the enemy strips are redrawn.
+const CROUCH_FRAME := {"boss_lich": 3, "boss_slime_king": 3, "boss_titan": 1, "boss_tyrant": 1, "enemy_bat": 1, "enemy_shade": 2,
+	"enemy_skeleton": 1, "enemy_wraith": 2, "mini_warden": 1}
+var pose := Vector2i.ZERO
+var _pose := ""
+var _pose_left := 0.0
+var _pose_time := 0.0
+var _recover_from := Vector2i.ZERO
+var _recover_left := 0.0
+var _rest_offset := Vector2.ZERO
 
 @onready var sprite: Sprite2D = $Sprite2D
 
@@ -142,7 +165,7 @@ func _ready() -> void:
 	_attack_cd = randf_range(0.6, 1.6)
 	add_to_group("enemies")
 	sprite.texture = AssetDB.get_texture(sprite_id)
-	sprite.scale = Vector2.ONE * Player.SPRITE_SCALE
+	_rest_offset = sprite.offset
 	anim = SpriteAnim.attach(sprite, sprite_id, 10.0 if behavior == "flutter" else (7.0 if behavior == "ranged" else 5.0), self)
 	if variant != "":
 		_base_tint = Color.WHITE.lerp(Elements.color_of(variant), 0.5)
@@ -278,9 +301,10 @@ func _ghost_tick(delta: float) -> void:
 		if absf(look_dir.y) > absf(look_dir.x) * 0.6:
 			facing = "up" if look_dir.y < 0.0 else "down"
 		anim.set_art("%s:%s" % [get_meta("prefix"), facing])
-		var run: Vector2i = HeroComposer.CLIPS["dodge" if net_dodging else ("walk" if net_moving else "idle")]
+		var clip := "dodge" if net_dodging else ("stun" if net_stunned else ("walk" if net_moving else "idle"))
+		var run: Vector2i = HeroComposer.CLIPS[clip]
 		anim.playing = true
-		anim.set_clip(run.x, run.y, 11.0 if net_dodging else (8.0 if net_moving else 3.0), not net_dodging)
+		anim.set_clip(run.x, run.y, {"dodge": 11.0, "stun": 6.0, "walk": 8.0}.get(clip, 3.0), not net_dodging)
 		sprite.flip_h = facing == "side" and look_dir.x < 0.0
 	else:
 		var target := get_tree().get_first_node_in_group("player") as Node2D
@@ -356,7 +380,7 @@ func _sync_stun_fx() -> void:
 
 ## The tallest part of the picture, for things that float above it (health bars).
 func picture_height() -> float:
-	return float(sprite.texture.get_height()) * sprite.scale.y
+	return float(sprite.texture.get_height())
 
 
 ## True when this enemy's body overlaps the target's hurtbox on any side. The target needs
@@ -447,9 +471,11 @@ func _physics_process(delta: float) -> void:
 			var lunge := float(dash["damage_mult"]) if _dash_state == "dash" else 1.0
 			if target.take_damage(damage_out(contact_damage * lunge), global_position):
 				_contact_cd = 0.9
+				_start_pose("bite", 0.1)
 
 	_attack(delta, target)
 	_update_tint(delta)
+	_update_pose(delta)
 	_sync_stun_fx()
 
 
@@ -498,10 +524,12 @@ func _attack(delta: float, target: Node2D) -> void:
 		_attack_cd = float(slam["cooldown"]) * _enrage_cooldown()
 		_telegraph = Telegraph.start(get_parent(), global_position, float(slam["radius"]), float(slam["telegraph"]), _land_slam)
 		Sfx.play_at("telegraph", global_position, 300.0, -4.0)
+		_start_pose("rise", float(slam["telegraph"]))
 	elif not shot.is_empty() and attack_type in ["ranged", "both"] and distance <= attack_range:
 		_attack_cd = float(shot["cooldown"]) * _enrage_cooldown()
 		EnemyProjectile.spawn(get_parent(), global_position, target.global_position - global_position,
 			float(shot["speed"]), damage_out(float(shot["damage"])), variant)
+		_start_pose("shot", 0.12)
 
 
 ## Imp / duelist dash: warn, then lunge at where you are.
@@ -534,6 +562,7 @@ func _tick_dash(delta: float, target: Node2D) -> void:
 func _land_slam() -> void:
 	var circle_centre := _telegraph.global_position if is_instance_valid(_telegraph) else global_position
 	_telegraph = null
+	_start_pose("land", 0.15)
 	SkillFx.ring(get_parent(), circle_centre, float(slam["radius"]), Color("ff6a4a"), 0.4, 2.0)
 	HitFx.burst(get_parent(), circle_centre, Color("ff6a4a"), 16, 90.0)
 	Juice.shake(3.0, 0.3)
@@ -542,7 +571,11 @@ func _land_slam() -> void:
 	for node in targets:
 		var target := node as Node2D
 		if target and target.global_position.distance_to(circle_centre) <= float(slam["radius"]) and target.has_method("take_damage"):
-			target.take_damage(damage_out(float(slam["damage"])), circle_centre)
+			var damage := damage_out(float(slam["damage"]))
+			if target is RemoteAvatar:  # the stun rides with the damage to the machine that plays that hero
+				target.take_damage(damage, circle_centre, SLAM_STUN)
+			elif target.take_damage(damage, circle_centre) and target.has_method("stun"):
+				target.stun(SLAM_STUN)
 
 
 ## Below ENRAGE_AT of its health a boss (not a mini boss) moves faster and attacks more often.
@@ -628,3 +661,57 @@ func _update_tint(delta: float) -> void:
 		sprite.modulate = _base_tint.lerp(Elements.color_of(aura), 0.55)
 	else:
 		sprite.modulate = _base_tint
+
+
+func _start_pose(kind: String, time: float) -> void:
+	_pose = kind
+	_pose_left = time
+	_pose_time = time
+
+
+## This frame's attack pose, put on the sprite: dash wind-up crouches back (trembling at the end), the dash leans in, a shot recoils,
+## a bite lunges, a slam rises then lands; afterwards it eases back to rest. A stun drops it at once.
+func _update_pose(delta: float) -> void:
+	_pose_left -= delta
+	if _pose_left <= 0.0 or is_stunned():
+		_pose = ""
+	var side := -1 if sprite.flip_h else 1  # the target's side of the screen (flip_h does not mirror offset.x)
+	var tall := picture_height() >= 24.0
+	var want := Vector2i.ZERO
+	var hold := -1  # a walk frame to hold, -1: keep walking
+	if is_stunned():
+		pass
+	elif _dash_state == "windup":
+		want = Vector2i(-2 * side, 2 if tall else 1)
+		if _dash_left < float(dash["windup"]) / 3.0:
+			want.x += 1 if int(_age * 30.0) % 2 == 0 else -1  # tremble before the lunge
+		hold = int(CROUCH_FRAME.get(sprite_id, 0))
+	elif _dash_state == "dash":
+		want = Vector2i(2 * side, 0)
+		hold = 0
+	elif _pose == "shot":
+		want = Vector2i(-2 * side, 0)
+		hold = 0
+	elif _pose == "bite":
+		want = Vector2i(2 * side, 0)
+	elif _pose == "rise":
+		var t := 1.0 - _pose_left / maxf(_pose_time, 0.001)
+		want = Vector2i(0, -roundi((3.0 if tall else 2.0) * minf(1.0, t * 2.0)))
+		hold = 0
+	elif _pose == "land":
+		want = Vector2i(0, 1)
+		hold = int(CROUCH_FRAME.get(sprite_id, 0))
+	if want != Vector2i.ZERO or is_stunned():
+		_recover_left = 0.0
+	elif pose != Vector2i.ZERO:  # ease back to rest
+		if _recover_left <= 0.0:
+			_recover_from = pose
+			_recover_left = POSE_RECOVER
+		_recover_left = maxf(0.0, _recover_left - delta)
+		want = Vector2i((Vector2(_recover_from) * (_recover_left / POSE_RECOVER)).round())
+	pose = want
+	sprite.offset = _rest_offset + Vector2(pose)
+	if hold >= 0:
+		anim.set_clip(hold, 1)
+	else:
+		anim.set_clip(0, 0)

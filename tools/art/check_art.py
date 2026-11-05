@@ -7,14 +7,14 @@ Rules checked:
   3. Props, doors and pickups use ONLY colours of the Moonlit ramps plus the ink (restyle.py); monsters and bosses are Noir: at least half
      their pixels are dark (restyle.noirize), the rest is their glowing accent.
   4. Hero part pictures use the region/shade encoding only: blue channel 0, red a multiple of 16, green a multiple of 60.
-  5. Every hero part strip is FRAMES poses of 40 x 38 (gen_heroes.py) and no part touches the edge cells of a frame.
+  5. Every hero part strip is FRAMES poses of 34 x 32 (gen_heroes.py OUT_W x OUT_H) and no part touches the edge cells of a frame.
 """
 import os
 import sys
 
 sys.path.insert(0, os.path.dirname(__file__))
 import style
-from gen_heroes import FRAMES, H as HERO_H, W as HERO_W
+from gen_heroes import FRAMES, OUT_H as HERO_H, OUT_W as HERO_W
 from pixel import load_png
 
 style.use("moonlit")

@@ -10,30 +10,40 @@ Regions: 1 skin  2 hair  3 outfit  4 trim  5 pants  6 boots  7 headgear  8 headg
          10 accent  11 metal  12 wood  13 gem  14 eyes  15 white
 Shades:  1 dark  2 mid  3 light  4 highlight (0 is the outline, which the composer adds around the whole hero)
 
-Every part is a strip of FRAMES frames (W x H each) for the three facings: down, up and side (facing right). The frames are poses
+Every part is a strip of FRAMES frames (OUT_W x OUT_H each: drawn on the W x H grid, then baked 15% smaller by shrink.py, so the game
+draws them at scale 1) for the three facings: down, up and side (facing right). The frames are poses
 (POSES): 4 walk, 2 idle, 3 attack, 2 dodge, 4 swirl, 3 cast, 2 stun and 1 hurt. Arms are drawn along an angle, weapons are drawn upright
 and rotated about the hand, legs can spread, and the body can crouch (bob), so every part follows the pose.
 
 The figure is drawn with natural proportions, in the soft, detailed manner of cosy village RPGs: a head about a quarter of the
 height, a neck, shoulders, a waist, arms that end in hands, legs that end in shoes, hair with volume and highlight clusters,
-clothes with folds, hems, cuffs and belts. The canvas is 24 x 38 and the figure keeps a 1 px margin so the composer's selective
-outline fits inside the frame. Light comes from the upper left.
+clothes with folds, hems, cuffs and belts. The figure is drawn 24 x 38 (baked to 20 x 32) and keeps a 1 px margin so the composer's
+selective outline fits inside the frame. Light comes from the upper left.
 
-Anatomy (rows from the top, standing): hair 3-6, head 4-14, neck 14-15, shoulders 16, waist 24, hips 25, knees 30, shoes 34-36.
+Anatomy (rows of the drawing grid from the top, standing): hair 3-6, head 4-14, neck 14-15, shoulders 16, waist 24, hips 25, knees 30,
+shoes 34-36 (row 30 of the baked cell).
 """
 import math
 import os
 import sys
 
 sys.path.insert(0, os.path.dirname(__file__))
+import shrink  # noqa: E402
 from pixel import Canvas, sheet  # noqa: E402
 
 OUT = os.path.join(os.path.dirname(__file__), '..', '..', 'elementalist', 'assets', 'sprites', 'hero')
 os.makedirs(OUT, exist_ok=True)
 
-W, H = 40, 38
+W, H = 40, 38   # the grid the rig is drawn on
 OX = 8          # the figure is drawn in 24-wide coordinates; the grid has 8 spare columns on each side for swings and raised arms
-CELL = 24      # width of the figure's own cell (portraits and enemies are cut to it)
+CELL = 24      # width of the figure's own cell on that grid
+# The saved pictures are that grid baked 15% smaller (shrink.py), so the game draws them at scale 1: a 34 x 32 cell whose middle
+# 20 columns (OUT_OX on each side) are the figure's own (portraits and enemies are cut to it). Columns merge evenly; ROWS are the
+# row pairs that merge, chosen to stay out of the face (rows 9-15 standing or bobbing a row) so brows, eyes and mouth keep their rows.
+OUT_W, OUT_H = 34, 32
+OUT_OX = 7
+OUT_CELL = 20
+ROWS = [(1, 2), (5, 6), (16, 17), (21, 22), (27, 28), (32, 33)]
 SKIN, HAIR, OUTFIT, TRIM, PANTS, BOOT, HAT, HATTRIM, CAPE, ACCENT, METAL, WOOD, GEM, EYE, WHITE = range(1, 16)
 LIGHT = (-0.45, -0.6, 0.66)
 _n = math.sqrt(sum(v * v for v in LIGHT))
@@ -200,12 +210,22 @@ class RC:
                 if self.g[y][x] is not None and fn(x - OX, y):
                     self.g[y][x] = None
 
-    def to_canvas(self):
+    def shrunk(self):
+        """The grid baked to the saved OUT_W x OUT_H cell (shrink.py), nothing on its edge cells."""
         self.trim_edges()
-        cv = Canvas(W, H)
-        for y in range(H):
-            for x in range(W):
-                cell = self.g[y][x]
+        g = shrink.shrink_codes(self.g, OUT_W, OUT_H, rows=ROWS)
+        for y in range(OUT_H):
+            for x in range(OUT_W):
+                if x in (0, OUT_W - 1) or y in (0, OUT_H - 1):
+                    g[y][x] = None
+        return g
+
+    def to_canvas(self):
+        g = self.shrunk()
+        cv = Canvas(OUT_W, OUT_H)
+        for y in range(OUT_H):
+            for x in range(OUT_W):
+                cell = g[y][x]
                 if cell:
                     cv.set(x, y, (cell[0] * 16, cell[1] * 60, 0, 255))
         return cv

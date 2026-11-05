@@ -26,7 +26,7 @@ const SPIN_STAMINA_MULT := 1.8   # a spin costs this many slashes' worth of stam
 const SPIN_DAMAGE_MULT := 1.15
 const SPIN_COOLDOWN := 0.5
 const SPIN_DURATION := 0.5   # how long the spin lasts, during which you cannot be hurt (it was 0.32)
-const SPRITE_SCALE := 0.85  # the hero and the enemies are drawn this big (15% smaller than their pictures)
+const STUN_IMMUNITY := 1.5   # after a stun ends, no new stun for this long (no stun-lock)
 
 @export var speed := 80.0
 @export var dodge_speed := 260.0
@@ -65,6 +65,9 @@ var _dodge_text_cd := 0.0
 var _mend_text := 0.0   # heal accumulated since the last "+N" number
 var _buff_fx: Dictionary = {}  # buff kind -> its aura particles
 var _imbue_fx: CPUParticles2D
+var _stun_left := 0.0     # stunned while > 0: no moving, attacking, dodging, casting or imbuing (aim and camera still work)
+var _stun_immune := 0.0   # STUN_IMMUNITY after a stun: stun() is refused
+var _stun_sprite: Sprite2D
 
 @onready var sprite: Sprite2D = $Sprite2D
 var _anim: SpriteAnim
@@ -80,8 +83,7 @@ var _look := Vector2.ZERO   # the camera look-ahead, smoothed
 func _ready() -> void:
 	add_to_group("player")
 	sprite.texture = AssetDB.get_texture("player")
-	sprite.offset = Vector2(0, -9)  # the hero's feet (the 24 x 38 picture's lowest row) stand a little below the node
-	sprite.scale = Vector2.ONE * SPRITE_SCALE
+	sprite.offset = Vector2(0, -8)  # the hero's feet (the 34 x 32 picture's lowest rows) stand a little below the node
 	caster = SkillCaster.new()
 	caster.body = self
 	caster.element_changed.connect(_on_element_changed)
@@ -160,11 +162,32 @@ func set_camera_limits(rect: Rect2i) -> void:
 
 
 ## The player's body rectangle in world space (full sprite), used for enemy contact hits.
-## What the other players are told about this hero: [x, y, aim_x, aim_y, hp, max_hp, flags] (flags: 1 moving, 2 dodging).
+## What the other players are told about this hero: [x, y, aim_x, aim_y, hp, max_hp, flags] (flags: see pack_flags).
 func net_state() -> Array:
 	var aim_point := global_position + aim_direction * 40.0
 	return [global_position.x, global_position.y, aim_point.x, aim_point.y, hp, max_hp,
-		(1 if velocity.length() > 8.0 else 0) | (2 if is_dodging() else 0)]
+		pack_flags(velocity.length() > 8.0, is_dodging(), is_stunned(), glow_code(_glow_element()))]
+
+
+## The flags of a net state: 1 moving, 2 dodging, 4 stunned, and from bit 3 up (code << 3) the glow code (see glow_code).
+static func pack_flags(moving: bool, dodging: bool, stunned: bool, glow: int) -> int:
+	return int(moving) | (int(dodging) << 1) | (int(stunned) << 2) | (maxi(glow, 0) << 3)
+
+
+static func unpack_flags(flags: int) -> Dictionary:
+	return {"moving": flags & 1 != 0, "dodging": flags & 2 != 0, "stunned": flags & 4 != 0, "glow": flags >> 3}
+
+
+## The glow on the wire: 0 = no element (martial, pale steel b8b8d8), else 1 + the element's index in Elements.MAIN + Elements.RARE
+## (fire water air mineral earth light dark = 1..7). Both builds must agree on that order: append new elements, never reorder.
+static func glow_code(element: String) -> int:
+	return (Elements.MAIN + Elements.RARE).find(element) + 1
+
+
+## The colour of a glow code; anything unknown (a bad packet) is the default pale steel.
+static func glow_color(code: int) -> Color:
+	var all: Array = Elements.MAIN + Elements.RARE
+	return Elements.color_of(String(all[code - 1])) if code >= 1 and code <= all.size() else Color("b8b8d8")
 
 
 ## Where the hero can be hit: a fixed body, not the picture (the 24 x 38 art is taller than the body it stands for).
@@ -186,6 +209,41 @@ func is_spinning() -> bool:
 ## Immune for `dodge_iframes` after a dodge starts (a little past the roll), briefly after a hit, and for the whole of a spin.
 func is_invulnerable() -> bool:
 	return _iframes_left > 0.0 or _hurt_cd > 0.0 or _spin_left > 0.0
+
+
+func is_stunned() -> bool:
+	return _stun_left > 0.0
+
+
+## Stuns the hero for `time` (a boss slam that landed). Refused while dead, dodging or spinning, during an earlier hit's i-frames,
+## while already stunned, and for STUN_IMMUNITY after a stun. Returns true if it took.
+func stun(time: float) -> bool:
+	# the hit that brings the stun has just set _hurt_cd in full; only an earlier hit's i-frames (already counting down) refuse it
+	var earlier_hit := _hurt_cd > 0.0 and _hurt_cd < hurt_invulnerability
+	if hp <= 0.0 or time <= 0.0 or _iframes_left > 0.0 or _spin_left > 0.0 or earlier_hit or is_stunned() or _stun_immune > 0.0:
+		return false
+	_stun_left = time
+	_dodge_buffer = 0.0
+	caster.cancel_windup()
+	FloatText.spawn(get_parent(), global_position + Vector2(0, -12), "Stunned!", Color("f8e08a"))
+	_sync_stun_fx()
+	return true
+
+
+## Three stars circle over a stunned hero (as over a stunned enemy: a picture that stands on the hero's position).
+func _sync_stun_fx() -> void:
+	if is_stunned():
+		if _stun_sprite == null or not is_instance_valid(_stun_sprite):
+			_stun_sprite = Sprite2D.new()
+			var id := SkillFx.stun_id(int(float(sprite.texture.get_height()) * sprite.scale.y) + 12)
+			_stun_sprite.texture = AssetDB.get_texture(id)
+			_stun_sprite.z_index = 30
+			add_child(_stun_sprite)
+			SpriteAnim.attach(_stun_sprite, id, 8.0, _stun_sprite)
+	elif _stun_sprite != null:
+		if is_instance_valid(_stun_sprite):
+			_stun_sprite.queue_free()
+		_stun_sprite = null
 
 
 ## Returns true if the hit landed (false while invulnerable), so attackers only spend
@@ -310,6 +368,8 @@ func imbue_elements() -> Array[String]:
 
 ## E: toggles imbue. Only characters who have an element can imbue. Returns true if it changed.
 func try_imbue() -> bool:
+	if is_stunned():
+		return false
 	if imbued:
 		imbued = false
 		return true
@@ -335,7 +395,7 @@ func try_melee(dir: Vector2 = Vector2.ZERO, spin: bool = false) -> bool:
 	var m: Dictionary = SkillDB.MELEE
 	var stats: Dictionary = Game.character.derived()
 	var cost := float(m["stamina"]) * float(stats["melee_stamina_cost_mult"]) * (SPIN_STAMINA_MULT if spin else 1.0)
-	if (_melee_cd > 0.0 and not spin) or stamina < cost:
+	if (_melee_cd > 0.0 and not spin) or stamina < cost or is_stunned():
 		return false
 	if dir == Vector2.ZERO:
 		dir = aim_direction
@@ -411,7 +471,7 @@ func try_spin() -> bool:
 ## Starts a dodge roll in `dir` (defaults to the mouse aim). Costs stamina.
 func try_dodge(dir: Vector2 = Vector2.ZERO) -> bool:
 	var dodge_cost := dodge_stamina_cost * float(Game.character.derived()["dodge_cost_mult"])
-	if is_dodging() or _dodge_cd > 0.0 or stamina < dodge_cost:
+	if is_dodging() or _dodge_cd > 0.0 or stamina < dodge_cost or is_stunned():
 		return false
 	_dodge_dir = dir.normalized() if dir != Vector2.ZERO else aim_direction
 	_dodge_left = dodge_time
@@ -501,12 +561,17 @@ func _refresh_look() -> void:
 
 ## The accent colour of the hero: the element the blade is coated with, else the selected element, else pale steel for the martial set.
 func _glow_hex() -> String:
-	var element := ""
-	if imbued and not imbue_elements().is_empty():
-		element = imbue_elements()[0]
-	elif caster != null and not caster.elements.is_empty():
-		element = String(caster.elements[clampi(caster.selected, 0, caster.elements.size() - 1)])
+	var element := _glow_element()
 	return (Elements.color_of(element) if element != "" else Color("b8b8d8")).to_html(false)
+
+
+## The element the glow is made of ("" for none).
+func _glow_element() -> String:
+	if imbued and not imbue_elements().is_empty():
+		return imbue_elements()[0]
+	if caster != null and not caster.elements.is_empty():
+		return String(caster.elements[clampi(caster.selected, 0, caster.elements.size() - 1)])
+	return ""
 
 
 ## Picks the art for where the hero faces (toward the aim) and walks it while moving.
@@ -532,6 +597,9 @@ func _update_sprite() -> void:
 		clip = "dodge"
 		fps = 11.0
 		looping = false
+	elif is_stunned():  # above the hurt pose: the hit that stuns also flinches
+		clip = "stun"
+		fps = 6.0
 	elif _hurt_pose > 0.0:
 		clip = "hurt"
 	elif caster != null and (caster.is_winding_up() or _cast_time > 0.0):
@@ -556,6 +624,13 @@ func _physics_process(delta: float) -> void:
 	_attack_time = maxf(0.0, _attack_time - delta)
 	_cast_time = maxf(0.0, _cast_time - delta)
 	_hurt_pose = maxf(0.0, _hurt_pose - delta)
+	if _stun_left > 0.0:
+		_stun_left = maxf(0.0, _stun_left - delta)
+		if _stun_left == 0.0:
+			_stun_immune = STUN_IMMUNITY
+	else:
+		_stun_immune = maxf(0.0, _stun_immune - delta)
+	_sync_stun_fx()
 	if _glow != _glow_hex():  # a new element selected, or the blade coated: the glow follows
 		_refresh_look()
 	_update_sprite()
@@ -591,7 +666,7 @@ func _physics_process(delta: float) -> void:
 	var input := Input.get_vector("move_left", "move_right", "move_up", "move_down")
 	if IsoView.active != null:
 		input = IsoView.world_dir(input)  # up is up on the screen, whatever way the ground runs
-	if Input.is_action_just_pressed("dodge"):
+	if Input.is_action_just_pressed("dodge") and not is_stunned():
 		_dodge_buffer = DODGE_BUFFER
 	if _dodge_buffer > 0.0 and try_dodge(input):
 		_dodge_buffer = 0.0
@@ -600,6 +675,8 @@ func _physics_process(delta: float) -> void:
 		_dodge_left -= delta
 		# Ease out: fast burst that settles, so the end of the roll is committal.
 		velocity = _dodge_dir * dodge_speed * (0.35 + 0.65 * clampf(_dodge_left / dodge_time, 0.0, 1.0))
+	elif is_stunned():
+		velocity = _knock  # only a knockback moves a stunned hero
 	else:
 		velocity = input * speed * (1.0 + buff_power("haste")) * (SkillCaster.WINDUP_SLOW if caster.is_winding_up() else 1.0) + _knock
 	_knock = _knock.move_toward(Vector2.ZERO, 500.0 * delta)

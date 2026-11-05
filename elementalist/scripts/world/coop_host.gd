@@ -157,7 +157,7 @@ func snapshot() -> Dictionary:
 			players.append(PvpGhost.state_of(peer, avatar))
 		else:
 			players.append([peer, avatar.global_position.x, avatar.global_position.y, avatar.aim.x, avatar.aim.y, avatar.hp, avatar.max_hp,
-				(1 if avatar.moving else 0) | (2 if avatar.dodging else 0)])
+				Player.pack_flags(avatar.moving, avatar.dodging, avatar.stunned, avatar.glow)])
 	var boss_id := 0
 	if Game.boss != null and is_instance_valid(Game.boss) and not Game.boss.ghost:
 		boss_id = Game.boss.net_id

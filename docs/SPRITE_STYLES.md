@@ -59,7 +59,7 @@ shows some uneven pixels at some window sizes; the redraw in the chosen style re
   violet, bone duelist magenta, grave warden ice blue, ember matron fire orange, wraith teal, shade red; the other monsters keep the colour of what
   glows on them (eyes, crowns, slime shine) and their variant tint still shades them toward the variant's element.
   ![the hero re-lit in water blue, mid-attack](art/noir_attack_water.png)
-* **Heroes have 21 poses** in a 40 x 38 cell (the figure is the middle 24 columns, the rest is room for swings and raised arms): 4 walk, 2 idle,
+* **Heroes have 21 poses** in a 34 x 32 cell (the figure is the middle 20 columns, the rest is room for swings and raised arms): 4 walk, 2 idle,
   3 attack (wind-up, strike, follow-through), 2 dodge (crouch, tuck), 4 swirl, 3 cast (arms rising), 2 stun, 1 hurt. Arms are drawn along an angle, weapons
   are drawn upright and turned about the hand, legs spread, the body crouches: every part of every class and piece of gear follows the pose.
   `HeroComposer.CLIPS` names the runs; `SpriteAnim.set_clip` plays them; `Player._update_sprite` chooses: swirl, dodge, hurt, cast (a charging or just
@@ -73,8 +73,27 @@ shows some uneven pixels at some window sizes; the redraw in the chosen style re
 * **Rules the art gate checks**: monsters and bosses are mostly dark (at least half their pixels), hero parts keep the region/shade encoding at 21 poses,
   no part touches its frame's edge cells, no pure black or white.
 
+### Since the first Noir pass
+* **Baked to true size.** The 15% reduction is part of every picture (`tools/art/shrink.py`), so nothing is scaled at runtime any more and every pixel is a
+  real pixel: hero cells are 34 x 32 with a 20-column figure, humanoid enemies are 20 x 32, the other monsters and bosses are 0.85 of what they were.
+  The rig is still drawn on its old 40 x 38 grid and reduced as the last step (each destination pixel keeps one source value: eyes first, then gems, glints,
+  dark holes, then the most common; a clean-up pass removes strays and fills pinholes), so no part had to be redrawn. Hit boxes did not change: the other
+  monsters keep their old picture sizes in `Enemy.BODY_SIZES`.
+  ![the camp at true size](art/shrink_in_game.png)
+* **Remote players glow in their element.** The state flags carry it (`Player.pack_flags`: 1 moving, 2 dodging, 4 stunned, glow code from bit 3: 0 none,
+  1..7 fire water air mineral earth light dark), so partners and arena rivals re-light like the local hero (`Net.PROTOCOL` is 2).
+* **The hero can be stunned.** A boss or mini-boss slam that lands stuns for `Enemy.SLAM_STUN` (0.5 s): no moving, slashing, dodging, casting or imbuing, the
+  stun pose plays and three stars circle over the head; then `Player.STUN_IMMUNITY` (1.5 s) of no new stun. A dodge or a swirl avoids the stun along with the
+  hit; for a co-op partner the stun travels with the damage message to the machine that plays that hero.
+  ![a stunned hero](art/hero_stun.png)
+
+* **Enemies pose their attacks** (code only, whole pixels, no scaling): a dash wind-up crouches back and trembles, the dash leans in, a shot recoils, a bite
+  lunges, a boss slam rises over its telegraph and drops on landing; each eases back to rest in 0.15 s and holds one walk frame while it lasts
+  (`Enemy._update_pose`). A stun cancels the pose. ![an imp winding up a dash](art/enemy_attack_imp_windup.png)
+
 ### Known gaps
-* The hero is still drawn at 0.85 scale (`Player.SPRITE_SCALE`), not redrawn on a smaller grid, so some window sizes show uneven pixels.
-* Remote players in multiplayer glow in the default teal (the look sent over the network carries no glow).
-* The stun, hurt and swirl poses exist for every hero but only the swirl, hurt, dodge, cast and attack are triggered in play: the hero cannot be stunned.
-* Enemy attack animations are the walk cycle plus the red telegraph; only humanoid enemies have more than four frames in their strip (four).
+* Partners and arena rivals show the stun pose but no stars.
+* Co-op and arena copies of enemies (ghosts) do not pose their attacks: they only follow the host's positions.
+* Enemies have no drawn attack frames: the poses are shifts of the walk frames. The humanoids could get real attack and cast frames from the rig's poses
+  (the enemy-only parts, bones, hooded cloaks, would need posing too).
+* The non-humanoid monsters and bosses are noirized and shrunk, not redrawn; the lich and the sovereign are bigger than the 20 x 32 rig.

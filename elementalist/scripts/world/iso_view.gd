@@ -407,6 +407,8 @@ func _update_sprite(src: Sprite2D, mirror: Sprite2D) -> void:
 	mirror.modulate = colour
 	mirror.material = src.material
 	var parent := src.get_parent()
+	if parent is Enemy and src == (parent as Enemy).sprite:  # an attack pose's crouch or rise (its sideways part is in offset.x already)
+		mirror.offset.y += float((parent as Enemy).pose.y)
 	var lift := 0.0
 	if parent is Enemy and (parent as Enemy).behavior == "flutter":
 		lift = 7.0
@@ -420,7 +422,7 @@ func _update_sprite(src: Sprite2D, mirror: Sprite2D) -> void:
 	else:
 		mirror.rotation = 0.0
 	if shadow:
-		var span := clampf(float(mini(texture.get_width(), HeroComposer.CELL_WIDTH)) * size_scale.x * 0.9, 6.0, 40.0)   # a hero picture has room for swings: its shadow is the figure's
+		var span := clampf(float(mini(texture.get_width(), HeroComposer.CELL_WIDTH)) * size_scale.x * 0.92, 6.0, 40.0)   # a hero picture has room for swings: its shadow is the figure's
 		shadow.scale = Vector2(span / 16.0, span / 16.0 * 0.5)
 		shadow.position = ground.round()
 		shadow.modulate.a = 0.4 * colour.a
@@ -450,7 +452,7 @@ func _update_label(src: Label, mirror: Label) -> void:
 		up = 29.0 + rise
 	else:
 		var holder := src.get_parent() as Node2D
-		if holder is RemoteAvatar:  # the 38 px hero is tall: the name goes above the hat
+		if holder is RemoteAvatar:  # the 32 px hero is tall: the name goes above the hat
 			up = 36.0
 		elif holder != null and holder != _world_root and holder.get_parent() != _world_root:
 			anchor = holder.global_position

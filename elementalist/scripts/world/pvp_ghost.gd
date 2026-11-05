@@ -11,30 +11,33 @@ static func make(parent: Node, peer: int, info: Dictionary) -> Enemy:
 	enemy.pvp_peer = peer
 	enemy.display_name = String(info.get("name", "Hero"))
 	var look: Dictionary = info.get("look", {})
-	var prefix: String
-	if look.has("parts") and look.has("palette"):
-		prefix = HeroComposer.register(look)
-	else:
-		prefix = HeroComposer.register(HeroLook.for_class(String(info.get("class", "wanderer"))))
+	if not (look.has("parts") and look.get("palette") is Dictionary):
+		look = HeroLook.for_class(String(info.get("class", "wanderer")))
+	var prefix := HeroComposer.register(look)
 	enemy.sprite_id = prefix + ":down"
 	enemy.set_meta("prefix", prefix)
+	enemy.set_meta("look", look)  # before the glow: recoloured when the glow changes (apply_state)
 	parent.add_child(enemy)
-	enemy.sprite.offset = Vector2(0, -9)  # the hero stands as it does on its own machine
+	enemy.sprite.offset = Vector2(0, -8)  # the hero stands as it does on its own machine
 	enemy.net_pos = enemy.global_position
 	return enemy
 
 
-## state: [x, y, aim_x, aim_y, hp, max_hp, flags] (flags: 1 moving, 2 dodging).
+## state: [x, y, aim_x, aim_y, hp, max_hp, flags] (flags: Player.pack_flags: moving, dodging, stunned, glow code).
 static func apply_state(enemy: Enemy, state: Array) -> void:
 	enemy.net_pos = Vector2(float(state[0]), float(state[1]))
 	enemy.net_aim = Vector2(float(state[2]), float(state[3]))
 	enemy.max_hp = maxf(float(state[5]), 1.0)
 	enemy.hp = clampf(float(state[4]), 0.0, enemy.max_hp)
-	var flags := int(state[6])
-	enemy.net_moving = flags & 1 != 0
-	enemy.net_dodging = flags & 2 != 0
+	var flags := Player.unpack_flags(int(state[6]))
+	enemy.net_moving = flags["moving"]
+	enemy.net_dodging = flags["dodging"]
+	enemy.net_stunned = flags["stunned"]
+	if int(flags["glow"]) != enemy.net_glow and enemy.has_meta("look"):
+		enemy.net_glow = int(flags["glow"])
+		enemy.set_meta("prefix", HeroComposer.register(HeroLook.with_glow(enemy.get_meta("look"), Player.glow_color(enemy.net_glow))))
 
 
 static func state_of(peer: int, enemy: Enemy) -> Array:
 	return [peer, enemy.net_pos.x, enemy.net_pos.y, enemy.net_aim.x, enemy.net_aim.y, enemy.hp, enemy.max_hp,
-		(1 if enemy.net_moving else 0) | (2 if enemy.net_dodging else 0)]
+		Player.pack_flags(enemy.net_moving, enemy.net_dodging, enemy.net_stunned, enemy.net_glow)]

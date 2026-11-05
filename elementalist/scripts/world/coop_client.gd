@@ -134,10 +134,10 @@ func _on_loot(drops: Array, position: Vector2) -> void:
 
 
 ## The host's monsters hurt this hero.
-func _on_damage(amount: float, from: Vector2) -> void:
+func _on_damage(amount: float, from: Vector2, stun_time: float = 0.0) -> void:
 	var hero := dungeon.get_parent().get_node_or_null("Player") as Player
-	if hero:
-		hero.take_damage(amount, from)
+	if hero and hero.take_damage(amount, from) and stun_time > 0.0:
+		hero.stun(stun_time)
 
 
 ## An opponent in the arena hit this hero.

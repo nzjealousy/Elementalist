@@ -1,6 +1,7 @@
 # Art direction: Moonlit Glyphwork
 
-> **Sprites since then:** characters, enemies and gear use the **Noir Silhouette** look with element-coloured glow (docs/SPRITE_STYLES.md). The world, UI, runes
+> **Sprites since then:** characters, enemies and gear use the **Noir Silhouette** look with element-coloured glow (docs/SPRITE_STYLES.md), baked 15% smaller
+> (heroes are 34 x 32 cells with a 20-column figure, humanoid enemies 20 x 32; the "24 x 38" figures below are the older drawing size). The world, UI, runes
 > and effects below stay Moonlit Glyphwork; where this page describes soft selective outlines for sprites, Noir's nearly black outline and rim light replace them.
 
 Status: **chosen and applied.** Of the three proposals (Gilded Hollow, Moonlit Glyphwork, Autumn Storybook) the project uses

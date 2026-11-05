@@ -7,16 +7,17 @@ extends RefCounted
 ## the element the hero has selected): the eyes, the gems, the glints, and a hard rim light on the upper-left edge.
 ## tools/art/noir.py is the Python twin of _color_of; the self-test compares them.
 ##
-## A part strip holds FRAME_COUNT poses (tools/art/gen_heroes.py POSES) in a cell of size() (the figure is the middle CELL_WIDTH columns;
-## the rest is room for swings): CLIPS names the runs of frames (walk, idle, attack, dodge, swirl, cast, stun, hurt).
+## A part strip holds FRAME_COUNT poses (tools/art/gen_heroes.py POSES) in a cell of size() (34 x 32; the figure is the middle CELL_WIDTH
+## columns, the rest is room for swings): CLIPS names the runs of frames (walk, idle, attack, dodge, swirl, cast, stun, hurt). The parts
+## are drawn on a 40 x 38 grid and baked 15% smaller (tools/art/shrink.py), so a hero is drawn at scale 1, every pixel a real pixel.
 ##
 ## compose(look) -> {"down": [Texture2D x FRAME_COUNT], "up": [...], "side": [...]}, cached by look. register(look) makes the frames
 ## available lazily from AssetDB as "hero:<n>:<facing>" (composed the first time a facing is used) so sprites can play them with SpriteAnim.
 
 const FACINGS := ["down", "up", "side"]
 const FRAME_COUNT := 21
-const CELL_WIDTH := 24
-const CELL_MARGIN := 8   # columns either side of the figure's own cell
+const CELL_WIDTH := 20
+const CELL_MARGIN := 7   # columns either side of the figure's own cell
 ## First frame and length of each run of poses in a strip.
 const CLIPS := {
 	"walk": Vector2i(0, 4), "idle": Vector2i(4, 2), "attack": Vector2i(6, 3), "dodge": Vector2i(9, 2), "swirl": Vector2i(11, 4),

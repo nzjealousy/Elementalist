@@ -99,10 +99,10 @@ func _run_host() -> void:
 	await get_tree().create_timer(0.5).timeout
 
 	Net.send_room(DungeonGen.camp_room(), 0, 0, "Floor 1/5")
-	Net.send_state({"e": [[7, "slime", "", 40.0, 50.0, 30.0, 40.0, "fire", 0, ["dot"]]], "p": [[1, 10.0, 20.0, 30.0, 20.0, 80.0, 100.0, 1]], "door": true, "t": "Floor 1/5", "boss": 0, "score": {}})
+	Net.send_state({"e": [[7, "slime", "", 40.0, 50.0, 30.0, 40.0, "fire", 0, ["dot"]]], "p": [[1, 10.0, 20.0, 30.0, 20.0, 80.0, 100.0, Player.pack_flags(true, false, false, Player.glow_code("fire"))]], "door": true, "t": "Floor 1/5", "boss": 0, "score": {}})
 	Net.send_loot([{"kind": "gold", "amount": 5}], Vector2(10, 20))
 	Net.send_kill(12, 2)
-	Net.send_damage(guest, 7.5, Vector2(1, 2))
+	Net.send_damage(guest, 7.5, Vector2(1, 2), Enemy.SLAM_STUN)
 	Net.send_say("hello guest")
 	await get_tree().create_timer(1.5).timeout
 	_check("the guest's position reached the host", not host_states.is_empty() and host_states[0].size() == 7 and absf(float(host_states[0][0]) - 11.0) < 0.01)
@@ -123,7 +123,7 @@ func _run_client() -> void:
 	Net.state_received.connect(func(snapshot): got_state = snapshot)
 	Net.loot_received.connect(func(drops, position): got_loot = [drops, position])
 	Net.kill_received.connect(func(xp, class_xp): got_kill = [xp, class_xp])
-	Net.damage_received.connect(func(amount, from): got_damage = [amount, from])
+	Net.damage_received.connect(func(amount, from, stun_time): got_damage = [amount, from, stun_time])
 	Net.said.connect(func(text): got_say = text)
 	Net.end_received.connect(func(info): got_end = info)
 	_check("the guest starts joining", Net.join("127.0.0.1", port) == OK)
@@ -142,6 +142,7 @@ func _run_client() -> void:
 	_check("the snapshot arrived", got_state.has("e") and got_state["e"][0][1] == "slime" and got_state["door"] == true and Net.last_snapshot == got_state)
 	_check("the loot arrived", got_loot.size() == 2 and got_loot[0][0]["amount"] == 5 and got_loot[1] == Vector2(10, 20))
 	_check("the kill reward arrived", got_kill == [12, 2])
-	_check("the damage arrived", got_damage.size() == 2 and absf(float(got_damage[0]) - 7.5) < 0.001 and got_damage[1] == Vector2(1, 2))
+	_check("the damage arrived, with the slam's stun", got_damage.size() == 3 and absf(float(got_damage[0]) - 7.5) < 0.001 and got_damage[1] == Vector2(1, 2) and is_equal_approx(float(got_damage[2]), Enemy.SLAM_STUN))
+	_check("the guest sees the host's glow", got_state.has("p") and Player.glow_color(int(Player.unpack_flags(int(got_state["p"][0][7]))["glow"])) == Elements.color_of("fire"))
 	_check("the host's message arrived", got_say == "hello guest")
 	_check("the end of the session arrived", got_end.get("won", false) == true and int(got_end.get("bonus", 0)) == 150)

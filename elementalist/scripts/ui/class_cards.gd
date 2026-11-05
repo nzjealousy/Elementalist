@@ -6,8 +6,8 @@ extends CanvasLayer
 ## Esc postpones; the character sheet's stats tab can open the cards again any time.
 
 const OPEN_DELAY := 0.7
-const CLASS_CARD := Vector2(36, 70)      # eight in a row: the 24 x 38 hero is shown at its game size
-const SUBCLASS_CARD := Vector2(120, 118)  # two cards: the hero at twice its size
+const CLASS_CARD := Vector2(36, 64)      # eight in a row: the 20 x 32 hero is shown at its game size
+const SUBCLASS_CARD := Vector2(120, 106)  # two cards: the hero at twice its size
 const STYLE_COLORS := {"melee": Color("ff9a5a"), "ranged": Color("6fb8ff")}
 
 var mode := ""

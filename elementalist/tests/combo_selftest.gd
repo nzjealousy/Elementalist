@@ -88,6 +88,8 @@ func _ready() -> void:
 	_test_art_style()
 	await _test_feel_changes()
 	await _test_noir_and_poses()
+	await _test_hero_stun()
+	await _test_enemy_attack_poses()
 	await _test_net_world()
 	_test_items()
 	_test_inventory_and_gear_stats()
@@ -2594,7 +2596,7 @@ func _test_boss_and_gems() -> void:
 	player.global_position = Vector2(400, 400)
 	var boss := _fresh_monster("slime_king", "", Vector2(400, 400))
 	await get_tree().process_frame
-	_check("a boss is big, tough and nearly unmovable", boss.boss and boss.max_hp == 520.0 and boss.knock_resist >= 0.9 and boss.sprite.texture.get_size().x >= 30)
+	_check("a boss is big, tough and nearly unmovable", boss.boss and boss.max_hp == 520.0 and boss.knock_resist >= 0.9 and boss.sprite.texture.get_size().x >= 28)
 	boss._attack_cd = 0.0
 	boss._attack(0.016, player)
 	_check("in reach, a boss starts a slam and warns with a circle", boss._telegraph != null and boss._telegraph.radius == 40.0 and is_equal_approx(boss._telegraph.time, 0.8))
@@ -3399,6 +3401,7 @@ func _test_enemy_abilities() -> void:
 	player.global_position = imp.global_position
 	player._hurt_cd = 0.0
 	hp0 = player.hp
+	imp._dash_dir = Vector2.ZERO  # move_and_slide steps by the frame's real time: on a slow frame the imp would dash clear of the player
 	imp._physics_process(0.016)
 	_check("a dash hits harder than a bite", is_equal_approx(hp0 - player.hp, imp.contact_damage * float(imp.dash["damage_mult"])))
 	imp._attack(float(imp.dash["time"]) + 0.01, player)
@@ -4321,10 +4324,10 @@ func _test_phase6b() -> void:
 	for monster_id in ["skeleton", "duelist", "grave_warden", "ember_matron", "wraith", "shade"]:
 		var enemy := Monsters.spawn(self, monster_id, Vector2.ZERO)
 		var picture := enemy.sprite.texture.get_size()
-		rig_ok = rig_ok and picture == Vector2(24, 38) and AssetDB.get_frames(enemy.sprite_id).size() == 4
-		rig_ok = rig_ok and enemy.hit_rect().size == Enemy.BODY_SIZES[enemy.sprite_id] and is_equal_approx(enemy.picture_height(), 38.0 * Player.SPRITE_SCALE)
+		rig_ok = rig_ok and picture == Vector2(20, 32) and AssetDB.get_frames(enemy.sprite_id).size() == 4
+		rig_ok = rig_ok and enemy.hit_rect().size == Enemy.BODY_SIZES[enemy.sprite_id] and is_equal_approx(enemy.picture_height(), 32.0)
 		enemy.queue_free()
-	_check("the humanoid enemies are drawn on the 24 x 38 hero rig with four frames and keep their old hit boxes", rig_ok)
+	_check("the humanoid enemies are drawn on the 20 x 32 hero rig with four frames and keep their old hit boxes", rig_ok)
 	var icons_ok := true
 	for item in [helm, mail, boots, axe]:
 		var icon: Texture2D = HeroLook.slot_icon(item)
@@ -4657,15 +4660,15 @@ func _test_art_style() -> void:
 	_check("a rune picture is as big as the hotbar slot", UiTheme.rune("fire", "s").get_size() == Vector2(18, 18))
 
 	var size := HeroComposer.size()
-	_check("heroes are drawn in a 40 x 38 cell with 21 poses", size == Vector2i(40, 38) and HeroComposer.FRAME_COUNT == 21)
+	_check("heroes are drawn in a 34 x 32 cell with 21 poses", size == Vector2i(34, 32) and HeroComposer.FRAME_COUNT == 21)
 	var strips_ok := true
 	for part in ["base_body", "outfit_robe", "head_hat", "weapon_staff", "back_cape", "boots_boots"]:
 		for facing in HeroComposer.FACINGS:
 			var strip := load("res://assets/sprites/hero/%s_%s.png" % [part, facing]) as Texture2D
 			strips_ok = strips_ok and strip != null and strip.get_size() == Vector2(size.x * HeroComposer.FRAME_COUNT, size.y)
-	_check("the hero part strips are 4 frames of 24 x 38", strips_ok)
+	_check("the hero part strips are 21 poses of 34 x 32", strips_ok)
 
-	# every part of every kind, in every facing and frame, stays off the edge cells of its 24 x 38 frame (the outline needs them,
+	# every part of every kind, in every facing and frame, stays off the edge cells of its 34 x 32 frame (the outline needs them,
 	# and a part that touches them is clipped)
 	var edge_hits: Array[String] = []
 	for key in HERO_PART_KEYS:
@@ -4771,8 +4774,18 @@ func _test_feel_changes() -> void:
 	player._update_pass_through()
 	_check("and ends once they are apart", not player.get_collision_exceptions().has(minion))
 
-	_check("the hero and the enemies are drawn 15% smaller", is_equal_approx(player.sprite.scale.x, 0.85) and is_equal_approx(minion.sprite.scale.x, 0.85))
-	for node in [minion, boss, mini, player]:
+	# the 15% reduction is baked into the pictures (tools/art/shrink.py): nothing is scaled while drawn, every pixel is a real pixel
+	var partner := RemoteAvatar.new()
+	partner.setup(9, {"name": "Pip", "class": "ranger"})
+	add_child(partner)
+	_check("the hero, a partner and the enemies are drawn at scale 1", player.sprite.scale == Vector2.ONE and partner.sprite.scale == Vector2.ONE and minion.sprite.scale == Vector2.ONE and boss.sprite.scale == Vector2.ONE)
+	var hero_frame: Texture2D = AssetDB.get_frames(player._look_prefix + ":down")[0]
+	_check("a hero picture is a 20 x 32 figure in a 34 x 32 cell", HeroComposer.size() == Vector2i(34, 32) and hero_frame.get_size() == Vector2(34, 32) and HeroComposer.portrait(HeroLook.for_class("ranger")).get_size() == Vector2(20, 32))
+	_check("and its feet stand within a pixel of where they stood at 0.85 scale", absf(player.sprite.offset.y + 16.0 - (-9.0 + 19.0) * 0.85) <= 1.0 and partner.sprite.offset == player.sprite.offset)
+	var slime := Monsters.spawn(self, "slime", Vector2.ZERO)
+	var titan := Monsters.spawn(self, "tide_titan", Vector2.ZERO)
+	_check("a monster's picture is baked smaller but its hit box is the one it had", slime.sprite.texture.get_size() == Vector2(14, 11) and slime.hit_rect().size == Vector2(16, 13) and titan.hit_rect().size == Vector2(48, 40) and titan.sprite.scale == Vector2.ONE)
+	for node in [minion, boss, mini, player, partner, slime, titan]:
 		node.queue_free()
 	Game.character = saved
 
@@ -4851,10 +4864,291 @@ func _test_noir_and_poses() -> void:
 	var doll := HeroDoll.make(HeroLook.for_class("channeler"))
 	add_child(doll)
 	var anim := doll.get_node_or_null("DollAnim") as HeroDoll.DollAnim
-	_check("a hero picture on a card breathes, and its figure is a 24 x 38 cell", anim != null and doll.texture.get_size() == Vector2(24, 38))
+	_check("a hero picture on a card breathes, and its figure is a 20 x 32 cell", anim != null and doll.texture.get_size() == Vector2(20, 32))
 	HeroDoll.set_hot(doll, true)
 	_check("a hovered card makes its hero cast", anim.hot)
 	doll.queue_free()
+
+
+# ---------- the hero can be stunned; remote heroes carry the glow ----------
+
+## Steps an enemy's pose for `seconds`; true when every frame stayed pixel-exact (whole-pixel offset, scale one, no rotation).
+func _step_pose(enemy: Enemy, seconds: float) -> bool:
+	var clean := true
+	for i in int(ceil(seconds * 60.0)):
+		enemy._update_pose(1.0 / 60.0)
+		clean = clean and enemy.sprite.offset == enemy.sprite.offset.round() and enemy.sprite.scale == Vector2.ONE and enemy.sprite.rotation == 0.0
+	return clean
+
+
+func _at_rest(enemy: Enemy) -> bool:
+	return enemy.pose == Vector2i.ZERO and enemy.sprite.offset == enemy._rest_offset and enemy.anim.clip_count == 0
+
+
+func _test_enemy_attack_poses() -> void:
+	var saved := Game.character
+	var player: Node2D = await _player_with(_bare(CharacterData.create_sandbox("channeler", ["fire", "water"], 1)))
+	player.global_position = Vector2(5000, 5000)
+	var imp := _fresh_monster("imp", "", Vector2(3000, 3000))
+	var spitter := _fresh_monster("spitter", "", Vector2(3000, 3400))
+	var boss := _fresh_monster("slime_king", "", Vector2(3000, 3800))
+	var slime := _fresh_monster("slime", "", Vector2(3000, 4200))
+	await get_tree().process_frame
+	var boxes := [imp.hit_rect().size, spitter.hit_rect().size, boss.hit_rect().size, slime.hit_rect().size]
+	_check("monsters start at rest", _at_rest(imp) and _at_rest(spitter) and _at_rest(boss) and _at_rest(slime))
+
+	# dash: crouch and lean back, tremble, lean in, ease back
+	player.global_position = imp.global_position + Vector2(60, 0)
+	imp.sprite.flip_h = false
+	imp._attack(0.016, player)
+	var clean := _step_pose(imp, 1.0 / 60.0)
+	_check("a winding-up imp crouches and leans away from you, holding a frame", imp._dash_state == "windup" and imp.pose == Vector2i(-2, 1) and imp.anim.clip_count == 1)
+	imp.sprite.flip_h = true
+	imp._update_pose(0.0)
+	_check("facing left, it leans the other way", imp.pose == Vector2i(2, 1) and imp.sprite.offset == imp._rest_offset + Vector2(2, 1))
+	imp.sprite.flip_h = false
+	imp._dash_left = float(imp.dash["windup"]) * 0.2
+	var trembles := {}
+	for i in 6:
+		imp._age = float(i) / 30.0
+		imp._update_pose(0.0)
+		trembles[imp.pose.x] = true
+	_check("it trembles a pixel either way at the end of the wind-up", trembles.size() == 2 and trembles.has(-1) and trembles.has(-3))
+	imp._attack(float(imp.dash["windup"]), player)
+	clean = _step_pose(imp, 1.0 / 60.0) and clean
+	_check("the dash leans toward you on its first frame", imp._dash_state == "dash" and imp.pose == Vector2i(2, 0) and imp.anim.clip_start == 0 and imp.anim.clip_count == 1)
+	imp._attack(float(imp.dash["time"]) + 0.01, player)
+	clean = _step_pose(imp, 1.0 / 60.0) and clean
+	var easing := imp.pose != Vector2i.ZERO and imp.pose.x <= 2
+	clean = _step_pose(imp, 0.3) and clean
+	_check("after the dash it eases back to exactly rest", imp._dash_state == "" and easing and _at_rest(imp))
+
+	# a shot recoils
+	player.global_position = spitter.global_position + Vector2(70, 0)
+	spitter.sprite.flip_h = false
+	spitter._attack_cd = 0.0
+	spitter._attack(0.016, player)
+	clean = _step_pose(spitter, 1.0 / 60.0) and clean
+	_check("a spitter recoils from its shot and holds a frame", spitter.pose == Vector2i(-2, 0) and spitter.anim.clip_count == 1)
+	clean = _step_pose(spitter, 0.4) and clean
+	_check("then it is back at rest", _at_rest(spitter))
+
+	# a boss slam rises over the telegraph and lands
+	player.global_position = boss.global_position
+	boss._attack_cd = 0.0
+	boss._attack(0.016, player)
+	var telegraphed := boss._telegraph != null
+	clean = _step_pose(boss, float(boss.slam["telegraph"]) * 0.6) and clean
+	_check("a slamming boss rises over its telegraph", telegraphed and boss.pose == Vector2i(0, -3))
+	if telegraphed:
+		boss._telegraph._physics_process(10.0)
+	clean = _step_pose(boss, 1.0 / 60.0) and clean
+	_check("and drops a pixel as it lands", boss._telegraph == null and boss.pose == Vector2i(0, 1))
+	clean = _step_pose(boss, 0.5) and clean
+	_check("then it is back at rest", _at_rest(boss))
+	player._stun_left = 0.0
+
+	# a bite lunges
+	player._hurt_cd = 0.0
+	player.global_position = slime.global_position + Vector2(4, 0)
+	slime._contact_cd = 0.0
+	var hp_before: float = player.hp
+	slime._physics_process(1.0 / 60.0)
+	var side := -1 if slime.sprite.flip_h else 1
+	_check("a biting slime lunges toward you", player.hp < hp_before and slime.pose == Vector2i(2 * side, 0))
+	clean = _step_pose(slime, 0.4) and clean
+	_check("then it is back at rest", _at_rest(slime))
+	_check("poses are whole pixels: never scaled or turned", clean)
+
+	# a stun drops any pose at once
+	player.global_position = imp.global_position + Vector2(60, 0)
+	imp._dash_cd = 0.0
+	imp._attack(0.016, player)
+	imp._update_pose(0.0)
+	var posed := imp.pose != Vector2i.ZERO
+	imp.effects["stun"] = {"time": 2.0, "power": 1.0}
+	imp._attack(0.016, player)
+	imp._update_pose(1.0 / 60.0)
+	_check("a stun cancels a wind-up pose on the spot", posed and imp._dash_state == "" and _at_rest(imp))
+	player.global_position = spitter.global_position + Vector2(70, 0)
+	spitter._attack_cd = 0.0
+	spitter._attack(0.016, player)
+	spitter._update_pose(0.0)
+	posed = spitter.pose != Vector2i.ZERO
+	spitter.effects["stun"] = {"time": 2.0, "power": 1.0}
+	spitter._update_pose(1.0 / 60.0)
+	_check("and a shot's recoil", posed and _at_rest(spitter))
+	_check("hit boxes never change", boxes == [imp.hit_rect().size, spitter.hit_rect().size, boss.hit_rect().size, slime.hit_rect().size])
+
+	# a ghost is left alone
+	var ghost := _fresh_monster("imp", "", Vector2(3000, 4600))
+	await get_tree().process_frame
+	ghost.ghost = true
+	ghost.sprite.offset = Vector2(0, -8)
+	ghost._dash_state = "windup"
+	ghost._physics_process(1.0 / 60.0)
+	_check("a ghost monster is never posed", ghost.pose == Vector2i.ZERO and ghost.sprite.offset == Vector2(0, -8))
+	for node in [imp, spitter, boss, slime, ghost, player]:
+		node.queue_free()
+	await get_tree().process_frame
+	Game.character = saved
+
+
+func _test_hero_stun() -> void:
+	var saved := Game.character
+	var player: Node2D = await _player_with(_bare(CharacterData.create_sandbox("channeler", ["fire", "water"], 1)))
+	player.global_position = Vector2(900, 900)
+	player._hurt_cd = 0.0
+	_check("a hero starts unstunned, with no stars", not player.is_stunned() and player._stun_sprite == null)
+	_check("a stun takes", player.stun(5.0) and player.is_stunned())
+	var stars: Sprite2D = player._stun_sprite
+	var star_id := "stun:%d" % (int(float(player.sprite.texture.get_height()) * player.sprite.scale.y) + 12)
+	_check("three stars circle over the stunned hero", stars != null and stars.get_parent() == player and stars.z_index == 30 and AssetDB.has_art(star_id))
+	_check("no second stun on top of the first", not player.stun(1.0))
+	player.stamina = 100.0
+	player._melee_cd = 0.0
+	player._dodge_cd = 0.0
+	_check("a stunned hero cannot slash", not player.try_melee(Vector2.RIGHT))
+	_check("nor dodge", not player.try_dodge(Vector2.RIGHT) and not player.is_dodging() and player._dodge_buffer == 0.0)
+	_check("nor spin", not player.try_spin())
+	player.caster.mana = player.caster.max_mana
+	player.caster.cooldowns.clear()
+	var bolt: String = player.caster.skill_for("primary")
+	_check("nor cast (the bolt would be ready otherwise)", player.caster.can_cast(bolt) and not player.caster.try_cast(bolt))
+	_check("nor imbue", not player.try_imbue() and not player.imbued)
+	player._hurt_pose = 0.3
+	player._update_sprite()
+	_check("the stun poses play, over the hurt pose", player._anim.clip_start == HeroComposer.CLIPS["stun"].x)
+	player._hurt_pose = 0.0
+	var state: Array = player.net_state()
+	_check("the others are told the hero is stunned", state.size() == 7 and Player.unpack_flags(int(state[6]))["stunned"])
+	player._knock = Vector2.ZERO
+	Input.action_press("move_right")
+	await get_tree().physics_frame
+	await get_tree().physics_frame
+	var stuck: bool = player.velocity.length() < 1.0
+	Input.action_release("move_right")
+	_check("a stunned hero does not walk", stuck)
+
+	player._stun_left = 0.01
+	for i in 30:
+		await get_tree().physics_frame
+		if not player.is_stunned():
+			break
+	await get_tree().process_frame
+	_check("the stun wears off and the stars go with it", not player.is_stunned() and player._stun_sprite == null and not is_instance_valid(stars))
+	_check("then a while of immunity: no stun-lock", player._stun_immune > 1.0 and player._stun_immune <= Player.STUN_IMMUNITY and not player.stun(1.0))
+	player._stun_immune = 0.0
+	player._hurt_cd = 0.0
+	player.stamina = 100.0
+	player._dodge_cd = 0.0
+	_check("a dodge works again", player.try_dodge(Vector2.RIGHT))
+	_check("no stun during a dodge's i-frames", not player.stun(1.0))
+	player.stamina = 100.0
+	player.try_spin()
+	player._dodge_left = 0.0
+	player._iframes_left = 0.0
+	_check("nor during a spin", player.is_spinning() and not player.stun(1.0))
+	player._spin_left = 0.0
+	player._hurt_cd = 0.2
+	_check("nor in an earlier hit's i-frames", not player.stun(1.0))
+	player._hurt_cd = 0.0
+	_check("but freely otherwise", player.stun(0.1))
+	player._stun_left = 0.0
+	player._stun_immune = 0.0
+
+	# a boss slam that lands stuns; a dodged one does not
+	var boss := _fresh_monster("slime_king", "", player.global_position)
+	await get_tree().process_frame
+	player.global_position = boss.global_position
+	player._hurt_cd = 0.0
+	player._stun_immune = 0.0
+	boss._attack_cd = 0.0
+	boss._attack(0.016, player)
+	var slammed := boss._telegraph != null
+	if slammed:
+		boss._telegraph._physics_process(10.0)
+	_check("a boss slam that lands stuns the hero", slammed and player.is_stunned() and is_equal_approx(player._stun_left, Enemy.SLAM_STUN))
+	player._stun_left = 0.0
+	player._stun_immune = 0.0
+	player._hurt_cd = 0.0
+	player.global_position = boss.global_position
+	boss._attack_cd = 0.0
+	boss._attack(0.016, player)
+	player.stamina = 100.0
+	player._dodge_cd = 0.0
+	player._dodge_left = 0.0
+	player.try_dodge(Vector2.RIGHT)
+	var hp_before: float = player.hp
+	slammed = boss._telegraph != null
+	if slammed:
+		boss._telegraph._physics_process(10.0)
+	_check("a slam dodged through neither hurts nor stuns", slammed and player.hp == hp_before and not player.is_stunned())
+	boss.queue_free()
+
+	# the flags: 1 moving, 2 dodging, 4 stunned, glow code << 3
+	var all: Array = Elements.MAIN + Elements.RARE
+	_check("the wire order of the glow codes is pinned", all == ["fire", "water", "air", "mineral", "earth", "light", "dark"])
+	var codes_ok := Player.glow_code("") == 0 and Player.glow_code("martial") == 0 and Player.glow_color(0) == Color("b8b8d8") \
+		and Player.glow_color(99) == Color("b8b8d8") and Player.glow_color(-3) == Color("b8b8d8")
+	for i in all.size():
+		var element: String = all[i]
+		var back := Player.unpack_flags(Player.pack_flags(i % 2 == 0, i % 3 == 0, i % 2 == 1, Player.glow_code(element)))
+		codes_ok = codes_ok and Player.glow_code(element) == i + 1 and int(back["glow"]) == i + 1 and Player.glow_color(int(back["glow"])) == Elements.color_of(element) \
+			and back["moving"] == (i % 2 == 0) and back["dodging"] == (i % 3 == 0) and back["stunned"] == (i % 2 == 1)
+	_check("the flags round-trip: every element's glow code and the stunned bit", codes_ok)
+	_check("old flags read the same: 1 moving, 2 dodging", Player.unpack_flags(3) == {"moving": true, "dodging": true, "stunned": false, "glow": 0})
+	player.caster.selected = 1
+	var glow_flags := Player.unpack_flags(int(player.net_state()[6]))
+	_check("the hero's state carries its glow", Player.glow_color(int(glow_flags["glow"])).to_html(false) == player._glow_hex() and int(glow_flags["glow"]) == Player.glow_code(String(player.caster.elements[1])))
+	_check("the protocol was bumped for the new messages", Net.PROTOCOL == 2)
+
+	# a co-op partner: their pictures follow their glow, and they show the stun
+	var ranger_look := HeroLook.for_class("ranger")
+	var avatar := RemoteAvatar.new()
+	avatar.setup(5, {"name": "Pip", "class": "ranger", "look": ranger_look})
+	add_child(avatar)
+	avatar.apply_state([0.0, 0.0, 10.0, 0.0, 100.0, 100.0, Player.pack_flags(false, false, false, Player.glow_code("fire"))])
+	var fire_prefix: String = avatar._prefix
+	avatar.apply_state([0.0, 0.0, 10.0, 0.0, 100.0, 100.0, Player.pack_flags(false, false, false, Player.glow_code("water"))])
+	_check("a partner's pictures change when their glow changes", fire_prefix != avatar._prefix and avatar._prefix == HeroComposer.register(HeroLook.with_glow(ranger_look, Elements.color_of("water"))))
+	avatar.apply_state([0.0, 0.0, 10.0, 0.0, 100.0, 100.0, Player.pack_flags(false, false, true, Player.glow_code("water"))])
+	avatar._physics_process(0.016)
+	_check("a stunned partner plays the stun poses", avatar.stunned and avatar._anim.clip_start == HeroComposer.CLIPS["stun"].x)
+	avatar.queue_free()
+
+	# an arena rival does the same
+	var rival := PvpGhost.make(self, 6, {"name": "Rex", "class": "ranger", "look": ranger_look})
+	PvpGhost.apply_state(rival, [0.0, 0.0, 10.0, 0.0, 100.0, 100.0, Player.pack_flags(true, false, true, Player.glow_code("dark"))])
+	await get_tree().process_frame
+	rival._ghost_tick(0.016)
+	_check("an arena rival takes the glow and the stun", String(rival.get_meta("prefix")) == HeroComposer.register(HeroLook.with_glow(ranger_look, Elements.color_of("dark"))) \
+		and rival.net_stunned and rival.anim.clip_start == HeroComposer.CLIPS["stun"].x)
+	_check("and is reported back with them", int(PvpGhost.state_of(6, rival)[7]) == Player.pack_flags(true, false, true, Player.glow_code("dark")))
+	rival.queue_free()
+
+	# the slam's stun goes to the machine that plays that hero, with the damage
+	var world := Node2D.new()
+	add_child(world)
+	var hero = PLAYER.instantiate()
+	world.add_child(hero)
+	var fake_dungeon := Node2D.new()
+	world.add_child(fake_dungeon)
+	await get_tree().process_frame
+	var client := CoopClient.new()
+	client.dungeon = fake_dungeon
+	hero._hurt_cd = 0.0
+	client._on_damage(5.0, hero.global_position + Vector2(10, 0), Enemy.SLAM_STUN)
+	_check("the damage message carries the stun", hero.is_stunned() and hero.hp < hero.max_hp)
+	hero._stun_left = 0.0
+	hero._stun_immune = 0.0
+	hero._hurt_cd = 0.0
+	client._on_damage(5.0, hero.global_position + Vector2(10, 0), 0.0)
+	_check("plain damage does not stun", not hero.is_stunned())
+	client.free()
+	world.queue_free()
+	player.queue_free()
+	Game.character = saved
 
 
 # ---------- Phase 6d: multiplayer, the parts that need no network ----------

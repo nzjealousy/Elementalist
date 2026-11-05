@@ -12,6 +12,7 @@ import sys
 sys.path.insert(0, os.path.dirname(__file__))
 from pixel import *  # noqa: F401,F403
 import restyle  # noqa: E402
+import shrink  # noqa: E402
 import style  # noqa: E402
 
 OUT = os.path.join(os.path.dirname(__file__), '..', '..', 'elementalist', 'assets', 'sprites')
@@ -24,7 +25,9 @@ def save(name, frames, moonlit=True):
     """frames: list of Canvas, all the same size. Pictures are snapped onto the Moonlit Glyphwork ramps (restyle.py);
     `moonlit=False` keeps a white picture white, for the ones code tints (pickups)."""
     if moonlit and name.startswith(('enemy_', 'boss_', 'mini_')):   # monsters and bosses are Noir: near-black bodies, one glowing accent
-        frames = [restyle.noirize(f) for f in frames]
+        # then baked 15% smaller (shrink.py) so the game draws them at scale 1; shrinking the finished Noir picture keeps the old look
+        # (shrinking first changes which colours noirize finds glowing: the imp's body would turn orange)
+        frames = [shrink.shrink_canvas(restyle.noirize(f)) for f in frames]
     elif moonlit:   # props keep the Moonlit palette
         frames = [restyle.restyle(f, rim=False, outline=False) for f in frames]
     frames[0].save(os.path.join(OUT, name + '.png'))

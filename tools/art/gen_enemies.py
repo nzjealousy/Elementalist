@@ -1,7 +1,7 @@
 """Humanoid enemies drawn on the hero rig -> elementalist/assets/sprites/<id>.png + <id>_strip.png. Run: python tools/art/gen_enemies.py
 
 Skeleton archer, bone duelist, grave warden, ember matron, wraith and shade share the hero's anatomy (gen_heroes.py: a head about a quarter
-of the height, a neck, shoulders, arms ending in hands, legs ending in shoes, 24 x 38 with a 1 px margin) and the hero's shading
+of the height, a neck, shoulders, arms ending in hands, legs ending in shoes, drawn 24 x 38 and baked to 20 x 32) and the hero's shading
 (region + shade pixels painted through the hero_looks.json ramp: pale highlights, cold shadows, a moonlit rim on the upper-left edge and
 a selective outline). They are drawn facing the viewer in four walking frames (the game flips them to face left or right). Their hit
 boxes are NOT the picture: scripts/combat/enemy.gd keeps the sizes of the smaller drawings they replaced (BODY_SIZES).
@@ -15,7 +15,7 @@ sys.path.insert(0, os.path.dirname(__file__))
 import gen_heroes as gh
 import noir
 from gen_heroes import (ACCENT, BOB, BOOT, CAPE, EYE, FOOT, GEM, HAIR, HAT, HATTRIM, HEAD_Y, HIP, METAL, OUTFIT, PANTS, RC, SHOULDER, SKIN,
-                        STEP, TRIM, WHITE, WOOD, H, W)
+                        STEP, TRIM, WHITE, WOOD)
 from pixel import Canvas, sheet
 
 OUT = os.path.join(os.path.dirname(__file__), '..', '..', 'elementalist', 'assets', 'sprites')
@@ -167,19 +167,19 @@ def hero(builder, *args):
 
 
 def composed(layers, palette, bobs=None):
-    """The four walking frames of an enemy: layers are drawn in order, then coloured in the Noir way (near-black body, one glowing accent,
-    a hard rim on the lit edge, a nearly black outline) and cut to the figure's own 24-column cell."""
+    """The four walking frames of an enemy: layers are drawn in order, baked 15% smaller like the hero parts (shrink.py), then coloured in
+    the Noir way (near-black body, one glowing accent, a hard rim on the lit edge, a nearly black outline) and cut to the figure's own
+    20-column cell."""
     frames = []
     for f in range(4):
         bob = (bobs or BOB)[f]
-        grid = [[None] * W for _ in range(H)]
+        part = RC()
         for layer in layers:                                                # each part on its own canvas, as in the game (parts erase their own cells only)
-            part = RC()
-            layer(part, f, bob, STEP[f])
-            for y in range(H):
-                for x in range(W):
-                    if part.g[y][x] is not None:
-                        grid[y][x] = part.g[y][x]
+            one = RC()
+            layer(one, f, bob, STEP[f])
+            part.merge(one)
+        grid = part.shrunk()
+        W, H = gh.OUT_W, gh.OUT_H
         out = Canvas(W, H)
         for y in range(H):
             for x in range(W):
@@ -202,10 +202,10 @@ def composed(layers, palette, bobs=None):
                     if 0 <= nx < W and 0 <= ny < H and grid[ny][nx] is not None:
                         out.set(x, y, noir.colour(grid[ny][nx][0], 0, palette))
                         break
-        cell = Canvas(gh.CELL, H)
+        cell = Canvas(gh.OUT_CELL, H)
         for y in range(H):
-            for x in range(gh.CELL):
-                cell.px[y * gh.CELL + x] = out.get(gh.OX + x, y)
+            for x in range(gh.OUT_CELL):
+                cell.px[y * gh.OUT_CELL + x] = out.get(gh.OUT_OX + x, y)
         frames.append(cell)
     return frames
 

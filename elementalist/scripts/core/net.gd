@@ -19,14 +19,14 @@ signal room_received(room: Dictionary)
 signal state_received(snapshot: Dictionary)
 signal loot_received(drops: Array, position: Vector2)
 signal kill_received(xp: int, class_xp: int)
-signal damage_received(amount: float, from: Vector2)
+signal damage_received(amount: float, from: Vector2, stun_time: float)
 signal pvp_damage_received(hit: Dictionary, attacker: int)
 signal end_received(info: Dictionary)
 signal said(text: String)
 
 const DEFAULT_PORT := 24680
 const MAX_PLAYERS := 4
-const PROTOCOL := 1
+const PROTOCOL := 2   # 2: DAMAGE carries a stun time, and the state flags carry stunned and the glow
 const SYNC_RATE := 15.0          # snapshots and position updates per second
 const ARENA_KILLS := 3           # kills that win an arena match
 const PVP_DAMAGE := 0.7          # a player's hit on another player lands at this share
@@ -280,14 +280,15 @@ func _kill(xp: int, class_xp: int) -> void:
 	kill_received.emit(xp, class_xp)
 
 
-func send_damage(peer: int, amount: float, from: Vector2) -> void:
+## `stun_time` > 0: the hero is stunned that long too if the hit lands (a boss slam).
+func send_damage(peer: int, amount: float, from: Vector2, stun_time: float = 0.0) -> void:
 	if is_host() and peer != 1:
-		_damage.rpc_id(peer, amount, from)
+		_damage.rpc_id(peer, amount, from, stun_time)
 
 
 @rpc("authority", "reliable")
-func _damage(amount: float, from: Vector2) -> void:
-	damage_received.emit(amount, from)
+func _damage(amount: float, from: Vector2, stun_time: float) -> void:
+	damage_received.emit(amount, from, clampf(stun_time, 0.0, 2.0))
 
 
 func send_say(text: String) -> void:
