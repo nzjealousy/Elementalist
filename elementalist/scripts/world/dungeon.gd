@@ -142,8 +142,8 @@ func _player() -> Node2D:
 # ---------- debug keys ----------
 
 func _unhandled_input(event: InputEvent) -> void:
-	if not (event is InputEventKey and event.pressed and not event.echo) or Net.is_online():
-		return
+	if not OS.is_debug_build() or not (event is InputEventKey and event.pressed and not event.echo) or Net.is_online():
+		return  # (debug builds only: F5 swaps in a sandbox hero, which must never reach a shipped game)
 	match event.keycode:
 		KEY_F5:
 			Game.start_sandbox("channeler")
@@ -669,6 +669,7 @@ func _finish_run(won: bool) -> void:
 	Game.run = {}
 	if not won and bool(death.get("final", false)):
 		SaveStore.delete_slot(Game.slot)  # permadeath: the hero is gone
+		Game.slot = -1  # so no later save (autosave, pause menu, window close) writes the dead hero back
 	else:
 		Game.save_game()
 

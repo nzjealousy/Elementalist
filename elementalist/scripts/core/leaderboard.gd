@@ -50,14 +50,11 @@ static func record(entry: Dictionary) -> int:
 		list.resize(MAX_ENTRIES)
 	if rank > MAX_ENTRIES:
 		rank = 0
-	DirAccess.make_dir_recursive_absolute(path.get_base_dir())
-	var file := FileAccess.open(path, FileAccess.WRITE)
-	if file != null:
-		file.store_string(JSON.stringify({"version": VERSION, "entries": list}))
-		file.close()
+	SaveStore.write_atomic(path, JSON.stringify({"version": VERSION, "entries": list}))  # a crash mid-write keeps the old board
 	return rank
 
 
 static func clear() -> void:
-	if FileAccess.file_exists(path):
-		DirAccess.remove_absolute(path)
+	for p in [path, path + ".bak", path + ".tmp"]:
+		if FileAccess.file_exists(p):
+			DirAccess.remove_absolute(p)

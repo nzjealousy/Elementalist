@@ -70,7 +70,7 @@ moment you touch it, and back to the mouse when you move that). Everything is re
 
 **Debug keys (dungeon):** `[` clear the room, `]` jump to the boss.
 
-**Debug keys (arena only):** `F5` sandbox (all elements, level 10, some gold, materials and gear) -
+**Debug keys (debug builds only, offline):** `F5` sandbox (all elements, level 10, some gold, materials and gear) -
 `F6` open the forge from anywhere - `F10` stand-in for an attunement item: gain a random element.
 
 ## How it plays

@@ -265,7 +265,8 @@ walking into it fades to the next room (loot lying on the floor is picked up on 
 open at once (a forge room also heals you). Beating the boss, or dying, shows a `RunEndScreen` (Enter starts a
 new dungeon with the same character). Monsters get `Monsters.floor_scale` more health and damage per floor,
 and `Game.danger` (floor and room) raises item level and loot luck. Debug keys: `[` clear the room, `]`
-jump to the boss (the F-keys clash with the Godot editor's own debugger shortcuts; F8 even stops the game). `Game.run_text` is the HUD's "Floor 1/3 Room 2/3 ..." line.
+jump to the boss (the F-keys clash with the Godot editor's own debugger shortcuts; F8 even stops the game).
+All debug keys (also F5 sandbox, F6 forge, F10 attune) work only when `OS.is_debug_build()`; the sandbox sets `Game.slot = -1` so it is never saved. `Game.run_text` is the HUD's "Floor 1/3 Room 2/3 ..." line.
 
 ## Items, loot and crafting (`scripts/items/`)
 
@@ -371,6 +372,11 @@ Put it in a loadout's `support` slot.
   versions up and refuses newer ones). A slot is `{version, saved_at, character, meta, run}`: plain data
   only, never objects. `run` is the dungeon in progress (`tier, seed, floor, room, kills, time, hp`); the layout
   is rebuilt from the seed with `DungeonGen.generate(rng, floors, tier, depth_offset)`.
+  `SaveStore.write_atomic` (also used by `Leaderboard.record`) never replaces the old file when a write fails.
+- **When it saves:** entering a room (autosave), begin_run / return_to_camp / training, the pause menu, and
+  closing the window (`Game._notification`, `NOTIFICATION_WM_CLOSE_REQUEST`). Permadeath deletes the slot and
+  sets `Game.slot = -1`. A hero picked for multiplayer (`use_hero`) has `keep_saved_run`: saves write back the
+  slot's own `run`, so co-op or the arena never erases a dungeon in progress (a solo `begin_run` clears it).
 - **Game flow:** title (`MainMenu`) -> `Game.new_game` / `continue_game` -> `scenes/main.tscn`, where
   `Dungeon._make_layout` builds the **camp** (`DungeonGen.camp_room`) or the saved dungeon from `Game.mode`.
   The gate (`CampGate` -> `DungeonSelect`) calls `Game.begin_run(tier)`; a finished run calls

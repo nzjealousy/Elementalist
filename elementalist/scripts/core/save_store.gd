@@ -34,23 +34,31 @@ static func save_slot(slot: int, character: Dictionary, meta: Dictionary, run: D
 		return ERR_INVALID_PARAMETER
 	var payload := {"version": VERSION, "saved_at": int(Time.get_unix_time_from_system()),
 		"character": character, "meta": meta, "run": run}
-	return _write_atomic(slot_path(slot), JSON.stringify(payload))
+	return write_atomic(slot_path(slot), JSON.stringify(payload))
 
 
-static func _write_atomic(path: String, text: String) -> Error:
+## Writes `text` to `path` crash-safe (saves and the leaderboard). On any failure the old file is left as it was.
+static func write_atomic(path: String, text: String) -> Error:
 	DirAccess.make_dir_recursive_absolute(path.get_base_dir())
 	var tmp := path + ".tmp"
 	var file := FileAccess.open(tmp, FileAccess.WRITE)
 	if file == null:
 		return FileAccess.get_open_error()
-	file.store_string(text)
+	var stored := file.store_string(text)
 	file.flush()
+	var err := file.get_error()
 	file.close()
+	if not stored or err != OK:
+		DirAccess.remove_absolute(tmp)  # a half-written file (disk full) must never replace the good one
+		return err if err != OK else ERR_FILE_CANT_WRITE
 	var backup := path + ".bak"
 	if FileAccess.file_exists(path):
 		if FileAccess.file_exists(backup):
 			DirAccess.remove_absolute(backup)
-		DirAccess.rename_absolute(path, backup)  # the last good save survives a crash between the renames
+		var moved := DirAccess.rename_absolute(path, backup)  # the last good save survives a crash between the renames
+		if moved != OK:
+			DirAccess.remove_absolute(tmp)
+			return moved
 	return DirAccess.rename_absolute(tmp, path)
 
 

@@ -41,7 +41,7 @@ first guesses. Light and Dark gems drop only from the second dungeon's bosses (6
 rare roll still exists. The camp is a single room: NPCs, dialogue and the ceremony cutscene are Phase 6.
 The dungeon is still linear. Gamepad bindings were checked by tests and the input map, not on hardware.
 
-**Phase 3 decisions to revisit:** all balance numbers (attribute formulas, XP curve, mastery bonuses, ceremony odds, trait pool, rare-passive thresholds) are first guesses. Light and Dark roll but have no skills yet (passive only). The N menu stands in for the full character creation of Phase 6. F10 stands in for an attunement item until items exist (Phase 4). Debug keys in the arena: F5 sandbox, F10 attune. Combat still uses only the slime enemy.
+**Phase 3 decisions to revisit:** all balance numbers (attribute formulas, XP curve, mastery bonuses, ceremony odds, trait pool, rare-passive thresholds) are first guesses. Light and Dark roll but have no skills yet (passive only). The N menu stands in for the full character creation of Phase 6. F10 stands in for an attunement item until items exist (Phase 4). Debug keys in the arena: F5 sandbox, F10 attune (debug builds only). Combat still uses only the slime enemy.
 
 **Phase 4 decisions to revisit:** every number (drop chances, rarity weights, upgrade and craft
 costs, +10% per level) is a first guess. Gear is not restricted by class (any class can wield any

@@ -56,6 +56,7 @@ var meta: Dictionary = SaveStore.new_meta()  # long-term hero state (difficulty,
 var run: Dictionary = {}    # the dungeon in progress ({} in camp): tier, seed, floor, room, hp ...
 var mode := "camp"          # "camp", "dungeon" or "training": what the main scene builds
 var stashed_hero: CharacterData  # the real hero, kept aside while a sandbox hero trains
+var keep_saved_run := false  # hero picked for multiplayer: Game.run is not theirs, so saves keep the slot's own run
 var _session_start := 0.0
 
 
@@ -89,6 +90,7 @@ func new_game(save_slot: int, difficulty_id: String) -> void:
 	slot = save_slot
 	meta = SaveStore.new_meta(difficulty_id)
 	run = {}
+	keep_saved_run = false
 	mode = "camp"
 	start_new(Classes.NEUTRAL_CLASS)
 	open_creation = true
@@ -105,6 +107,7 @@ func continue_game(save_slot: int) -> bool:
 	character = CharacterData.from_dict(data["character"])
 	meta = data["meta"]
 	run = data["run"]
+	keep_saved_run = false
 	mode = "dungeon" if not run.is_empty() else "camp"
 	boss = null
 	go_to_game()
@@ -120,6 +123,7 @@ func use_hero(save_slot: int) -> bool:
 	character = CharacterData.from_dict(data["character"])
 	meta = data["meta"]
 	run = {}
+	keep_saved_run = true  # the hero's own dungeon in progress stays in the slot, untouched by co-op or the arena
 	mode = "camp"
 	boss = null
 	return true
@@ -132,7 +136,14 @@ func save_game() -> Error:
 	var now := Time.get_ticks_msec() / 1000.0
 	meta["play_time"] = float(meta.get("play_time", 0.0)) + (now - _session_start)
 	_session_start = now
-	return SaveStore.save_slot(slot, character.to_dict(), meta, run)
+	var saved_run: Dictionary = SaveStore.load_slot(slot).get("run", {}) if keep_saved_run else run
+	return SaveStore.save_slot(slot, character.to_dict(), meta, saved_run)
+
+
+## Closing the window saves the hero (synchronously: the window goes as soon as this returns).
+func _notification(what: int) -> void:
+	if what == NOTIFICATION_WM_CLOSE_REQUEST and not creation_required:  # (a hero still in creation is not saved yet)
+		save_game()
 
 
 func go_to_game() -> void:
@@ -154,6 +165,8 @@ func go_to_menu() -> void:
 func begin_run(tier: int) -> void:
 	var spec: Dictionary = TIERS[tier]
 	run = {"tier": tier, "seed": randi(), "floor": 0, "room": 0, "kills": 0, "time": 0.0, "hp": 1.0, "floors": int(spec["floors"])}
+	if not Net.is_online():
+		keep_saved_run = false  # a solo run from the gate is the hero's own; a hosted co-op run is not
 	mode = "dungeon"
 	save_game()
 	_load_game_scene()
@@ -297,6 +310,7 @@ func start_new(class_id: String, affinity: String = CharacterData.ELEMENTALIST, 
 ## Every main element and enough levels that all skills are learned. For combat testing.
 func start_sandbox(class_id: String = "channeler") -> void:
 	character = CharacterData.create_sandbox(class_id, Elements.MAIN, SANDBOX_LEVEL)
+	slot = -1  # the sandbox hero must never be autosaved over the real hero's slot
 	_stock_sandbox_inventory()
 	_show_banner("Sandbox: all elements, level %d %s (subclass unlocked)" % [character.level, Classes.CLASSES[class_id]["name"]])
 

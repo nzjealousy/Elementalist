@@ -3591,6 +3591,7 @@ func _test_phase5() -> void:
 	await _p5_menus()
 	await _p5_camp_and_runs()
 	await _p5_finish_run()
+	_p5_save_safety()
 	_neutral_character()
 
 
@@ -3710,6 +3711,18 @@ func _p5_saves() -> void:
 	_check("bad slot numbers are rejected", SaveStore.save_slot(9, {}, {}) != OK and SaveStore.load_slot(-1).is_empty())
 	var text := FileAccess.get_file_as_string(SaveStore.slot_path(0) + ".bak")
 	_check("a save is plain JSON data", JSON.parse_string(text) is Dictionary and not text.contains("Object("))
+	var plain := SaveStore.dir + "/atomic.txt"
+	for p in [plain, plain + ".bak", plain + ".tmp"]:
+		if FileAccess.file_exists(p):
+			DirAccess.remove_absolute(p)
+	var first_write := SaveStore.write_atomic(plain, "one")
+	var second_write := SaveStore.write_atomic(plain, "two")
+	_check("an atomic write leaves no temp file behind", first_write == OK and second_write == OK and not FileAccess.file_exists(plain + ".tmp"))
+	_check("and keeps the previous version as the backup", FileAccess.get_file_as_string(plain) == "two" and FileAccess.get_file_as_string(plain + ".bak") == "one")
+	var blocked := SaveStore.write_atomic(plain + "/inside.txt", "three")  # a file stands where the folder should be
+	_check("a write that cannot happen reports an error and leaves the old file alone", blocked != OK and FileAccess.get_file_as_string(plain) == "two")
+	for p in [plain, plain + ".bak"]:
+		DirAccess.remove_absolute(p)
 	SaveStore.delete_slot(0)
 	_check("deleting empties the slot", not SaveStore.exists(0))
 	SaveStore.dir = real_dir
@@ -3732,6 +3745,8 @@ func _p5_leaderboard() -> void:
 	_check("the board is sorted best first", int(list[0]["score"]) == 290 and int(list[-1]["score"]) == 50)
 	_check("a run too weak for the board earns no rank", Leaderboard.record({"score": 5}) == 0)
 	_check("the best run so far takes rank 1", Leaderboard.record({"score": 1000}) == 1)
+	_check("the board is written atomically: no temp file left, the last board kept as backup",
+		not FileAccess.file_exists(Leaderboard.path + ".tmp") and FileAccess.file_exists(Leaderboard.path + ".bak"))
 	var file := FileAccess.open(Leaderboard.path, FileAccess.WRITE)
 	file.store_string("nonsense")
 	file.close()
@@ -4098,6 +4113,8 @@ func _p5_finish_run() -> void:
 	run._finish_run(false)
 	_check("a death with nothing left to lose deletes the save", not SaveStore.exists(1))
 	_check("and is recorded as a death", Leaderboard.entries().any(func(e): return e["outcome"] == "died"))
+	_check("and lets go of the slot, so nothing can save the dead hero again",
+		Game.slot == -1 and Game.save_game() == ERR_UNAVAILABLE and not FileAccess.file_exists(SaveStore.slot_path(1)))
 
 	# resuming from a save rebuilds the same dungeon
 	Game.run = {"tier": 2, "seed": 99, "floor": 3, "room": 1, "kills": 7, "time": 123.0}
@@ -4124,6 +4141,53 @@ func _p5_finish_run() -> void:
 	Game.slot = real_slot
 	Game.meta = real_meta
 	Game.run = real_run
+
+
+## Closing the window saves; a hero picked for multiplayer keeps the dungeon saved in their slot.
+func _p5_save_safety() -> void:
+	var real_dir: String = SaveStore.dir
+	var real_slot: int = Game.slot
+	var real_meta: Dictionary = Game.meta
+	var real_run: Dictionary = Game.run
+	var real_mode: String = Game.mode
+	var real_hero := Game.character
+	SaveStore.dir = "user://test_saves"
+	SaveStore.delete_slot(2)
+	var hero := _bare(CharacterData.create_sandbox("vanguard", ["fire"], 3))
+	SaveStore.save_slot(2, hero.to_dict(), SaveStore.new_meta(), {"tier": 1, "seed": 42, "floor": 3, "room": 1})
+	_check("a saved hero can be picked for multiplayer", Game.use_hero(2) and Game.run.is_empty())
+	for session_mode in ["arena", "coop"]:
+		Game.mode = session_mode
+		Game.save_game()
+		_check("saving during %s keeps the hero's own dungeon in the slot" % session_mode, int(SaveStore.load_slot(2)["run"].get("seed", 0)) == 42)
+	Game.mode = "camp"
+	Game.meta["runs"] = 9
+	Game._notification(NOTIFICATION_WM_CLOSE_REQUEST)
+	var closed := SaveStore.load_slot(2)
+	_check("closing the window saves the hero", int(closed["meta"]["runs"]) == 9 and int(closed["run"].get("seed", 0)) == 42)
+	Game.meta["runs"] = 10
+	Game.mode = "training"
+	Game._notification(NOTIFICATION_WM_CLOSE_REQUEST)
+	Game.mode = "camp"
+	Game.creation_required = true
+	Game._notification(NOTIFICATION_WM_CLOSE_REQUEST)
+	Game.creation_required = false
+	Game.slot = -1
+	Game._notification(NOTIFICATION_WM_CLOSE_REQUEST)
+	_check("but not from training, from a hero still in creation, or without a slot", int(SaveStore.load_slot(2)["meta"]["runs"]) == 9)
+	Game.slot = 2
+	Game.keep_saved_run = false  # (as after continue_game, or a solo begin_run)
+	Game.mode = "dungeon"
+	Game.run = {"tier": 1, "seed": 5, "floor": 0, "room": 0}
+	Game.save_game()
+	_check("a solo run is the hero's own and is saved", int(SaveStore.load_slot(2)["run"].get("seed", 0)) == 5)
+	SaveStore.delete_slot(2)
+	SaveStore.dir = real_dir
+	Game.slot = real_slot
+	Game.meta = real_meta
+	Game.run = real_run
+	Game.mode = real_mode
+	Game.character = real_hero
 
 
 # ---------- Phase 6a: names, melee ring, element identity, training grounds ----------
