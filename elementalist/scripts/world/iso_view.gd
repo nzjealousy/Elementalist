@@ -202,6 +202,13 @@ func add_wall(tile: Vector2i, texture: Texture2D, cols: int, rows: int, pillar: 
 	_walls.append(block)
 
 
+## An effect that rises off the ground (death specks, sparkles, a room's motes) stands on the stage at ground point `p`,
+## `lift` px up, sorted with the bodies; in the ground picture it would slide along the floor. Its owner (or itself) frees it.
+func add_upright(node: Node2D, p: Vector2, lift: float = 0.0) -> void:
+	_stage.add_child(node)
+	node.position = (project(p) - Vector2(0.0, lift)).round()
+
+
 func wall_count() -> int:
 	return _walls.size()
 
@@ -319,7 +326,7 @@ func _classify(node: Node) -> int:
 
 func _stands_up(owner: Node) -> bool:
 	return owner is Enemy or owner is Pickup or owner is Interactable or owner is Projectile or owner is EnemyProjectile \
-		or owner is Player or owner is RemoteAvatar
+		or owner is Player or owner is RemoteAvatar or owner is SkillFx.FxCorpse
 
 
 func _make_mirror(node: CanvasItem) -> CanvasItem:

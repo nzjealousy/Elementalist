@@ -81,6 +81,13 @@ rebuilds all art and runs the art gate. The two other styles stay in `style.py` 
 
    The floors are already near black, so the strengths sit higher (0.72 to 0.82) than a typical moody grade would; lower and the far floor of a
    vault room drops to about RGB 20. Screenshots: `art/lighting_<place>.png`, `art/lighting_telegraph.png`, `art/lighting_soft.png`, `art/lighting_off.png`.
+9. **Particles** (`SkillFx`, `AmbientMotes`). Every effect is square 1-2 px specks, never a soft blob; colour comes only from the element
+   (`Elements.COLORS`), the loot's rarity colour or a tinted off-white (floor dust a cold grey-violet, level-up gold, reward violet, the hero's
+   death a cold blue), never pure black or white, and nothing is dimmed by the room's light. Each place has its own air, at most 24 faint specks
+   (alpha <= 0.5, added as light) floating above the floor: camp, pale blue-violet fireflies that blink; vault, slow ash and dust; crypt, teal
+   motes rising like bubbles; hollow, green spores drifting sideways; ember, orange embers rising off the floor and cooling to red; spire, violet
+   star-dust falling slowly. Setting "Ambient particles" turns them off. A monster dissolves into rising specks of the element that killed it
+   (bosses: more, two rings and an upward spray). Screenshots: `art/fx_*.png` (the event ones are four-frame strips).
 
 ## In the game
 

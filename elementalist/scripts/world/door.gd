@@ -47,6 +47,7 @@ func unlock() -> void:
 		sprite.texture = AssetDB.get_texture("door_open")
 		SpriteAnim.attach(sprite, "door_open", 8.0, self)   # an open doorway is a row of turning portal pads
 	SkillFx.ring(get_parent(), global_position, 16.0, Color("9cf0d8"), 0.5, 1.5)
+	SkillFx.dust(get_parent(), global_position, size_px * 0.5, 14, true)  # the bars drop: a puff off the sill
 	Sfx.play("door_open", &"SFX", -4.0)
 
 

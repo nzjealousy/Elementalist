@@ -249,6 +249,7 @@ func _load_room(floor_number: int, room_number: int) -> void:
 
 
 func _fanfare(sound: String) -> void:
+	SkillFx.fanfare(_player(), sound == "reward")
 	Sfx.play(sound)
 	Sfx.duck(0.9)
 
@@ -396,6 +397,8 @@ func _build_room() -> void:
 		_exit_door = Door.new()
 		_exit_door.setup(Rect2(Vector2(exit_rect.position) * TILE, Vector2(exit_rect.size) * TILE), String(room["exit"]))
 		_room_node.add_child(_exit_door)
+	if Settings.get_value("ambient_particles"):
+		_room_node.add_child(AmbientMotes.make(_theme(), Rect2(TILE, TILE, (cols - 2) * TILE, (rows - 2) * TILE)))
 
 
 func _add_tile(texture: Texture2D, tile: Vector2i, solid: bool) -> void:

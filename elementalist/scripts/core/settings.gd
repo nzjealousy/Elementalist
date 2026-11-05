@@ -19,6 +19,7 @@ const DEFAULTS := {
 	"damage_numbers": true,
 	"iso_view": true,          # the isometric HD-2D picture (off: the flat top-down one); applies from the next scene
 	"lighting": "full",        # "full", "soft" (brighter, dimmer pools, no flicker) or "off"; isometric view only, from the next scene
+	"ambient_particles": true, # each room's faint drifting specks (AmbientMotes); applies from the next room
 	"melee_indicator": true,   # the slash reach ring and wedge around the hero
 	"hud_scale": 1.0,          # 0.75 .. 1.5
 	"aim_assist": 0.5,         # controller only: pulls the aim toward the nearest enemy
@@ -60,6 +61,8 @@ func reset_to_defaults() -> void:
 ## Keeps a value the right type and inside its range, whatever was typed into the file.
 func _clean(key: String, value: Variant) -> Variant:
 	var default: Variant = DEFAULTS[key]
+	if key == "ambient_particles":
+		return value if value is bool else default
 	if default is bool:
 		return bool(value)
 	if default is float:

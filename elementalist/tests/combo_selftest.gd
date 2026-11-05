@@ -65,6 +65,7 @@ func _ready() -> void:
 	_test_more_classes_and_attributes()
 	await _test_support_skills()
 	await _test_vfx_and_indicators()
+	await _test_event_effects()
 	await _test_monsters()
 	await _test_boss_and_gems()
 	_test_dungeon_gen()
@@ -2404,6 +2405,94 @@ func _test_support_skills() -> void:
 	_neutral_character()
 
 
+## The particles-and-effects pass: the shared cap, each event effect in a flat scene, the room's motes, and deaths that never wait.
+func _test_event_effects() -> void:
+	var holder := Node2D.new()
+	add_child(holder)
+	await get_tree().create_timer(0.6).timeout  # earlier tests' sparks finish
+	var peak := 0
+	for i in 500:  # an imbued spin's worth of sparks many times over, with priority puffs mixed in
+		if i % 10 == 0:
+			SkillFx.dust(holder, Vector2(i, 0), Vector2(3, 1), 6, true)
+		else:
+			HitFx.burst(holder, Vector2(i, 0), Color("ff8040"))
+		peak = maxi(peak, SkillFx.live_count())
+	_check("500 effects at once never hold more than the cap (peak %d of %d)" % [peak, SkillFx.MAX_LIVE], peak > 0 and peak <= SkillFx.MAX_LIVE)
+	var reserved := holder.get_children().filter(func(n): return n is CPUParticles2D and is_equal_approx(n.lifetime, 0.4)).size()  # the dust puffs
+	_check("when it fills, hit sparks stop and the priority puffs take the reserve (%d)" % reserved, not SkillFx.admit() and reserved >= SkillFx.RESERVE)
+	await get_tree().create_timer(0.8).timeout
+	_check("and the count is back to 0 once they are done", SkillFx.live_count() == 0 and holder.get_child_count() == 0)
+	holder.free()
+
+	var flat := Node2D.new()   # no IsoView here: the flat view's path
+	add_child(flat)
+	var hero := Node2D.new()
+	flat.add_child(hero)
+	var foe: Enemy = SLIME.instantiate()
+	flat.add_child(foe)
+	await get_tree().process_frame
+	SkillFx.death(flat, foe)
+	SkillFx.hero_death(flat, Vector2.ZERO)
+	SkillFx.fanfare(hero, false)
+	SkillFx.sparkle(flat, Vector2.ZERO, Color("ffd84a"))
+	SkillFx.chest_puff(flat, Vector2.ZERO)
+	SkillFx.dust(flat, Vector2.ZERO, Vector2(3, 1))
+	SkillFx.dust_ring(flat, Vector2.ZERO, 30.0)
+	foe.queue_free()
+	for i in 3:
+		await get_tree().process_frame
+	var started := flat.find_children("*", "CPUParticles2D", true, false)
+	_check("every event effect starts in a flat scene (%d emitters)" % started.size(), started.size() == 7 and started.all(func(n): return n.emitting)
+		and flat.get_children().any(func(n): return n is SkillFx.FxCorpse) and flat.get_children().any(func(n): return n is SkillFx.FxFollow))
+	await get_tree().create_timer(2.7).timeout  # the hero's slow fade is the longest
+	_check("and every one frees itself when done", flat.find_children("*", "CPUParticles2D", true, false).is_empty() and hero.get_child_count() == 0
+		and not flat.get_children().any(func(n): return n is SkillFx.FxCorpse or n is SkillFx.FxFollow))
+	flat.free()
+
+	var looks_ok := true
+	for place in AmbientMotes.LOOKS:
+		var look: Dictionary = AmbientMotes.LOOKS[place]
+		looks_ok = looks_ok and int(look["amount"]) <= AmbientMotes.MAX_SPECKS and float(look["alpha"]) <= 0.5
+	_check("every place has its motes: at most 24 specks, alpha at most 0.5", looks_ok and AmbientMotes.LOOKS.size() == Lighting.AMBIENT.size()
+		and Lighting.AMBIENT.keys().all(func(k): return AmbientMotes.LOOKS.has(k)))
+	var real_ambient: bool = Settings.get_value("ambient_particles")
+	Settings.values["ambient_particles"] = false
+	var world := Node2D.new()
+	add_child(world)
+	var dungeon := Dungeon.new()
+	dungeon.with_ui = false
+	dungeon.layout = [[DungeonGen.camp_room()]]
+	world.add_child(dungeon)
+	await get_tree().process_frame
+	_check("ambient off creates no particle nodes", world.find_children("*", "CPUParticles2D", true, false).is_empty()
+		and not dungeon._room_node.get_children().any(func(n): return n is AmbientMotes))
+	Settings.values["ambient_particles"] = true
+	dungeon.debug_goto(0, 0)
+	await get_tree().process_frame
+	var motes: Array = dungeon._room_node.get_children().filter(func(n): return n is AmbientMotes)
+	_check("ambient on gives the room one emitter of faint specks", motes.size() == 1 and motes[0].emitter.amount <= AmbientMotes.MAX_SPECKS
+		and motes[0].emitter.get_parent() == motes[0] and not motes[0].emitter.one_shot)
+	Settings.values["ambient_particles"] = real_ambient
+	world.queue_free()
+	await get_tree().process_frame
+
+	_neutral_character()
+	var victim: Enemy = SLIME.instantiate()
+	victim.max_hp = 5.0
+	victim.xp_reward = 3
+	add_child(victim)
+	var xp_before := Game.character.xp
+	var fired := [false]
+	victim.died.connect(func(_x): fired[0] = true)
+	_physical(victim)
+	_check("a death effect holds nothing up: the died signal, the xp and the monster's leaving happen in the same call",
+		fired[0] and Game.character.xp == xp_before + 3 and victim.is_queued_for_deletion()
+		and get_children().any(func(n): return n is SkillFx.FxCorpse))
+	await get_tree().process_frame
+	_check("and it is gone by the next frame, while its picture still fades", not is_instance_valid(victim)
+		and get_children().any(func(n): return n is SkillFx.FxCorpse))
+
+
 func _test_vfx_and_indicators() -> void:
 	_check("every element and the martial set have a look", Elements.MAIN.all(func(e): return SkillFx.PROFILES.has(e)) and SkillFx.PROFILES.has("martial") and SkillFx.profile("").has("colors"))
 	_check("the elements look different from each other", SkillFx.profile("fire")["gravity"] != SkillFx.profile("water")["gravity"] and SkillFx.profile("fire")["colors"] != SkillFx.profile("air")["colors"])
@@ -3637,6 +3726,15 @@ func _p5_settings_and_controls() -> void:
 	Settings.values["lighting"] = "full"
 	Settings.load_settings()
 	_check("the lighting setting survives a save and load", Settings.get_value("lighting") == "off")
+	_check("ambient particles are on by default", Settings.DEFAULTS["ambient_particles"] == true)
+	Settings.set_value("ambient_particles", "no")
+	var ambient_string_ok: bool = Settings.get_value("ambient_particles") == true
+	Settings.set_value("ambient_particles", 0)
+	_check("an ambient particles value that is not a bool is on", ambient_string_ok and Settings.get_value("ambient_particles") == true)
+	Settings.set_value("ambient_particles", false)
+	Settings.values["ambient_particles"] = true
+	Settings.load_settings()
+	_check("the ambient particles setting survives a save and load", Settings.get_value("ambient_particles") == false)
 	Settings.reset_to_defaults()
 	DirAccess.remove_absolute(Settings.path)
 	Settings.path = real_path
@@ -3851,7 +3949,7 @@ func _p5_menus() -> void:
 	_check("the audio tab has four sliders", settings.find_children("*", "HSlider", true, false).size() == 4)
 	settings.open(1)
 	await get_tree().process_frame
-	_check("the game tab has toggles and sliders", settings.find_children("*", "CheckButton", true, false).size() == 5 and settings.find_children("*", "HSlider", true, false).size() == 4)
+	_check("the game tab has toggles and sliders", settings.find_children("*", "CheckButton", true, false).size() == 6 and settings.find_children("*", "HSlider", true, false).size() == 4)
 	var screen_size := Vector2(ProjectSettings.get_setting("display/window/size/viewport_width"), ProjectSettings.get_setting("display/window/size/viewport_height"))
 	await get_tree().process_frame  # the scroll's layout settles
 	var game_panel: Vector2 = (settings._body.get_parent().get_parent() as Control).size
@@ -4683,7 +4781,10 @@ func _test_iso() -> void:
 	var view := IsoView.attach(dungeon)
 	dungeon.iso_view = view
 	await get_tree().process_frame
+	var real_ambient: bool = Settings.get_value("ambient_particles")
+	Settings.values["ambient_particles"] = true
 	dungeon.debug_goto(0, 0)  # builds the room again, now with walls
+	Settings.values["ambient_particles"] = real_ambient
 	await get_tree().process_frame
 	await get_tree().process_frame
 	_check("the view is the active one and draws in 2D only", IsoView.active == view and view.find_children("*", "Camera3D", true, false).is_empty() and view.find_children("*", "Node3D", true, false).is_empty())
@@ -4721,6 +4822,11 @@ func _test_iso() -> void:
 	await get_tree().process_frame
 	await get_tree().process_frame
 	_check("floating text becomes a label on the stage", view._mirrors.keys().any(func(n): return n is FloatText) and view._stage.get_children().any(func(c): return c is Label and c.text == "-9"))
+	_check("the room's motes float on the stage, not flat in the ground picture", view._stage.get_children().any(func(c): return c is CPUParticles2D and not c.one_shot))
+	SkillFx.death(dungeon._room_node, enemy)
+	await get_tree().process_frame
+	_check("a fallen monster's fading picture stands up like a body, its specks rise on the stage", view._mirrors.keys().any(func(n): return is_instance_valid(n) and n.get_parent() is SkillFx.FxCorpse) \
+		and view._stage.get_children().any(func(c): return c is CPUParticles2D and c.one_shot))
 	enemy.queue_free()
 	await get_tree().process_frame
 	await get_tree().process_frame

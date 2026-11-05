@@ -550,3 +550,34 @@ they are used.
   controls list so it fits the 180 px screen). Per-place ambients are data in `Lighting.AMBIENT` (see docs/ART_DIRECTION.md).
 * **Cost** (RTX 4050 laptop, 1280 x 720, vsync off, a vault room with 22 monsters, bolts in flight, 24 lights on): 203 fps / 4.9 ms a frame with
   "full", 220 fps / 4.55 ms with "off"; `Lighting._process` itself takes about 0.23 ms; 1000 updates created 0 objects and 0 bytes.
+
+## Effects (`scripts/combat/skill_fx.gd`, `hit_fx.gd`, `scripts/world/ambient_motes.gd`)
+
+* **Helpers.** Everything is code-built `CPUParticles2D` (one-shot, freed on `finished`), `FxRing` and glow sprites: no PNG. Spell looks
+  (`SkillFx.PROFILES`, `burst`, `cast_burst`, `trail`, `impact`, `area_burst`, `aura`) are as before; the event effects are
+  `death(parent, enemy)`, `hero_death`, `fanfare(hero, reward)`, `sparkle` (loot collected), `chest_puff`, `dust` (a low floor puff) and
+  `dust_ring` (a slam's cloud), all built on `specks(color, amount, life)`: square 1-2 px specks, lighter at birth, fading out.
+* **The cap.** `SkillFx.MAX_LIVE` = 48 short-lived emitters alive at once across every helper (HitFx included): `admit(priority)` says whether
+  a new one may start, `launch` / `launch_upright` start and count it, `live_count()` drops the freed ones. Hit sparks stop at
+  `MAX_LIVE - RESERVE` (36); deaths, level-ups, the hero's death, the boss slam and a door's dust are priority and may take the last 12. An impact
+  over budget drops its ring and flash too. Telegraph and spawn rings (`ring` called directly) are never capped.
+* **Where each event plays.** A monster's death: `Enemy._damage` (it replaced the old green burst); the monster is still freed in the same call, so
+  XP, loot, `died` and the room's clear happen when they always did, and an `FxCorpse` (its last picture) fades for 0.4 s (0.6 s for a boss or
+  mini boss) so it does not pop. The hero's death: `Player.take_damage`. Level-up and reward: `Dungeon._fanfare`, beside the sound. Loot:
+  `Pickup._collect`, `Chest.interact`, `Door.unlock`. Dodge: `Player.try_dodge` and the frame the roll ends. Slam: `Enemy._land_slam`.
+* **Through the isometric view.** Rings and dust lie on the floor, so they go to the ground picture like every flat effect. Effects that rise
+  (death specks, the level-up column, sparkles, the chest puff, the room's motes) would only slide along the floor there, so `launch_upright` puts
+  them on IsoView's stage instead (`IsoView.add_upright(node, ground_point, lift)`), sorted with the bodies; `SkillFx.FxFollow` keeps the level-up
+  column on the walking hero. `FxCorpse` is in `IsoView._stands_up`, so the fading picture gets a standing mirror and a fading shadow. In the flat
+  view (no IsoView) the same nodes sit in the world at the point minus the lift. Nothing here carries `Lighting.LIT`: effects keep their colour.
+* **Ambient motes.** `Dungeon._build_room` adds one `AmbientMotes` per room (unless `Settings.ambient_particles` is false: then nothing is created),
+  freed with the room. One emitter, at most 24 specks (`MAX_SPECKS`), alpha at most 0.5, born at 48 spots scattered once over the floor
+  (`EMISSION_SHAPE_POINTS`, already projected and lifted in the isometric view), `preprocess` so the room starts full. On the stage it sits at the
+  origin, which sorts before every wall and body, so they hide the specks behind them. Looks per place: `AmbientMotes.LOOKS`
+  (docs/ART_DIRECTION.md). Its own RandomNumberGenerator, so it never shifts the game's `randf()`.
+* **Setting.** `ambient_particles` (bool, default true; anything not a bool is true) in `Settings._clean`; "Ambient particles (next room)" in the
+  Game tab.
+* **Cost** (RTX 4050 laptop, 1280 x 720 window, vsync off, editor open, a vault room with 22 monsters and a boss, a spin every 0.55 s, the boss
+  killed at 1.5 s, 4 s averaged; "before" = no cap, no event effects, no motes, switched by a temporary flag): 10.5 ms (95 fps) with the effects,
+  10.6 ms before. Worst case (also seven element hits on every monster at each spin, ~150 hits a frame): 53 ms with the cap (36 emitters live) vs
+  56 ms without it (179 live); that case is dominated by the damage numbers, not the particles.

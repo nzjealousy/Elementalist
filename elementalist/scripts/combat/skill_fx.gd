@@ -87,28 +87,101 @@ static func particles(element: String, one_shot: bool, amount_scale: float = 1.0
 	return node
 
 
-## A one-off burst of the element's particles at `pos`; frees itself.
-static func burst(parent: Node, pos: Vector2, element: String, amount_scale: float = 1.0) -> void:
-	if parent == null:
-		return
-	var node := particles(element, true, amount_scale)
+# ---------- the budget ----------
+
+## One cap on the short-lived emitters of every helper here and in HitFx: an imbued spin can land ~70 hits in one frame.
+## Hit sparks stop at MAX_LIVE - RESERVE; the last RESERVE slots are kept for priority effects (deaths, level-ups, bosses).
+const MAX_LIVE := 48
+const RESERVE := 12
+static var _live: Array = []   # the emitters started here (untyped: it may hold freed ones until the next count)
+
+
+## Whether a new short-lived emitter may start now.
+static func admit(priority: bool = false) -> bool:
+	return live_count() < (MAX_LIVE if priority else MAX_LIVE - RESERVE)
+
+
+## The emitters alive now (a freed one, or one outside the tree, no longer counts).
+static func live_count() -> int:
+	for i in range(_live.size() - 1, -1, -1):
+		if not is_instance_valid(_live[i]) or not (_live[i] as Node).is_inside_tree():
+			_live.remove_at(i)
+	return _live.size()
+
+
+## Starts a one-shot emitter at `pos` in the flat world; it frees itself when done and counts against the cap meanwhile.
+static func launch(parent: Node, node: CPUParticles2D, pos: Vector2) -> void:
 	parent.add_child(node)
 	node.global_position = pos
+	_go(node)
+
+
+## Starts a one-shot emitter that rises off the ground: in the isometric view it stands on the stage at ground point `pos`,
+## `lift` px up, sorted with the bodies (in the ground picture it would slide along the floor); in the flat view it sits at
+## `pos` minus the lift. With `follow` it rides along on that body (a level-up column).
+static func launch_upright(parent: Node, node: CPUParticles2D, pos: Vector2, lift: float = 0.0, follow: Node2D = null) -> void:
+	var view := IsoView.active
+	var iso := view != null and view.is_inside_tree()
+	var holder: Node2D = node
+	if follow != null:
+		var rider := FxFollow.new()
+		rider.target = follow
+		rider.iso = iso
+		rider.lift = lift
+		node.local_coords = true  # the specks move with the body
+		rider.add_child(node)
+		node.finished.connect(rider.queue_free)
+		holder = rider
+	if iso:
+		node.z_index = 0  # sorted with the bodies
+		view.add_upright(holder, pos, lift)
+	else:
+		parent.add_child(holder)
+		holder.global_position = pos - Vector2(0.0, lift)
+	_go(node)
+
+
+static func _go(node: CPUParticles2D) -> void:
 	node.emitting = true
 	node.finished.connect(node.queue_free)
+	_live.append(node)
+
+
+## Plain square specks of one colour: brighter at birth, fading out. Callers shape the motion.
+static func specks(color: Color, amount: int, life: float) -> CPUParticles2D:
+	var node := CPUParticles2D.new()
+	node.amount = maxi(amount, 1)
+	node.lifetime = life
+	node.one_shot = true
+	node.explosiveness = 0.85
+	node.spread = 180.0
+	node.gravity = Vector2.ZERO
+	node.scale_amount_min = 1.0
+	node.scale_amount_max = 2.0
+	var ramp := Gradient.new()
+	ramp.set_color(0, Color(color.lightened(0.35), 1.0))
+	ramp.set_color(1, Color(color, 0.0))
+	ramp.add_point(0.5, color)
+	node.color_ramp = ramp
+	node.z_index = 50
+	return node
+
+
+## A one-off burst of the element's particles at `pos`; frees itself.
+static func burst(parent: Node, pos: Vector2, element: String, amount_scale: float = 1.0, priority: bool = false) -> void:
+	if parent == null or not admit(priority):
+		return
+	launch(parent, particles(element, true, amount_scale), pos)
 
 
 ## The flash at a caster's hand: a cone of particles thrown along `dir`.
 static func cast_burst(parent: Node, pos: Vector2, element: String, dir: Vector2) -> void:
-	if parent == null:
+	if parent == null or not admit():
 		return
 	var node := particles(element, true, 0.6)
 	node.spread = 35.0
 	node.direction = dir
-	parent.add_child(node)
-	node.global_position = pos
-	node.emitting = true
-	node.finished.connect(node.queue_free)
+	launch(parent, node, pos)
 	var flash := glow_sprite(Elements.color_of(element), 0.9)
 	flash.z_index = 40
 	parent.add_child(flash)
@@ -132,6 +205,8 @@ static func trail(projectile: Node2D, element: String) -> void:
 
 ## Impact: particles plus a small shock ring.
 static func impact(parent: Node, pos: Vector2, element: String) -> void:
+	if parent == null or not admit():
+		return  # over budget: the ring and the flash go too
 	burst(parent, pos, element, 0.7)
 	SpriteAnim.burst(parent, "fx_hit", pos, Elements.color_of(element) if element != "" else Color("e8e8f0"), 0.9)
 	ring(parent, pos, 9.0, Elements.color_of(element), 0.2, 1.0)
@@ -190,6 +265,165 @@ static func ring(parent: Node, pos: Vector2, radius: float, color: Color, time: 
 	var tween := node.create_tween()
 	tween.tween_property(node, "t", 1.0, time)
 	tween.tween_callback(node.queue_free)
+
+
+# ---------- events: deaths, level-ups, loot, dust ----------
+
+const DUST := Color("a39bb0")          # floor dust: a cold grey-violet, lighter than the obsidian floors so it reads
+const GOLD := Color("f8d060")          # a level-up and a chest
+const REWARD := Color("b868ff")        # a reward card is ready
+const COLD := Color("a8bcf0")          # the hero's last breath
+
+
+## A monster falls: its last picture fades where it stood while specks of the killing element (else its variant's) rise off
+## it and a small ring fades; a boss or mini boss gets more specks, two rings and a brief upward spray. Only a picture: the
+## monster is freed at once as before, so loot, XP and the room's clear happen when they always did.
+static func death(parent: Node, enemy: Enemy) -> void:
+	if parent == null or enemy.sprite == null:
+		return
+	var element := enemy.last_element if enemy.last_element != "" else enemy.variant
+	var color := Elements.color_of(element if element != "" else "martial")
+	var big := enemy.boss or enemy.mini
+	var height := enemy.picture_height()
+	var width := float(enemy.sprite.texture.get_width()) if enemy.sprite.texture != null else 16.0
+	var pos := enemy.global_position
+	_corpse(parent, enemy, color, 0.6 if big else 0.4)
+	ring(parent, pos, 22.0 if big else 10.0, color, 0.5 if big else 0.45, 1.0)
+	if big:
+		ring(parent, pos, 36.0, color.lightened(0.2), 0.8, 1.0)
+	if not admit(true):
+		return
+	var motes := specks(color, 32 if big else 18, 0.75 if big else 0.5)
+	motes.emission_shape = CPUParticles2D.EMISSION_SHAPE_RECTANGLE
+	motes.emission_rect_extents = Vector2(width * 0.3, height * 0.35)
+	motes.direction = Vector2.UP
+	motes.spread = 50.0
+	motes.gravity = Vector2(0, -24)
+	motes.initial_velocity_min = 3.0
+	motes.initial_velocity_max = 12.0
+	launch_upright(parent, motes, pos, height * 0.5)
+	if big and admit(true):
+		var spray := specks(color.lightened(0.15), 24, 0.8)
+		spray.explosiveness = 1.0
+		spray.direction = Vector2.UP
+		spray.spread = 22.0
+		spray.gravity = Vector2(0, 90)
+		spray.initial_velocity_min = 40.0
+		spray.initial_velocity_max = 80.0
+		launch_upright(parent, spray, pos, height * 0.4)
+
+
+## The fallen monster's picture, fading out in its element's colour. IsoView stands it up like a body (FxCorpse).
+static func _corpse(parent: Node, enemy: Enemy, color: Color, time: float) -> void:
+	var corpse := FxCorpse.new()
+	var picture := Sprite2D.new()
+	picture.texture = enemy.sprite.texture
+	picture.offset = enemy.sprite.offset
+	picture.flip_h = enemy.sprite.flip_h
+	picture.scale = enemy.sprite.scale
+	picture.modulate = enemy.sprite.modulate
+	corpse.add_child(picture)
+	corpse.z_index = enemy.z_index
+	parent.add_child(corpse)
+	corpse.global_position = enemy.global_position
+	var fade := corpse.create_tween()
+	fade.tween_property(picture, "modulate", Color(color.lightened(0.3), 0.0), time)
+	fade.tween_callback(corpse.queue_free)
+
+
+## The hero falls: cold specks drift up off them, slowly, for over a second.
+static func hero_death(parent: Node, pos: Vector2) -> void:
+	if parent == null or not admit(true):
+		return
+	var motes := specks(COLD, 36, 1.4)
+	motes.explosiveness = 0.3
+	motes.emission_shape = CPUParticles2D.EMISSION_SHAPE_RECTANGLE
+	motes.emission_rect_extents = Vector2(7, 9)
+	motes.direction = Vector2.UP
+	motes.spread = 40.0
+	motes.gravity = Vector2(0, -14)
+	motes.initial_velocity_min = 6.0
+	motes.initial_velocity_max = 14.0
+	launch_upright(parent, motes, pos, 10.0)
+
+
+## A level-up (gold) or a ready reward (violet): a ring grows from the hero's feet and a column of specks rises, riding along.
+static func fanfare(hero: Node2D, reward: bool) -> void:
+	if hero == null or not hero.is_inside_tree() or not admit(true):
+		return
+	var color := REWARD if reward else GOLD
+	ring(hero, Vector2.ZERO, 18.0, color, 0.8, 1.5, true)
+	var column := specks(color, 20, 0.8)
+	column.explosiveness = 0.3
+	column.emission_shape = CPUParticles2D.EMISSION_SHAPE_RECTANGLE
+	column.emission_rect_extents = Vector2(6, 1)
+	column.direction = Vector2.UP
+	column.spread = 6.0
+	column.gravity = Vector2(0, -10)
+	column.initial_velocity_min = 30.0
+	column.initial_velocity_max = 55.0
+	column.scale_amount_max = 1.5
+	launch_upright(hero.get_parent(), column, hero.global_position, 0.0, hero)
+
+
+## Loot collected: a tiny sparkle in its colour.
+static func sparkle(parent: Node, pos: Vector2, color: Color) -> void:
+	if parent == null or not admit():
+		return
+	var node := specks(color, 12, 0.4)
+	node.explosiveness = 1.0
+	node.initial_velocity_min = 20.0
+	node.initial_velocity_max = 36.0
+	node.gravity = Vector2(0, 30)
+	node.scale_amount_max = 1.5
+	launch_upright(parent, node, pos, 7.0)
+
+
+## A chest opens: a small upward puff of gold specks.
+static func chest_puff(parent: Node, pos: Vector2) -> void:
+	if parent == null or not admit():
+		return
+	var node := specks(GOLD, 14, 0.55)
+	node.explosiveness = 1.0
+	node.direction = Vector2.UP
+	node.spread = 50.0
+	node.gravity = Vector2(0, 80)
+	node.initial_velocity_min = 24.0
+	node.initial_velocity_max = 44.0
+	launch_upright(parent, node, pos, 6.0)
+
+
+## A low puff of floor dust over `extents` (a dodge's feet, a door's sill). It stays on the ground picture.
+static func dust(parent: Node, pos: Vector2, extents: Vector2, amount: int = 6, priority: bool = false) -> void:
+	if parent == null or not admit(priority):
+		return
+	var node := specks(DUST, amount, 0.4)
+	node.emission_shape = CPUParticles2D.EMISSION_SHAPE_RECTANGLE
+	node.emission_rect_extents = extents
+	node.initial_velocity_min = 6.0
+	node.initial_velocity_max = 16.0
+	node.damping_min = 20.0
+	node.damping_max = 30.0
+	node.scale_amount_max = 1.5
+	node.z_index = 3   # just above the floor and its rings' pool, under the bodies in the flat view
+	launch(parent, node, pos)
+
+
+## A boss slam's dust cloud: specks born along the circle's edge roll outward and settle.
+static func dust_ring(parent: Node, pos: Vector2, radius: float) -> void:
+	if parent == null or not admit(true):
+		return
+	var node := specks(DUST, 36, 0.8)
+	node.explosiveness = 1.0
+	node.emission_shape = CPUParticles2D.EMISSION_SHAPE_SPHERE_SURFACE
+	node.emission_sphere_radius = radius * 0.9
+	node.initial_velocity_min = 2.0
+	node.initial_velocity_max = 6.0
+	node.radial_accel_min = 30.0
+	node.radial_accel_max = 60.0
+	node.damping_min = 10.0
+	node.damping_max = 20.0
+	launch(parent, node, pos)
 
 
 ## A lasting aura of particles on `target` (a buff, or a coated blade). Returns it so the owner
@@ -285,6 +519,26 @@ class FxCharge extends Node2D:
 			var target: Vector2 = to_local(caster.area_target(skill_id))
 			draw_arc(target, area_radius * (0.35 + 0.65 * t), 0.0, TAU, 36, Color(color, 0.25 + 0.6 * t), 1.0)
 			draw_circle(target, area_radius * 0.12 * t, Color(color, 0.5))
+
+
+## Keeps an upright effect on a moving body: on the isometric stage (at the body's projected spot) or in the flat world.
+class FxFollow extends Node2D:
+	var target: Node2D
+	var iso := false
+	var lift := 0.0
+
+	func _process(_delta: float) -> void:
+		if not is_instance_valid(target):
+			return
+		if iso:
+			position = (IsoView.project(target.global_position) - Vector2(0.0, lift)).round()
+		else:
+			global_position = target.global_position - Vector2(0.0, lift)
+
+
+## The fading picture SkillFx.death leaves; IsoView stands its sprite up like a body's.
+class FxCorpse extends Node2D:
+	pass
 
 
 ## The ring that SkillFx.ring spawns: it draws itself, `t` runs 0 -> 1.

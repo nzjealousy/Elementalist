@@ -260,6 +260,7 @@ func take_damage(amount: float, from: Vector2) -> bool:
 	Juice.shake(2.0, 0.2)
 	Sfx.play("player_hurt")
 	if hp <= 0.0:
+		SkillFx.hero_death(get_parent(), global_position)
 		Sfx.play("player_die")
 		Sfx.duck(1.5)
 		if died.get_connections().is_empty():
@@ -476,6 +477,7 @@ func try_dodge(dir: Vector2 = Vector2.ZERO) -> bool:
 	caster.cancel_windup()   # a dodge interrupts a skill that is still charging
 	_begin_pass_through()
 	spend_stamina(dodge_cost)
+	SkillFx.dust(get_parent(), global_position, Vector2(3, 1), 7)
 	Sfx.play("dodge")
 	return true
 
@@ -668,6 +670,8 @@ func _physics_process(delta: float) -> void:
 
 	if is_dodging():
 		_dodge_left -= delta
+		if _dodge_left <= 0.0:
+			SkillFx.dust(get_parent(), global_position, Vector2(3, 1), 5)  # the roll's end skids
 		# Ease out: fast burst that settles, so the end of the roll is committal.
 		velocity = _dodge_dir * dodge_speed * (0.35 + 0.65 * clampf(_dodge_left / dodge_time, 0.0, 1.0))
 	elif is_stunned():

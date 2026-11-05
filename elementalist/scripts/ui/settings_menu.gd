@@ -146,6 +146,7 @@ func _build_game() -> void:
 	_check("Damage numbers", "damage_numbers")
 	_check("Melee range ring", "melee_indicator")
 	_check("Tips and hints", "show_tips")
+	_check("Ambient particles (next room)", "ambient_particles")
 	_choice("Lighting (next scene)", "lighting", Settings.LIGHTING_MODES)
 	_slider("Screen shake", "screen_shake")
 	_slider("HUD size", "hud_scale", 0.75, 1.5, false)

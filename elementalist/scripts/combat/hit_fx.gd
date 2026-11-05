@@ -3,8 +3,8 @@ extends RefCounted
 ## One-shot particle bursts for impacts.
 
 
-static func burst(parent: Node, pos: Vector2, color: Color, amount: int = 8, speed: float = 55.0) -> void:
-	if parent == null:
+static func burst(parent: Node, pos: Vector2, color: Color, amount: int = 8, speed: float = 55.0, priority: bool = false) -> void:
+	if parent == null or not SkillFx.admit(priority):  # the shared budget (SkillFx.MAX_LIVE)
 		return
 	var p := CPUParticles2D.new()
 	p.one_shot = true
@@ -23,7 +23,4 @@ static func burst(parent: Node, pos: Vector2, color: Color, amount: int = 8, spe
 	fade.set_color(1, Color(1, 1, 1, 0))
 	p.color_ramp = fade
 	p.z_index = 50
-	parent.add_child(p)
-	p.global_position = pos
-	p.emitting = true
-	p.finished.connect(p.queue_free)
+	SkillFx.launch(parent, p, pos)

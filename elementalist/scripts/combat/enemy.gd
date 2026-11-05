@@ -437,7 +437,7 @@ func _damage(amount: float, color: Color, crit: bool = false) -> void:
 	else:
 		FloatText.spawn(get_parent(), global_position + _text_offset, str(int(round(amount))), color)
 	if hp <= 0.0:
-		HitFx.burst(get_parent(), global_position, Color("9be88a"), 14, 80.0)
+		SkillFx.death(get_parent(), self)  # a fading picture and specks; this node still goes this frame
 		Juice.hit_stop(0.05)
 		Sfx.play_at("enemy_die", global_position, 260.0)
 		Game.on_enemy_killed(self)
@@ -567,7 +567,8 @@ func _land_slam() -> void:
 	_telegraph = null
 	_start_pose("land", POSE_TIMES["land"])
 	SkillFx.ring(get_parent(), circle_centre, float(slam["radius"]), Color("ff6a4a"), 0.4, 2.0)
-	HitFx.burst(get_parent(), circle_centre, Color("ff6a4a"), 16, 90.0)
+	HitFx.burst(get_parent(), circle_centre, Color("ff6a4a"), 16, 90.0, true)
+	SkillFx.dust_ring(get_parent(), circle_centre, float(slam["radius"]))
 	Juice.shake(3.0, 0.3)
 	Sfx.play_at("slam", circle_centre, 340.0)
 	var targets: Array = get_tree().get_nodes_in_group("player") + get_tree().get_nodes_in_group("net_players")

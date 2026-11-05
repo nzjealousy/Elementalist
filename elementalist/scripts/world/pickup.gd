@@ -100,5 +100,6 @@ func _collect(player: Node2D) -> void:
 			text = Items.display_name(drop["item"])
 			color = Items.rarity_color(drop["item"])
 	FloatText.spawn(get_parent(), player.global_position + Vector2(0, -12), text, color)
+	SkillFx.sparkle(get_parent(), global_position, color)
 	Sfx.play("pickup_gold" if drop["kind"] == "gold" else ("pickup_gem" if String(drop.get("id", "")).begins_with("gem") else "pickup_item"), &"SFX", -4.0)
 	queue_free()
