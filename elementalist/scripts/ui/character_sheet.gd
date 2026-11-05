@@ -366,18 +366,24 @@ func _fill_elements() -> void:
 			col.add_child(_element_row(element, _label("%s  not attuned   (governed by %s)" % [String(element).capitalize(), governing.capitalize()], Color(color, 0.4)), false))
 
 
-## A row for an element: its rune (dim while not attuned) and the label.
+## A row for an element: its rune (dim while not attuned) and the label. The rune keeps its 18 px square and the label
+## takes the rest of the row (a wrapping label with no width would fold into one letter per line).
 func _element_row(element: String, label: Label, attuned: bool) -> Control:
 	var row := HBoxContainer.new()
 	row.add_theme_constant_override("separation", 4)
 	var rune := TextureRect.new()
 	rune.texture = UiTheme.rune(element, "s")
 	rune.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+	rune.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	rune.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
 	rune.custom_minimum_size = Vector2(18, 18)
+	rune.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	rune.modulate = Color.WHITE if attuned else Color(1, 1, 1, 0.35)
 	rune.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	row.add_child(rune)
+	label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	label.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	label.custom_minimum_size = Vector2(CONTENT_WIDTH - 24.0, 0)
 	row.add_child(label)
 	return row
 

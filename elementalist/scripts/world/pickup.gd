@@ -37,8 +37,13 @@ func _ready() -> void:
 			_sprite.texture = AssetDB.get_texture("pickup_material")
 			_sprite.modulate = Items.MATERIALS[drop["id"]]["color"]
 		"item":
-			_sprite.texture = AssetDB.get_texture("pickup_item")
-			_sprite.modulate = Items.rarity_color(drop["item"])
+			var painted := "item_%s" % String(drop["item"].get("base", ""))
+			if AssetDB.has_art(painted):   # gear lies on the floor as its own icon, on a glow of its rarity colour
+				_sprite.texture = AssetDB.get_texture(painted)
+				add_child(SkillFx.glow_sprite(Color(Items.rarity_color(drop["item"]), 0.55), 0.9))
+			else:
+				_sprite.texture = AssetDB.get_texture("pickup_item")
+				_sprite.modulate = Items.rarity_color(drop["item"])
 	add_child(_sprite)
 	z_index = 5
 

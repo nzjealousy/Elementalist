@@ -23,8 +23,8 @@ WAVE = [0, 1, 0, -1]  # idle breathing phase per frame
 def save(name, frames, moonlit=True):
     """frames: list of Canvas, all the same size. Pictures are snapped onto the Moonlit Glyphwork ramps (restyle.py);
     `moonlit=False` keeps a white picture white, for the ones code tints (pickups)."""
-    if moonlit:
-        frames = [restyle.restyle(f) for f in frames]
+    if moonlit:   # soft outline: the drawing's own deep shade of each colour, snapped to the ramps (the lit rim is added by volumize)
+        frames = [restyle.restyle(f, rim=False, outline=False) for f in frames]
     frames[0].save(os.path.join(OUT, name + '.png'))
     if len(frames) > 1:
         sheet(frames, os.path.join(OUT, name + '_strip.png'))
@@ -541,7 +541,7 @@ MONSTERS = {
 
 def make_monsters():
     for name, fn in MONSTERS.items():
-        save(name, unify([finish(fn(ph)) for ph in range(FRAMES)]))
+        save(name, unify([finish(restyle.volumize(restyle.pillow(fn(ph)))) for ph in range(FRAMES)]))
 
 
 # ------------------------------------------------------------------------------------------- props
@@ -678,7 +678,7 @@ def props():
     save('altar', [altar()])
     save('training_sign', [training_sign()])
     save('enemy_dummy', [dummy()])
-    for kind in ('locked', 'open', 'sealed'):
+    for kind in ('locked', 'sealed'):   # the open doorway is a portal pad: gen_portal.py
         save('door_' + kind, [door(kind)])
     pickups()
 

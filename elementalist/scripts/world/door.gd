@@ -45,7 +45,8 @@ func unlock() -> void:
 	_shape.set_deferred("disabled", true)
 	for sprite in _sprites:
 		sprite.texture = AssetDB.get_texture("door_open")
-	SkillFx.ring(get_parent(), global_position, 16.0, Color("7fe88a"), 0.5, 1.5)
+		SpriteAnim.attach(sprite, "door_open", 8.0, self)   # an open doorway is a row of turning portal pads
+	SkillFx.ring(get_parent(), global_position, 16.0, Color("9cf0d8"), 0.5, 1.5)
 	Sfx.play("door_open", &"SFX", -4.0)
 
 

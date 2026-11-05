@@ -19,7 +19,7 @@ style.use("moonlit")
 ROOT = os.path.join(os.path.dirname(__file__), '..', '..', 'elementalist', 'assets')
 SPRITES = os.path.join(ROOT, 'sprites')
 TINTED = ('fx_', 'proj_enemy', 'pickup_material', 'pickup_item', 'bolt')   # white by design; code tints them
-PALETTE_ONLY = ('enemy_', 'boss_', 'mini_', 'chest', 'forge', 'board', 'altar', 'training_sign', 'door_', 'pickup_gold')
+PALETTE_ONLY = ('enemy_', 'boss_', 'mini_', 'chest', 'forge', 'board', 'altar', 'training_sign', 'door_locked', 'door_sealed', 'pickup_gold')
 HERO_DIR = os.path.join(SPRITES, 'hero')
 
 ramp_colours = set()

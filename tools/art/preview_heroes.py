@@ -138,14 +138,14 @@ def compose(look, pal, facing, frame):
             if x == 0 or grid[y][x - 1] is None or y == 0 or grid[y - 1][x] is None:
                 c = out.get(x, y)
                 out.set(x, y, tuple(int(c[i] + (RIM[i] - c[i]) * 0.4) for i in range(3)) + (255,))
-    for y in range(H):  # one ink outline
+    for y in range(H):  # selective outline: a dark shade of the colour it surrounds
         for x in range(W):
             if grid[y][x] is not None:
                 continue
             for dx, dy in ((1, 0), (-1, 0), (0, 1), (0, -1)):
                 nx, ny = x + dx, y + dy
                 if 0 <= nx < W and 0 <= ny < H and grid[ny][nx] is not None:
-                    out.set(x, y, INK)
+                    out.set(x, y, color_of(grid[ny][nx][0], 0, pal))
                     break
     return out
 

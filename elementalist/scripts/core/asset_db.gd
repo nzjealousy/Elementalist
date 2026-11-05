@@ -31,7 +31,8 @@ const PLACEHOLDERS := {
 	"boss_slime_king": [Color("4fbf4f"), Color("1d5a1d"), Vector2i(32, 26)],
 	"boss_colossus": [Color("a1a6b4"), Color("3a3e4a"), Vector2i(30, 32)],
 	"door_locked": [Color("8a2e2e"), Color("2f0f0f"), Vector2i(16, 16)],
-	"door_open": [Color("15171c"), Color("7fe88a"), Vector2i(16, 16)],
+	"door_open": [Color("15171c"), Color("9cf0d8"), Vector2i(16, 16)],
+	"portal_gate": [Color("1e6a78"), Color("0a0618"), Vector2i(34, 44)],
 	"door_sealed": [Color("4a4036"), Color("1f1a14"), Vector2i(16, 16)],
 	"proj_enemy": [Color("ffffff"), Color("202028"), Vector2i(5, 5)],  # tinted by the shooter
 	"chest": [Color("a8742c"), Color("3b2610"), Vector2i(14, 12)],

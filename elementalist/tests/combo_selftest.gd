@@ -406,7 +406,7 @@ func _test_martial_skills() -> void:
 	var mana_before: float = caster.mana
 	_check("martial set is the only selectable set", caster.elements == ["martial"])
 	_check("a martial skill casts", caster.try_cast("knife_throw"))
-	_check("martial skills spend stamina, not mana", is_equal_approx(stamina_before - player.stamina, 10.0) and caster.mana >= mana_before)
+	_check("martial skills spend stamina, not mana", is_equal_approx(stamina_before - player.stamina, 9.0) and caster.mana >= mana_before)
 	player.stamina = 5.0
 	caster.cooldowns.clear()
 	_check("martial skills need enough stamina", not caster.try_cast("knife_throw"))
@@ -507,7 +507,7 @@ func _test_attribute_scaling() -> void:
 	_check("martial skills have no element potency", is_equal_approx(c.potency_mult(""), 1.0))
 	_check("area radius scales with its attribute", is_equal_approx(c.skill_scale("flame_burst", "radius"), 1.3))
 	_check("skills that do not scale a property are unchanged", is_equal_approx(c.skill_scale("fireball", "radius"), 1.0))
-	_check("Agility shortens thorn shot cooldown", is_equal_approx(c.skill_cooldown("thorn_shot"), 0.5 * 0.8))
+	_check("Agility shortens thorn shot cooldown", is_equal_approx(c.skill_cooldown("thorn_shot"), 0.35 * 0.8))
 	_check("projectile speed scales with Agility", is_equal_approx(c.skill_scale("water_jet", "speed"), 1.3))
 	var data_ok := true
 	for id in SkillDB.DEFS:
@@ -4651,31 +4651,43 @@ func _test_art_style() -> void:
 			strips_ok = strips_ok and strip != null and strip.get_size() == Vector2(size.x * HeroComposer.FRAME_COUNT, size.y)
 	_check("the hero part strips are 4 frames of 24 x 38", strips_ok)
 
-	# every part of every kind, in every facing and frame, stays off the frame's edge cells (only the ink outline may reach
-	# them, so nothing is clipped) and is inked
+	# every part of every kind, in every facing and frame, stays off the edge cells of its 24 x 38 frame (the outline needs them,
+	# and a part that touches them is clipped)
 	var edge_hits: Array[String] = []
-	var inked_all := true
 	for key in HERO_PART_KEYS:
+		var names: Array = []
 		for variant in HERO_PART_KEYS[key]:
-			var look := HeroLook.for_class("wanderer", "", 0, 1)
-			look["parts"][key] = variant
-			if key != "weapon":
-				look["parts"]["weapon"] = "sword"
-			var frames: Dictionary = HeroComposer.compose(look)
+			names.append("%s_%s" % [key, variant])
+		if key == "outfit":
+			names.append("base_body")
+		for part_name in names:
 			for facing in HeroComposer.FACINGS:
+				var strip := (load("res://assets/sprites/hero/%s_%s.png" % [part_name, facing]) as Texture2D).get_image()
 				for frame in HeroComposer.FRAME_COUNT:
-					var image := (frames[facing][frame] as Texture2D).get_image()
-					var inked := false
-					for y in image.get_height():
-						for x in image.get_width():
-							var px := image.get_pixel(x, y)
-							if px.is_equal_approx(HeroComposer.OUTLINE):
-								inked = true
-							if px.a > 0.0 and not px.is_equal_approx(HeroComposer.OUTLINE) and (x == 0 or y == 0 or x == image.get_width() - 1 or y == image.get_height() - 1):
-								edge_hits.append("%s_%s %s f%d" % [key, variant, facing, frame])
-					inked_all = inked_all and inked
+					for y in size.y:
+						for x in size.x:
+							if strip.get_pixel(frame * size.x + x, y).a > 0.0 and (x == 0 or y == 0 or x == size.x - 1 or y == size.y - 1):
+								edge_hits.append("%s %s f%d" % [part_name, facing, frame])
 	_check("no hero part is clipped by its frame (%s)" % ", ".join(edge_hits.slice(0, 4)), edge_hits.is_empty())
-	_check("every hero is drawn with the one ink outline", inked_all)
+	var outlined := true
+	for class_id in Classes.playable():
+		for facing in HeroComposer.FACINGS:
+			var image := (HeroComposer.compose(HeroLook.for_class(class_id))[facing][0] as Texture2D).get_image()
+			var darkest := 1.0
+			for y in image.get_height():
+				for x in image.get_width():
+					if image.get_pixel(x, y).a > 0.0:
+						darkest = minf(darkest, image.get_pixel(x, y).get_luminance())
+			outlined = outlined and darkest < 0.2
+	_check("every hero is drawn with a dark outline", outlined)
+	var icons_ok := true
+	for base in Items.BASES:
+		var icon_path := "res://assets/sprites/item_%s.png" % base
+		var icon := load(icon_path) as Texture2D if ResourceLoader.exists(icon_path) else null
+		icons_ok = icons_ok and icon != null and icon.get_size() == Vector2(16, 16)
+		if icon != null:
+			icons_ok = icons_ok and HeroLook.slot_icon({"base": base, "rarity": "common"}) == icon
+	_check("every piece of gear has its own 16 x 16 icon and the equipment screen shows it", icons_ok)
 	var palette_ok := true
 	for class_id in Classes.playable():
 		var picture := (HeroComposer.compose(HeroLook.for_class(class_id))["down"][0] as Texture2D).get_image()

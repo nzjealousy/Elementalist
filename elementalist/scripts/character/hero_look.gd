@@ -107,6 +107,9 @@ static func slot_icon(item: Dictionary) -> Texture2D:
 	var d := data()
 	var slot := String(Items.BASES[item["base"]]["slot"])
 	var base := String(item["base"])
+	var painted := "res://assets/sprites/item_%s.png" % base   # a drawn icon (tools/art/gen_items.py) wins over a crop of the hero part
+	if ResourceLoader.exists(painted):
+		return load(painted)
 	var palette: Dictionary = d["classes"]["wanderer"]["palette"].duplicate()
 	palette["skin"] = String(d["skin_tones"][0])
 	palette["hair"] = String(d["hair_colors"][1])

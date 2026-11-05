@@ -8,6 +8,7 @@ picture in the game shares one palette, one outline and one light direction with
 
 Rules (docs/ART_DIRECTION.md): colours come from `style.STYLES["moonlit"]["ramps"]`, nothing is pure black, the outline is
 `style.INK`, the lit edge (upper left) is one ramp step brighter, translucent pixels keep their alpha."""
+import math
 import os
 import sys
 
@@ -92,6 +93,107 @@ def restyle(cv, rim=True, outline=True):
             if lit and step >= 1:
                 c = style.ramp(name)[step + 1]
                 out.px[y * cv.w + x] = c[:3] + (out.px[y * cv.w + x][3],)
+    return out
+
+
+def volumize(cv, strength=1.0):
+    """Rounds a flat-shaded sprite (before its outline is added): the pixels just inside the silhouette catch the light on the
+    upper-left side and fall into shadow on the lower-right, the way cosy village RPGs model their characters. Works on the
+    outward direction of each edge pixel, so thin limbs and wide bodies both get a lit and a shaded side. Returns a new canvas."""
+    out = Canvas(cv.w, cv.h)
+    out.px = list(cv.px)
+    light = (-0.6, -0.8)
+    near = [(-1, -1), (0, -1), (1, -1), (-1, 0), (1, 0), (-1, 1), (0, 1), (1, 1)]
+
+    def empty(x, y):
+        return cv.get(x, y)[3] == 0
+
+    for y in range(cv.h):
+        for x in range(cv.w):
+            c = cv.get(x, y)
+            if c[3] == 0:
+                continue
+            ox = oy = 0.0
+            count = 0
+            for dx, dy in near:
+                if empty(x + dx, y + dy):
+                    ox += dx
+                    oy += dy
+                    count += 1
+            if count == 0:
+                continue
+            length = math.hypot(ox, oy)
+            if length < 0.01:
+                continue
+            lam = (ox * light[0] + oy * light[1]) / length          # +1: this edge faces the light
+            if lam > 0.55:
+                k = 0.3 * strength
+                lit = (int(c[0] + (255 - c[0]) * k * 0.55 + 10 * strength), int(c[1] + (240 - c[1]) * k * 0.55 + 8 * strength),
+                       int(c[2] + (214 - c[2]) * k * 0.35), c[3])
+                out.px[y * cv.w + x] = tuple(max(0, min(255, v)) for v in lit[:3]) + (c[3],)
+            elif lam < -0.45:
+                k = 0.28 * strength
+                dark = (int(c[0] * (1 - k) + 24 * k), int(c[1] * (1 - k) + 16 * k), int(c[2] * (1 - k) + 64 * k * 1.2), c[3])
+                out.px[y * cv.w + x] = tuple(max(0, min(255, v)) for v in dark[:3]) + (c[3],)
+    return out
+
+
+def pillow(cv, strength=1.0, radius=4):
+    """Gives a sprite a rounded volume: a height field from the distance to its silhouette (a pillow), its slope against the
+    light from the upper left, and one tone lighter where the surface faces the light and one darker where it turns away.
+    A flat interior stays as drawn; the shading only appears on the curved parts, so hand-drawn detail survives."""
+    w, h = cv.w, cv.h
+    big = 99
+    dist = [[big] * w for _ in range(h)]
+    for y in range(h):                      # chamfer distance to the nearest empty pixel (4-neighbours, two sweeps)
+        for x in range(w):
+            if cv.get(x, y)[3] == 0:
+                dist[y][x] = 0
+            else:
+                best = 1 if (x == 0 or y == 0 or x == w - 1 or y == h - 1 or cv.get(x - 1, y)[3] == 0 or cv.get(x, y - 1)[3] == 0) else big
+                dist[y][x] = best
+    for _ in range(2):
+        for y in range(h):
+            for x in range(w):
+                if dist[y][x]:
+                    for dx, dy in ((-1, 0), (0, -1)):
+                        nx, ny = x + dx, y + dy
+                        if 0 <= nx < w and 0 <= ny < h:
+                            dist[y][x] = min(dist[y][x], dist[ny][nx] + 1)
+        for y in range(h - 1, -1, -1):
+            for x in range(w - 1, -1, -1):
+                if dist[y][x]:
+                    for dx, dy in ((1, 0), (0, 1)):
+                        nx, ny = x + dx, y + dy
+                        if 0 <= nx < w and 0 <= ny < h:
+                            dist[y][x] = min(dist[y][x], dist[ny][nx] + 1)
+
+    def height(x, y):
+        if not (0 <= x < w and 0 <= y < h) or cv.get(x, y)[3] == 0:
+            return 0.0
+        return math.sqrt(min(dist[y][x], radius) / float(radius))
+
+    out = Canvas(w, h)
+    out.px = list(cv.px)
+    light = (-0.45, -0.6, 0.66)
+    for y in range(h):
+        for x in range(w):
+            c = cv.get(x, y)
+            if c[3] == 0:
+                continue
+            gx = (height(x + 1, y) - height(x - 1, y)) * 0.5
+            gy = (height(x, y + 1) - height(x, y - 1)) * 0.5
+            k = 2.2
+            nx, ny, nz = -gx * k, -gy * k, 1.0
+            ln = math.sqrt(nx * nx + ny * ny + nz * nz)
+            lam = (nx * light[0] + ny * light[1] + nz * light[2]) / ln
+            if lam > 0.80:
+                t = min(1.0, (lam - 0.80) * 3.5) * 0.3 * strength
+                out.px[y * w + x] = (min(255, int(c[0] + (255 - c[0]) * t + 6 * t * 4)), min(255, int(c[1] + (240 - c[1]) * t + 5 * t * 4)),
+                                     min(255, int(c[2] + (214 - c[2]) * t * 0.7)), c[3])
+            elif lam < 0.34:
+                t = min(1.0, (0.34 - lam) * 2.2) * 0.32 * strength
+                out.px[y * w + x] = (int(c[0] * (1 - t) + 24 * t), int(c[1] * (1 - t) + 16 * t), int(c[2] * (1 - t) + 70 * t), c[3])
     return out
 
 

@@ -5,7 +5,7 @@
 		"highlight_color": [224, 216, 255], "highlight_mix": 0.4,
 		"light_mul": 1.1,
 		"dark_mul": 0.7, "shadow_color": [24, 16, 64], "shadow_mix": 0.38,
-		"outline_mul": 0.34, "outline_add": [20, 8, 36]
+		"outline_mul": 0.3, "outline_add": [14, 8, 44]
 	},
 	"skin_tones": ["f6d2b0", "e8b98e", "c98f66", "9a6642", "6e4630"],
 	"hair_colors": ["3a2a20", "6b4a2a", "a8743a", "d8b060", "c8c8d0", "b03a3a", "2a2a40", "4a7a4a"],

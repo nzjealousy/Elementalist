@@ -20,7 +20,7 @@ extends Node
 const DEFS := {
 	"fireball": {
 		"name": "Fireball", "element": "fire", "kind": "projectile",
-		"damage": 18.0, "mana": 9.0, "cooldown": 0.55, "speed": 135.0, "range": 190.0,
+		"damage": 18.0, "mana": 8.0, "cooldown": 0.38, "speed": 135.0, "range": 190.0,
 		"splash": 22.0,
 		"apply": {"kind": "dot", "time": 2.5, "power": 3.0},
 	},
@@ -32,7 +32,7 @@ const DEFS := {
 	},
 	"water_jet": {
 		"name": "Water Jet", "element": "water", "kind": "projectile",
-		"damage": 8.0, "mana": 4.0, "cooldown": 0.2, "speed": 215.0, "range": 235.0,
+		"damage": 8.0, "mana": 4.0, "cooldown": 0.14, "speed": 215.0, "range": 235.0,
 		"apply": {"kind": "slow", "time": 2.0, "power": 0.5},
 		"scales": {"speed": "agility"},
 	},
@@ -45,7 +45,7 @@ const DEFS := {
 	},
 	"gust": {
 		"name": "Gust", "element": "air", "kind": "projectile",
-		"damage": 7.0, "mana": 4.0, "cooldown": 0.25, "speed": 330.0, "range": 270.0,
+		"damage": 7.0, "mana": 4.0, "cooldown": 0.18, "speed": 330.0, "range": 270.0,
 		"apply": {"kind": "slow", "time": 1.0, "power": 0.3}, "knockback": 120.0,
 		"pierce": 2,
 		"scales": {"speed": "agility"},
@@ -58,7 +58,7 @@ const DEFS := {
 	},
 	"shard_shot": {
 		"name": "Shard Shot", "element": "mineral", "kind": "projectile",
-		"damage": 28.0, "mana": 13.0, "cooldown": 0.85, "speed": 105.0, "range": 150.0,
+		"damage": 28.0, "mana": 12.0, "cooldown": 0.6, "speed": 105.0, "range": 150.0,
 		"knockback": 70.0,
 		"apply": {},
 	},
@@ -70,7 +70,7 @@ const DEFS := {
 	},
 	"thorn_shot": {
 		"name": "Thorn Shot", "element": "earth", "kind": "projectile",
-		"damage": 6.0, "mana": 8.0, "cooldown": 0.5, "speed": 170.0, "range": 210.0,
+		"damage": 6.0, "mana": 7.0, "cooldown": 0.35, "speed": 170.0, "range": 210.0,
 		"spread_count": 3, "spread_deg": 16.0,
 		"apply": {},
 		"scales": {"cooldown": "agility"},
@@ -122,7 +122,7 @@ const DEFS := {
 	# light and dark (rare elements). Light blinds and heals; dark drains and curses.
 	"light_lance": {
 		"name": "Light Lance", "element": "light", "kind": "projectile",
-		"damage": 12.0, "mana": 6.0, "cooldown": 0.35, "speed": 390.0, "range": 280.0,
+		"damage": 12.0, "mana": 5.0, "cooldown": 0.25, "speed": 390.0, "range": 280.0,
 		"pierce": 1,
 		"apply": {"kind": "weaken", "time": 2.0, "power": 0.2},
 		"scales": {"speed": "agility"},
@@ -146,7 +146,7 @@ const DEFS := {
 	},
 	"shadow_bolt": {
 		"name": "Shadow Bolt", "element": "dark", "kind": "projectile",
-		"damage": 13.0, "mana": 9.0, "cooldown": 0.45, "speed": 125.0, "range": 230.0,
+		"damage": 13.0, "mana": 8.0, "cooldown": 0.32, "speed": 125.0, "range": 230.0,
 		"homing": 2.4, "lifesteal": 0.25,
 		"apply": {"kind": "dot", "time": 2.0, "power": 3.0},
 		"scales": {"cooldown": "intellect"},
@@ -206,7 +206,7 @@ const DEFS := {
 	# martial (no element): learned by non-elementalists, paid for with stamina
 	"knife_throw": {
 		"name": "Knife Throw", "element": "", "kind": "projectile",
-		"damage": 12.0, "stamina": 10.0, "cooldown": 0.35, "speed": 230.0, "range": 170.0,
+		"damage": 12.0, "stamina": 9.0, "cooldown": 0.24, "speed": 230.0, "range": 170.0,
 		"apply": {},
 		"scales": {"speed": "agility"},
 	},
@@ -232,7 +232,7 @@ const LOADOUTS := {
 ## Physical attack (RMB). Costs stamina, not mana, and never touches an enemy's aura.
 ## Deals bonus damage to rooted or stunned enemies so combos set up a payoff.
 const MELEE := {
-	"name": "Slash", "damage": 10.0, "stamina": 18.0, "cooldown": 0.35,
+	"name": "Slash", "damage": 10.0, "stamina": 15.0, "cooldown": 0.26,
 	"range": 26.0, "arc_deg": 110.0, "knockback": 90.0,
 }
 

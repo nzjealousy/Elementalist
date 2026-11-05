@@ -19,7 +19,9 @@ rebuilds all art and runs the art gate. The two other styles stay in `style.py` 
   must read: elements, bolts, runes, bars, loot. A glow is always a recipe: white-hot core, saturated body, dark halo, coloured outer glow.
 * **Ramps, not colours.** Twelve five-step ramps (`style.STYLES["moonlit"]["ramps"]`): fire, water, air, mineral, earth, light, dark, stone,
   wood, brass (cold metal), moss and skin. Shadows lean cool, lights lean warm-pale. No pure black or white: the ink is `0a0618`.
-* **One outline rule:** a single ink line (`0a0618`) round every sprite. Characters also get a moonlit rim (`d8d0ff`) on the lit upper-left edge.
+* **Two outline rules.** Backgrounds, props, runes and UI keep the single ink line (`0a0618`). Characters, monsters and equipment use a **selective
+  outline** (a deep, violet-leaning shade of the colour they border), the soft look of cosy village RPGs, and characters also get a moonlit rim
+  (`d8d0ff`) on the lit upper-left edge. (The first Moonlit pass used ink for everything; the character references asked for the softer rule.)
 * **Light from the upper left** in every picture: bevels, runes, wall faces, hero shading.
 * **Calm floors, busy things.** Floors keep their glow low (rune seams in the place's element colour, never brighter than a bolt), so sprites
   always read on top.
@@ -39,12 +41,19 @@ rebuilds all art and runs the art gate. The two other styles stay in `style.py` 
 4. **UI and HUD** (`gen_ui.py`, `ui_theme.gd`, `hud.gd`, `card_frame.gd`): obsidian 9-slice panels with a rune line that has a lit glint every 8 px,
    slab buttons that glow when hovered or focused, slim glowing bars with a lit top line and bright tip, hotbar slots as slabs with the
    element rune behind the key and name, amber for what matters (`UiTheme.GOLD`). Layout did not move.
-5. **Heroes are 24 x 38** (they were 16 x 26): a head with brows, eyes, nose and mouth, fringed hair, a hat with band and gem, a mantle, an open robe
-   with placket and rune hem, belts with buckles and pouches, cuffed sleeves, boots with soles, pauldrons, quivers, horns and antlers, and
-   weapons with guards, bands and glowing gems. Still parts with region/shade pixels, so every class, subclass and piece of gear recolours them;
+5. **Heroes are 24 x 38 with natural proportions** (a head about a quarter of the height, a neck, shoulders, a waist, arms ending in hands, legs
+   ending in shoes; they were 16 x 26 and chibi): a face with brows, eyes, nose, mouth and cheek light, hair with volume and highlight clusters,
+   a hat with band and gem, a mantle, a robe with an open front and rune hem, belts with buckles and pouches, cuffed sleeves, boots with soles and
+   cuffs, pauldrons, quivers, horns and antlers, and weapons with guards, bands and glowing gems. Still parts with region/shade pixels, so every class, subclass and piece of gear recolours them;
    `HeroComposer` adds the ink outline and the rim. Class cards show them at 1x (eight in a row), subclass cards at 2x.
-6. **Monsters, bosses, props** pass through `restyle.py` (snap to the ramps, ink outline, lit edge). The altar was redrawn with the five element
-   glyphs and a floating light rune.
+6. **Monsters and bosses** keep their drawings but get soft outlines and rounded volume (`restyle.pillow` and `restyle.volumize`: a height field from
+   the silhouette lit from the upper left, a lit rim and a shaded underside) and are snapped to the ramps. Props pass through `restyle.py`; the altar
+   was redrawn with the five element glyphs and a floating light rune.
+6b. **Equipment** has its own 16 x 16 painted icon per gear base (`gen_items.py` -> `item_<base>.png`: swords, daggers, axes, staves, rods, bows, tomes,
+   tunic, mail, robe, cap, helm, hood, shoes, boots, rings, amulets), drawn with five tones, a lit top-left and the selective outline in the same
+   material colours the hero wears them in. The equipment screen and the floor drops show them.
+6c. **Portals.** The camp's dungeon gate is a standing stone ring with an animated rune swirl (`portal_gate_strip.png`, 6 frames) and an opened room exit
+   is a row of turning portal pads (`door_open_strip.png`), both from `gen_portal.py`; they replace the old green-barred square.
 7. **Places** (`gen_tiles.py`): six themes of obsidian tinted per place (vault amber, crypt teal, hollow green, ember crimson, spire violet,
    camp a moonlit clearing) with rune seams and glyphs in the place's element colour, glowing wall glyphs, pillars with a rune ring, starry voids.
 
@@ -54,6 +63,7 @@ rebuilds all art and runs the art gate. The two other styles stay in `style.py` 
 |---|---|
 | ![the training grounds with rune circles, hotbar and heroes](art/moonlit_in_game.png) | ![subclass cards with 24 x 38 heroes](art/moonlit_subclass_cards.png) |
 | ![character sheet](art/moonlit_character_sheet.png) | ![title screen](art/moonlit_title.png) |
+| ![the camp with the portal gate](art/moonlit_portal.png) | ![equipment screen with painted gear icons](art/moonlit_gear.png) |
 
 ## Tools
 
@@ -68,6 +78,8 @@ rebuilds all art and runs the art gate. The two other styles stay in `style.py` 
 | `gen_tiles.py` | `tile_*`, `bg_*` per theme |
 | `gen_heroes.py` | `assets/sprites/hero/<part>_<variant>_<facing>.png` (24 x 38 frames) |
 | `gen_sprites.py` | monsters, bosses, props, pickups |
+| `gen_items.py` | `item_<base>.png`, the 26 equipment icons |
+| `gen_portal.py` | `portal_gate_strip.png`, `door_open_strip.png` |
 | `preview_heroes.py`, `preview.py`, `preview_tiles.py` | contact sheets for eyeballing |
 | `check_art.py` | the art gate |
 
@@ -81,9 +93,9 @@ rebuilds all art and runs the art gate. The two other styles stay in `style.py` 
 
 ## Known gaps and next steps
 
-* Monsters and bosses are recoloured and re-outlined, not redrawn: they are consistent with the style but not yet as detailed as the heroes. The
-  next pass is to redraw them one family at a time (slimes, undead, brutes, then bosses) at 1.5x detail, checked against the readability gate.
-* Item icons are the hero parts and the generic pickup; dedicated 16 x 16 icons for weapons, armour, potions and materials are not drawn.
+* Monsters and bosses are softened and rounded, not redrawn: they match the style but are not yet as detailed as the heroes. The humanoid ones
+  (skeleton, duelist, warden, matron, lich, sovereign) are the best candidates to redraw on the hero rig next, with their hit boxes kept as they are.
+* Icons exist for gear; potions, materials and gems still use the generic tinted pickup pictures.
 * The floating glyph lantern and per-theme props are not drawn yet; torchlight pools (`style.light_pool`) are not used in-game.
 * Hero walk cycles keep the old 4-frame bob; a richer cycle (arm swing is in, but no cape physics) would be a later polish.
 

@@ -427,7 +427,7 @@ buttons call `show_tab.call_deferred(...)`, so tests `await` a frame after click
 accent, weapon) per facing as strips of four frames in `assets/sprites/hero/`. A pixel stores a *region* (skin, hair, outfit, trim ...) and a
 *shade*, not a colour. `HeroLook` (data in `data/hero_looks.json`, shared with `tools/art/preview_heroes.py`) works out which parts and palette
 a hero wears from class, subclass and equipped items; `HeroComposer` stacks the parts (24 x 38 frames), paints them through a ramp (pale
-highlights, cold shadows), adds a moonlit rim on the upper-left edge and traces one ink outline (`HeroComposer.OUTLINE`). Results are cached by look and registered in `AssetDB` as `hero:<n>:<facing>` so `SpriteAnim` plays them.
+highlights, cold shadows), adds a moonlit rim on the upper-left edge and traces a selective outline (a deep violet shade of the colour it borders). Gear has painted icons (`item_<base>.png`, `HeroLook.slot_icon`). Results are cached by look and registered in `AssetDB` as `hero:<n>:<facing>` so `SpriteAnim` plays them.
 `HeroDoll`, `CardFrame` (class borders) and the equipment paper doll in the character sheet reuse the same pictures.
 
 **The isometric view (`IsoView`).** Gameplay stays flat and so does the picture: `IsoView` (a child of the Dungeon) is a 2D renderer, no
