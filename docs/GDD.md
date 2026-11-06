@@ -147,8 +147,8 @@ hard, and the choices that cost resources (more elements, more fusion, chained a
   extra element.
 - **Chain your abilities.** An F/V/R ability of a different element within 3 seconds of the last costs 30% less.
 - **Attack speed** is a new attribute (Dexterity) and grows a little with level.
-- **Death costs elements; the story can end.** Dying with elements: lose as many as your death count, at
-  random, and their mastery starts over. Dying with none: the character is gone and you create a new one.
+- **Death costs elements; the story can end.** Dying with elements: lose one at random, and its mastery
+  starts over. Dying with none: the character is gone and you create a new one.
 - **Classes are a card choice**, and each class has **mastery** that opens its subclass.
 - **Enemies** are melee, ranged or both; some dash after a warning flash, some dodge; both sharpen per floor.
 - **Gear, passives and traits** were reworked around these systems (kills, mana cost, attack speed, dodge cost).
@@ -200,8 +200,8 @@ hard, and the choices that cost resources (more elements, more fusion, chained a
   where the first ends (monster level 6 to 15). Dungeon I looks like a burned vault, Dungeon II like a flooded crypt.
 - **Difficulty is an oath**, chosen once per hero: Squire, Knight (the intended game), Warlord. Harder oaths
   multiply monster toughness and also XP, gold, drop luck and the leaderboard score.
-- **Punishing but rewarding.** Failing costs elements and 30% of gold; retreating costs the same gold; there is no
-  free exit. In return the boss drops two gear pieces and maybe an element gem, a cleared dungeon pays a bonus,
+- **Punishing but rewarding.** Failing costs one element, 30% of gold and the loot found in the run; retreating
+  costs the same gold and loot but no element; there is no free exit. In return the boss drops two gear pieces and maybe an element gem, a cleared dungeon pays a bonus,
   and a harder oath pays more.
 - **Light and Dark** (the rare elements) now have four skills each, eleven combos with the main elements and with
   each other (Twilight), a resonance and monster variants from the second dungeon. They are gained from the

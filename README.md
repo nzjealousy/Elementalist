@@ -133,9 +133,10 @@ floor ends in a mini boss**, and the last floor in the boss. A room's exit door 
 defeat its wave(s) or its guardian**. The run is rebuilt from a seed and saved at every room, so you can
 quit and *Continue* where you left off.
 
-**Falling** (dying with elements left) costs elements (1, then 2, then 3 ... random ones, their mastery
-restarts) and 30% of your gold, and sends you back to camp. Retreating from the pause menu costs the run
-and the same gold. Your **oath** (Squire / Knight / Warlord, chosen once) scales monster toughness and the
+**Falling** (dying with elements left) costs one random element (its mastery restarts), 30% of your gold
+and the loot found in that run (gear, worn or not, and materials; what you owned before the run and your
+scrap are safe), and sends you back to camp. Dying with no element left ends the hero. Retreating from the
+pause menu costs the run, the same gold and the run's loot, but never an element. Your **oath** (Squire / Knight / Warlord, chosen once) scales monster toughness and the
 XP, gold and drop luck you earn.
 
 - **Monsters:** slimes, cave bats, skeleton archers, wisps and stone brutes get tougher (and more

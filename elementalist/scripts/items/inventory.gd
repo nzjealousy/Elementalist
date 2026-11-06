@@ -135,6 +135,28 @@ func take_from_bag(index: int) -> Dictionary:
 	return item
 
 
+## A fall loses the loot of the run: gear picked up in it (tagged "run": the run's seed, see Pickup),
+## worn or not, and the materials in `found` (what that run picked up, counted in Game.run). What the hero
+## owned before the run stays. Returns how many pieces and materials went.
+func lose_run_loot(run_seed: int, found: Dictionary) -> int:
+	var lost := 0
+	for i in range(bag.size() - 1, -1, -1):
+		if int(bag[i].get("run", -1)) == run_seed:
+			bag.remove_at(i)
+			lost += 1
+	for slot in equipped.keys():
+		if int(equipped[slot].get("run", -1)) == run_seed:
+			equipped.erase(slot)
+			lost += 1
+	for id in found:
+		var gone := mini(int(found[id]), count(id))  # some may have been spent since
+		if gone > 0:
+			materials[id] = count(id) - gone
+			lost += gone
+	changed.emit()
+	return lost
+
+
 ## The wielded weapon's type, "" when no weapon is equipped.
 func weapon_type() -> String:
 	if not equipped.has("weapon"):
@@ -190,4 +212,6 @@ static func _clean(raw: Dictionary) -> Dictionary:
 	}
 	for affix in raw["affixes"]:
 		item["affixes"].append({"mod": String(affix["mod"]), "value": float(affix["value"])})
+	if raw.has("run"):
+		item["run"] = int(raw["run"])
 	return item

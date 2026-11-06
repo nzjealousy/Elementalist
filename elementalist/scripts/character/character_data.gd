@@ -56,7 +56,7 @@ var weapon_masteries: Dictionary = {}  # weapon type -> {"level": int, "xp": int
 var inventory := Inventory.new()       # gold, materials, bag and equipped gear (Phase 4)
 var traits: Array[String] = []         # innate passives: rolled at creation or chosen as rewards
 var skill_uses: Dictionary = {}        # skill id -> times used (unlocks skill mastery passives)
-var deaths := 0                        # times this character has died (each costs more elements)
+var deaths := 0                        # times this character has died (each costs one element)
 var class_mastery: Dictionary = {}     # class id -> {"level": int, "xp": int}; opens the subclass
 var death_rng := RandomNumberGenerator.new()  # picks which elements are lost on death (tests may seed it)
 var learned_specials: Array[String] = []  # special (R) skills earned as rewards
@@ -190,21 +190,15 @@ func remove_element(id: String) -> bool:
 	return true
 
 
-## The character dies. Someone with elements survives it, losing `deaths` of them at random (so
-## each death costs more than the last); someone with none is gone for good: the run ends and
-## a new character must be made. Returns {"final": bool, "lost": Array[String]}.
+## The character dies. Someone with elements survives it, losing one of them at random; someone
+## with none is gone for good: the run ends and a new character must be made.
+## Returns {"final": bool, "lost": Array[String]}.
 func die() -> Dictionary:
 	deaths += 1
 	if elements.is_empty():
 		return {"final": true, "lost": []}
-	var pool: Array = elements.duplicate()  # a copy: picking must not touch `elements` itself
-	var lost: Array[String] = []
-	while lost.size() < deaths and not pool.is_empty():
-		var pick: String = pool[death_rng.randi_range(0, pool.size() - 1)]
-		pool.erase(pick)
-		lost.append(pick)
-	for element in lost:
-		remove_element(element)
+	var lost: Array[String] = [String(elements[death_rng.randi_range(0, elements.size() - 1)])]
+	remove_element(lost[0])
 	return {"final": false, "lost": lost}
 
 

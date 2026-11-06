@@ -7,7 +7,7 @@ extends RefCounted
 ##   saved_at    unix time
 ##   character   CharacterData.to_dict()
 ##   meta        the long-term state of this hero: {"difficulty", "tier_cleared", "runs", "play_time"}
-##   run         the dungeon in progress, or {} in camp: {"tier", "seed", "floor", "room", "kills", "time"}
+##   run         the dungeon in progress, or {} in camp: {"tier", "seed", "floor", "room", "kills", "time", "found"}
 ##               (the layout is rebuilt from the seed, so the file stays small)
 ##
 ## Write: temp file, keep the previous good file as .bak, then rename into place. Load: try the

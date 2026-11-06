@@ -170,7 +170,7 @@ func _fill_stats() -> void:
 		var need := CharacterData.class_mastery_xp_to_next(int(mastery["level"]))
 		left.add_child(_label("%s mastery %d  (%d/%d)" % [cls["name"], mastery["level"], mastery["xp"], need], Color("b6ff8a")))
 	if ch.deaths > 0:
-		left.add_child(_label("Deaths: %d (the next costs %d elements)" % [ch.deaths, ch.deaths + 1], Color("ff7a7a")))
+		left.add_child(_label("Deaths: %d (each costs one element)" % ch.deaths, Color("ff7a7a")))
 	left.add_child(_label("Points to spend: %d" % ch.unspent_points, GOLD if ch.unspent_points > 0 else Color.WHITE))
 	left.add_child(_spacer())
 	for attr in Classes.ATTRIBUTES:

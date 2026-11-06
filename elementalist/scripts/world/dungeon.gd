@@ -32,6 +32,7 @@ var tier := 1            # which dungeon (Game.TIERS) this run is in
 var rank := 0            # leaderboard place earned by the finished run (0: none)
 var run_bonus := 0       # gold for clearing the dungeon
 var gold_lost := 0       # gold a fall cost
+var loot_lost := 0       # pieces of gear and materials found in the run that a fall cost
 var with_ui := true      # the menus and the fade layer (tests turn it off)
 var rng := RandomNumberGenerator.new()
 var iso_view: IsoView   # the isometric picture (when the setting is on and the game has its UI)
@@ -653,8 +654,8 @@ func _on_player_died() -> void:
 	_end(false)
 
 
-## Books the finished run: the hero's record (dungeons cleared, runs), the leaderboard, gold lost on
-## a fall, and the save (a hero who died for good loses their save).
+## Books the finished run: the hero's record (dungeons cleared, runs), the leaderboard, the gold and
+## run loot lost on a fall (Game.lose_run), and the save (a hero who died for good loses their save).
 func _finish_run(won: bool) -> void:
 	var meta: Dictionary = Game.meta
 	var inventory := Game.character.inventory
@@ -665,9 +666,9 @@ func _finish_run(won: bool) -> void:
 		inventory.gold += bonus
 		run_bonus = bonus
 	else:
-		var lost := floori(inventory.gold * Game.DEATH_GOLD_LOSS)
-		inventory.gold -= lost
-		gold_lost = lost
+		var lost := Game.lose_run()
+		gold_lost = int(lost["gold"])
+		loot_lost = int(lost["loot"])
 	rank = Leaderboard.record({
 		"name": Game.character.display_name, "class": String(Classes.CLASSES[Game.character.class_id]["name"]),
 		"level": Game.character.level, "floors": _depth(), "kills": Game.run_kills, "gold": inventory.gold,
@@ -697,6 +698,8 @@ func summary_lines(won: bool) -> Array:
 		lines.append("Clear bonus: %d gold" % run_bonus)
 	if not won and gold_lost > 0:
 		lines.append("The fall cost %d gold" % gold_lost)
+	if not won and loot_lost > 0:
+		lines.append("Lost: %d item%s found this run" % [loot_lost, "" if loot_lost == 1 else "s"])
 	if rank > 0:
 		lines.append("Leaderboard: rank %d" % rank)
 	lines.append("Monsters slain: %d" % Game.run_kills)
@@ -707,8 +710,12 @@ func summary_lines(won: bool) -> Array:
 			lines.append("With no elements left to lose, this is the end of %s." % Game.character.display_name)
 		else:
 			var lost: Array = death["lost"].map(func(e): return String(e).capitalize())
-			lines.append("Lost: %s (their mastery starts over)" % ", ".join(lost))
-			lines.append("Deaths so far: %d. The next one costs %d." % [Game.character.deaths, Game.character.deaths + 1])
+			lines.append("Lost: %s (its mastery starts over)" % ", ".join(lost))
+			var left := Game.character.elements.size()
+			if left == 0:
+				lines.append("No elements left: the next death is the end.")
+			else:
+				lines.append("%d element%s left. Each death costs one." % [left, "" if left == 1 else "s"])
 	return lines
 
 

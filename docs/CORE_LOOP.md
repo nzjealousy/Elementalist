@@ -31,10 +31,12 @@ the open questions at the end are the ones worth your call.
 
 ## What a run costs and pays (punishing but rewarding)
 
-* **Cost of failing**: you keep your gear and levels, but lose **elements** (1 the first death, 2 the next ...,
-  random ones, their mastery restarts) and **30 % of your gold**. A hero with no element left to lose is gone for good
-  (their save is deleted, the run goes on the leaderboard).
-* **Cost of playing it safe**: retreating from a dungeon also costs the run and 30 % of the gold, so leaving is never free.
+* **Cost of failing**: you keep your levels and the gear you owned before the run, but lose **one element** (at
+  random, its mastery restarts), **30 % of your gold** and **the loot found in the run** (gear, worn or not, and
+  materials; scrap is safe). A hero with no element left to lose is gone for good (their save is deleted, the run goes
+  on the leaderboard).
+* **Cost of playing it safe**: retreating from a dungeon also costs the run, 30 % of the gold and the run's loot (never
+  an element), so leaving is never free.
 * **Reward for finishing**: the boss drops two gear pieces and (sometimes) an elemental **gem**; the dungeon pays a
   clear bonus; the next dungeon opens. The second dungeon's bosses also carry the rare **Light** and **Dark** gems.
 * **The oath** (chosen at hero creation): *Squire* (x0.8 monsters, x0.8 spoils), *Knight* (x1/x1), *Warlord*

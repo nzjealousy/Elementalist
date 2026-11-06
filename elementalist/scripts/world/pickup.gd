@@ -82,6 +82,7 @@ func _collect(player: Node2D) -> void:
 	var inv := Game.character.inventory
 	var text := ""
 	var color := Color.WHITE
+	var run_seed := Game.run_seed()  # loot picked up in a run is lost if the run ends in a fall
 	match drop["kind"]:
 		"gold":
 			inv.add_gold(int(drop["amount"]))
@@ -89,9 +90,14 @@ func _collect(player: Node2D) -> void:
 			color = Color("ffd84a")
 		"material":
 			inv.add_material(drop["id"], int(drop["amount"]))
+			if run_seed >= 0 and drop["id"] != "scrap":  # scrap is never lost
+				var found: Dictionary = Game.run.get_or_add("found", {})
+				found[drop["id"]] = int(found.get(drop["id"], 0)) + int(drop["amount"])
 			text = "+%d %s" % [int(drop["amount"]), Items.material_name(drop["id"])]
 			color = Items.MATERIALS[drop["id"]]["color"]
 		"item":
+			if run_seed >= 0:
+				drop["item"]["run"] = run_seed
 			if not inv.add_item(drop["item"]):
 				if _full_cd == 0.0:  # tell the player once in a while, not every frame
 					FloatText.spawn(get_parent(), player.global_position + Vector2(0, -12), "Bag full", Color("ff7a7a"))

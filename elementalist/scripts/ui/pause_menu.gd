@@ -1,8 +1,8 @@
 class_name PauseMenu
 extends CanvasLayer
 ## The pause menu (Esc / Start): resume, settings, the hall of heroes, and the ways out - save and
-## leave for the main menu, retreat from a dungeon to camp (costs the run and a share of gold), or
-## quit. It opens only when nothing else is open and the game is running.
+## leave for the main menu, retreat from a dungeon to camp (costs the run, a share of gold and the
+## run's loot), or quit. It opens only when nothing else is open and the game is running.
 
 var _open := false
 var _theme: Theme
@@ -88,7 +88,7 @@ func _build() -> void:
 		if screen:
 			screen.open(), 110.0))
 	if Game.mode == "dungeon" and not Game.run.is_empty():
-		var retreat_text := "Really retreat? (-30% gold)" if _confirm == "retreat" else "Retreat to camp"
+		var retreat_text := "Really? -30% gold, run loot" if _confirm == "retreat" else "Retreat to camp"
 		buttons.append(UiKit.button(retreat_text, _retreat, 110.0))
 	buttons.append(UiKit.button("Leave the game" if Net.is_online() else "Save and quit to menu", _save_and_leave, 110.0))
 	buttons.append(UiKit.button("Quit to desktop", _quit, 110.0))
@@ -103,8 +103,7 @@ func _retreat() -> void:
 		_confirm = "retreat"
 		_build()
 		return
-	var inventory := Game.character.inventory
-	inventory.gold -= floori(inventory.gold * Game.DEATH_GOLD_LOSS)
+	Game.lose_run()  # a retreat costs what a fall does, except the element
 	Game.meta["runs"] = int(Game.meta.get("runs", 0)) + 1
 	Game.return_to_camp()
 

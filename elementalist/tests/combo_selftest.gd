@@ -3303,12 +3303,14 @@ func _test_death() -> void:
 	var first := ch.die()
 	_check("the first death costs one element and the character lives on", not first["final"] and first["lost"].size() == 1 and ch.elements.size() == 4 and ch.deaths == 1)
 	var second := ch.die()
-	_check("the second costs two", second["lost"].size() == 2 and ch.elements.size() == 2 and ch.deaths == 2)
-	var third := ch.die()
-	_check("the third takes what is left (it can't take more than they have)", third["lost"].size() == 2 and ch.elements.is_empty() and not third["final"])
+	_check("the second costs one too (deaths never escalate)", second["lost"].size() == 1 and ch.elements.size() == 3 and ch.deaths == 2)
+	ch.die()
+	ch.die()
+	var fifth := ch.die()
+	_check("the last element goes on a death of its own, and the character lives on", fifth["lost"].size() == 1 and ch.elements.is_empty() and not fifth["final"] and ch.deaths == 5)
 	_check("with every element gone the character is attunable, with martial skills", ch.affinity == CharacterData.ATTUNABLE and ch.has_martial() and not ch.uses_mana())
-	var fourth := ch.die()
-	_check("and the next death is the end", fourth["final"] and fourth["lost"].is_empty() and ch.deaths == 4)
+	var sixth := ch.die()
+	_check("and the next death is the end", sixth["final"] and sixth["lost"].is_empty() and ch.deaths == 6)
 
 	var c2 := CharacterData.create_sandbox(Classes.NEUTRAL_CLASS, ["fire", "water"], 1)
 	c2.death_rng.seed = 3
@@ -3338,7 +3340,7 @@ func _test_death() -> void:
 	counted.die()
 	var back := CharacterData.from_dict(JSON.parse_string(JSON.stringify(counted.to_dict())))
 	_check("the number of deaths is saved", back.deaths == 1 and back.elements == counted.elements)
-	_check("the next death costs one more than the last", back.deaths + 1 == 2)
+	_check("a hero loaded with deaths behind them still loses only one element", back.die()["lost"].size() == 1 and back.elements.is_empty() and back.deaths == 2)
 
 	# the dungeon applies it
 	var survivor := _bare(CharacterData.create_sandbox("vanguard", ["fire", "water"], 1))
@@ -3350,7 +3352,7 @@ func _test_death() -> void:
 	player.take_damage(50.0, Vector2(40, 0))
 	_check("dying in the dungeon costs an element and ends the run", dungeon.state == "dead" and not dungeon.death["final"] and survivor.elements.size() == 1 and survivor.deaths == 1)
 	var lines := dungeon.summary_lines(false)
-	_check("the summary names what was lost", lines.any(func(l): return String(l).begins_with("Lost:")) and lines.any(func(l): return String(l).contains("next one costs 2")))
+	_check("the summary names what was lost", lines.any(func(l): return String(l).begins_with("Lost:")) and lines.any(func(l): return String(l).contains("1 element left")))
 	parts["world"].queue_free()
 	await get_tree().process_frame
 	var mortal := _bare(CharacterData.create("M", "vanguard", CharacterData.SEALED, _rng(9)))
@@ -4230,21 +4232,81 @@ func _p5_finish_run() -> void:
 	await get_tree().process_frame
 	run.debug_goto(4, 2)
 	Game.run_kills = 12
+	var kept_piece := _item("iron_helm", "rare", 3, 6)
+	kept_piece["run"] = 5  # found in this run
+	Game.character.inventory.bag.clear()
+	Game.character.inventory.add_item(kept_piece)
+	Game.character.inventory.materials["slime_gel"] = 2
+	Game.run["found"] = {"slime_gel": 2}
 
 	run._finish_run(true)
 	_check("clearing a dungeon books it in the hero's record", Game.meta["tier_cleared"] == 1 and Game.meta["runs"] == 1)
+	_check("and keeps everything the run found", Game.character.inventory.bag.has(kept_piece) and Game.character.inventory.count("slime_gel") == 2 and run.loot_lost == 0)
 	_check("and pays a clear bonus scaled by the oath", run.run_bonus == roundi(150.0 * 1.6) and Game.character.inventory.gold == 1000 + run.run_bonus)
 	var board := Leaderboard.entries()
 	_check("and puts the run on the leaderboard as cleared", board.size() == 1 and board[0]["outcome"] == "cleared" and board[0]["cleared"] == true and int(board[0]["kills"]) == 12)
 	_check("the hero is saved, in camp", SaveStore.exists(1) and SaveStore.load_slot(1)["run"].is_empty() and Game.run.is_empty())
 	_check("and the leaderboard rank was recorded", run.rank == 1)
 
-	Game.run = {"tier": 1, "seed": 5, "floor": 1, "room": 0}
-	Game.character.inventory.gold = 1000
+	# run loot survives a save mid-run: the mark rides on the gear, the found count in Game.run
+	var keep_run := Game.keep_saved_run
+	Game.keep_saved_run = false
+	Game.mode = "dungeon"
+	Game.run = {"tier": 1, "seed": 7, "floor": 1, "room": 0}
+	var hero_inv := Game.character.inventory
+	hero_inv.bag.clear()
+	hero_inv.equipped.clear()
+	hero_inv.materials = {"scrap": 4, "slime_gel": 1}
+	hero_inv.add_item(_item("copper_ring"))
+	var pre_worn := _item("iron_helm")
+	hero_inv.equipped[Items.slot_of(pre_worn)] = pre_worn
+	for drop in [{"kind": "item", "item": _item("iron_sword", "rare", 3, 4)}, {"kind": "material", "id": "slime_gel", "amount": 2},
+			{"kind": "material", "id": "scrap", "amount": 3}]:
+		Pickup.spawn(world, Vector2.ZERO, drop).vacuum(player)
+	_check("gear picked up in a run is marked as that run's", int(hero_inv.bag[-1].get("run", -1)) == 7 and int(hero_inv.bag[0].get("run", -1)) == -1)
+	_check("and the run counts the materials it found, scrap aside", int(Game.run["found"].get("slime_gel", 0)) == 2 and not Game.run["found"].has("scrap"))
+	var sword_slot := Items.slot_of(hero_inv.bag[-1])
+	hero_inv.equip(hero_inv.bag.size() - 1)  # wear the sword the run found
+	Game.save_game()
+	var saved := SaveStore.load_slot(1)
+	Game.character = CharacterData.from_dict(saved["character"])
+	Game.run = saved["run"]
+	hero_inv = Game.character.inventory
+	_check("both survive a save and a load mid-run", int(hero_inv.equipped[sword_slot].get("run", -1)) == 7 and int(Game.run["found"]["slime_gel"]) == 2)
+	var cost := Game.lose_run()
+	_check("a fall after the load takes exactly the run's loot", int(cost["loot"]) == 3 and not hero_inv.equipped.has(sword_slot)
+		and hero_inv.equipped.has(Items.slot_of(pre_worn)) and hero_inv.bag.size() == 1 and hero_inv.count("slime_gel") == 1 and hero_inv.count("scrap") == 7)
+	Game.mode = "camp"
+	Game.keep_saved_run = keep_run
+
+	Game.run = {"tier": 1, "seed": 5, "floor": 1, "room": 0, "found": {"slime_gel": 3, Items.gem_of("fire"): 1}}
+	var inv := Game.character.inventory
+	inv.gold = 1000
+	inv.bag.clear()
+	inv.equipped.clear()
+	inv.materials = {"scrap": 10, "slime_gel": 5}  # the fire gem the run found was used since
+	var owned := _item("copper_ring")
+	var owned_worn := _item("iron_helm")
+	var found_piece := _item("iron_helm", "rare", 3, 2)
+	var found_worn := _item("iron_sword", "rare", 3, 3)
+	var elsewhere := _item("copper_ring", "rare", 1, 4)
+	found_piece["run"] = 5
+	found_worn["run"] = 5
+	elsewhere["run"] = 77  # found in another run (a co-op one, say): not this run's to lose
+	for piece in [owned, found_piece, elsewhere]:
+		inv.add_item(piece)
+	inv.equipped[Items.slot_of(owned_worn)] = owned_worn
+	inv.equipped[Items.slot_of(found_worn)] = found_worn
 	run.death = {"final": false, "lost": ["fire"]}
 	run.gold_lost = 0
+	run.loot_lost = 0
 	run._finish_run(false)
 	_check("falling costs 30% of the gold", run.gold_lost == 300 and Game.character.inventory.gold == 700)
+	_check("and the gear the run found, worn or not", inv.bag.size() == 2 and inv.bag.has(owned) and inv.bag.has(elsewhere) and not inv.equipped.has(Items.slot_of(found_worn)))
+	_check("while what the hero owned before the run stays, worn gear too", inv.equipped.get(Items.slot_of(owned_worn)) == owned_worn)
+	_check("and the materials it found, as far as they are still there (scrap is never lost)",
+		inv.count("slime_gel") == 2 and inv.count(Items.gem_of("fire")) == 0 and inv.count("scrap") == 10 and run.loot_lost == 5)
+	_check("the end screen counts the run's lost loot", run.summary_lines(false).has("Lost: 5 items found this run"))
 	_check("and is recorded as a fall", Leaderboard.entries().any(func(e): return e["outcome"] == "fell"))
 	_check("the hero survives a fall: the save is still there", SaveStore.exists(1) and Game.meta["runs"] == 2)
 

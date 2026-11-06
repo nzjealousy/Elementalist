@@ -17,7 +17,7 @@ const DIFFICULTIES := {
 	"knight": {"name": "Knight", "hardness": 1.0, "reward": 1.0,
 		"desc": "The intended game. Resources are tight; death costs you."},
 	"warlord": {"name": "Warlord", "hardness": 1.3, "reward": 1.6,
-		"desc": "Brutal monsters, 60% richer spoils. Mistakes are paid in elements."},
+		"desc": "Brutal monsters, 60% richer spoils. Mistakes cost dearly."},
 }
 
 ## The dungeons of the camp's gate, in order: floors per dungeon and how deep their monsters start.
@@ -245,6 +245,21 @@ func _restore_hero() -> void:
 		character = stashed_hero
 		stashed_hero = null
 		mode = "camp"
+
+
+## The seed of the dungeon run whose loot a fall would take, -1 outside one (camp, training, arena, a guest).
+func run_seed() -> int:
+	return int(run.get("seed", 0)) if mode == "dungeon" and not run.is_empty() else -1
+
+
+## A run that ends badly (a fall or a retreat): 30% of the gold and the run's loot are lost. Elements are the
+## death's business (CharacterData.die), not this. Returns {"gold": lost, "loot": pieces and materials lost}.
+func lose_run() -> Dictionary:
+	var inv := character.inventory
+	var gold_lost := floori(inv.gold * DEATH_GOLD_LOSS)
+	inv.gold -= gold_lost
+	var loot := inv.lose_run_loot(int(run.get("seed", 0)), run.get("found", {}))
+	return {"gold": gold_lost, "loot": loot}
 
 
 func tier_unlocked(tier: int) -> bool:

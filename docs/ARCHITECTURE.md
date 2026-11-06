@@ -194,9 +194,15 @@ ability of a different element within `CHAIN_WINDOW`). `fusion_hit_scale(n)` is 
 to 50%. Imbue holds a single element (`Player.imbue_elements`). Monsters multiply everything by
 `Monsters.HARDNESS`.
 
-**Death** (`CharacterData.die()`): with elements, lose `deaths` of them at random (`remove_element` resets
-that element's mastery, special and skill uses; none left means attunable); with none, the result is `final`
-and `RunEndScreen` starts a new character (`Game.open_creation` opens the creation menu in the next scene).
+**Death** (`CharacterData.die()`): with elements, lose one at random (`remove_element` resets that element's
+mastery, special and skill uses; none left means attunable); with none, the result is `final` and
+`RunEndScreen` starts a new character (`Game.open_creation` opens the creation menu in the next scene).
+
+**Run loot** (`Game.lose_run`, used by a fall in `Dungeon._finish_run` and by the pause menu's retreat): 30% of
+the gold and what the run found. `Pickup` marks gear picked up in a run with `"run": <run seed>` (the mark is
+saved with the item, `Inventory._clean` keeps it) and counts materials picked up, scrap aside, in
+`Game.run["found"]`; `Inventory.lose_run_loot` removes the marked gear, bag or worn, and up to the found
+count of each material. Gear owned before the run has no mark (or another run's) and stays. A win keeps it all.
 
 **Class mastery** (`class_mastery`, `add_class_xp`): grows with kills; `Classes.SUBCLASS_MASTERY` opens the
 subclass. `ClassCards` shows the class (level 3) and subclass choices as cards; signals `class_available` /
@@ -380,7 +386,7 @@ Put it in a loadout's `support` slot.
 - **Game flow:** title (`MainMenu`) -> `Game.new_game` / `continue_game` -> `scenes/main.tscn`, where
   `Dungeon._make_layout` builds the **camp** (`DungeonGen.camp_room`) or the saved dungeon from `Game.mode`.
   The gate (`CampGate` -> `DungeonSelect`) calls `Game.begin_run(tier)`; a finished run calls
-  `Dungeon._finish_run` (meta, leaderboard, gold) and `RunEndScreen` returns to camp or the menu.
+  `Dungeon._finish_run` (meta, leaderboard, gold, run loot) and `RunEndScreen` returns to camp or the menu.
   Tests build a `Dungeon` with `with_ui = false` and a preset `layout`, which skips all of this.
 - **Difficulty** (`Game.DIFFICULTIES`) scales monsters (`hardness_mult`) and rewards (`reward_mult`: XP, gold, drop luck).
 - **Controls:** every aim in the game goes through `Controls.aim_point(node, origin)`. Pad defaults are added
