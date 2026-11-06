@@ -35,8 +35,8 @@ the open questions at the end are the ones worth your call.
   random, its mastery restarts), **30 % of your gold** and **the loot found in the run** (gear, worn or not, and
   materials; scrap is safe). A hero with no element left to lose is gone for good (their save is deleted, the run goes
   on the leaderboard).
-* **Cost of playing it safe**: retreating from a dungeon also costs the run, 30 % of the gold and the run's loot (never
-  an element), so leaving is never free.
+* **Cost of playing it safe**: retreating from a dungeon also costs the run and 30 % of the gold (the run's loot
+  is kept, never an element is lost), so leaving is never free.
 * **Reward for finishing**: the boss drops two gear pieces and (sometimes) an elemental **gem**; the dungeon pays a
   clear bonus; the next dungeon opens. The second dungeon's bosses also carry the rare **Light** and **Dark** gems.
 * **Healing between fights**: a cleared combat room or guardian heals 15% of max HP, a forge room and a level-up heal

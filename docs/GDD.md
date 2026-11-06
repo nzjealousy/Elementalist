@@ -202,7 +202,7 @@ hard, and the choices that cost resources (more elements, more fusion, chained a
 - **Difficulty is an oath**, chosen once per hero: Squire, Knight (the intended game), Warlord. Harder oaths
   multiply monster health and damage (x0.75 / x1 / x1.25) and also XP, gold, drop luck and the leaderboard score.
 - **Punishing but rewarding.** Failing costs one element, 30% of gold and the loot found in the run; retreating
-  costs the same gold and loot but no element; there is no free exit. In return the boss drops two gear pieces and maybe an element gem, a cleared dungeon pays a bonus,
+  costs the same gold but keeps the loot and every element; there is no free exit. In return the boss drops two gear pieces and maybe an element gem, a cleared dungeon pays a bonus,
   and a harder oath pays more.
 - **Light and Dark** (the rare elements) now have four skills each, eleven combos with the main elements and with
   each other (Twilight), a resonance and monster variants from the second dungeon. They are gained from the

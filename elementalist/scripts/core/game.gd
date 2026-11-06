@@ -247,14 +247,15 @@ func run_seed() -> int:
 	return int(run.get("seed", 0)) if mode == "dungeon" and not run.is_empty() else -1
 
 
-## A run that ends badly (a fall or a retreat): 30% of the gold and the run's loot are lost. Elements are the
-## death's business (CharacterData.die), not this. Returns {"gold": lost, "loot": pieces and materials lost}.
-func lose_run() -> Dictionary:
+## A run that ends badly: 30% of the gold is lost, and on a fall (`loot` true) the run's loot too; a retreat
+## passes false and keeps it. Elements are the death's business (CharacterData.die), not this.
+## Returns {"gold": lost, "loot": pieces and materials lost}.
+func lose_run(loot := true) -> Dictionary:
 	var inv := character.inventory
 	var gold_lost := floori(inv.gold * DEATH_GOLD_LOSS)
 	inv.gold -= gold_lost
-	var loot := inv.lose_run_loot(int(run.get("seed", 0)), run.get("found", {}))
-	return {"gold": gold_lost, "loot": loot}
+	var lost := inv.lose_run_loot(int(run.get("seed", 0)), run.get("found", {})) if loot else 0
+	return {"gold": gold_lost, "loot": lost}
 
 
 func tier_unlocked(tier: int) -> bool:

@@ -4331,6 +4331,24 @@ func _p5_finish_run() -> void:
 	var cost := Game.lose_run()
 	_check("a fall after the load takes exactly the run's loot", int(cost["loot"]) == 3 and not hero_inv.equipped.has(sword_slot)
 		and hero_inv.equipped.has(Items.slot_of(pre_worn)) and hero_inv.bag.size() == 1 and hero_inv.count("slime_gel") == 1 and hero_inv.count("scrap") == 7)
+	# a retreat (pause menu) takes 30% of the gold only; the run's gear and materials stay, and a later run cannot take them
+	Game.run = {"tier": 1, "seed": 9, "floor": 1, "room": 0, "found": {"slime_gel": 2}}
+	hero_inv.gold = 1000
+	var kept := _item("iron_sword", "rare", 3, 5)
+	kept["run"] = 9
+	hero_inv.add_item(kept)
+	hero_inv.materials["slime_gel"] = 3
+	var retreat_cost := Game.lose_run(false)
+	_check("a retreat costs 30% of the gold and keeps the run's gear and materials", int(retreat_cost["gold"]) == 300
+		and hero_inv.gold == 700 and int(retreat_cost["loot"]) == 0 and kept in hero_inv.bag and hero_inv.count("slime_gel") == 3)
+	Game.run = {"tier": 1, "seed": 10, "floor": 1, "room": 0}  # the next run: a new seed, nothing found yet
+	var later_fall := Game.lose_run()
+	_check("and a fall in a later run does not take what the retreat kept", int(later_fall["loot"]) == 0 and kept in hero_inv.bag
+		and hero_inv.count("slime_gel") == 3)
+	Game.run = {"tier": 1, "seed": 9, "floor": 1, "room": 0, "found": {"slime_gel": 2}}
+	var same_fall := Game.lose_run()
+	_check("while a fall in that run would have taken them", int(same_fall["loot"]) == 3 and not (kept in hero_inv.bag)
+		and hero_inv.count("slime_gel") == 1)
 	Game.mode = "camp"
 	Game.keep_saved_run = keep_run
 

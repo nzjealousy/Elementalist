@@ -199,10 +199,11 @@ mastery, special and skill uses; none left means attunable); with none, the resu
 `RunEndScreen` starts a new character (`Game.open_creation` opens the creation menu in the next scene).
 
 **Run loot** (`Game.lose_run`, used by a fall in `Dungeon._finish_run` and by the pause menu's retreat): 30% of
-the gold and what the run found. `Pickup` marks gear picked up in a run with `"run": <run seed>` (the mark is
+the gold and what the run found; the retreat calls `lose_run(false)`, which takes the gold only. `Pickup` marks gear picked up in a run with `"run": <run seed>` (the mark is
 saved with the item, `Inventory._clean` keeps it) and counts materials picked up, scrap aside, in
 `Game.run["found"]`; `Inventory.lose_run_loot` removes the marked gear, bag or worn, and up to the found
-count of each material. Gear owned before the run has no mark (or another run's) and stays. A win keeps it all.
+count of each material. Gear owned before the run has no mark (or another run's) and stays. A win or a retreat keeps it all; the kept mark is harmless, since each run
+gets a new `randi()` seed and `return_to_camp` clears `Game.run`.
 
 **Class mastery** (`class_mastery`, `add_class_xp`): grows with kills; `Classes.SUBCLASS_MASTERY` opens the
 subclass. `ClassCards` shows the class (level 3) and subclass choices as cards; signals `class_available` /

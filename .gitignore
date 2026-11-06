@@ -8,4 +8,7 @@ Desktop.ini
 # Local tooling state (not part of the game)
 .claude/
 
+# Exported game builds (see docs/BUILD.md)
+build/
+
 # Godot's own ignores (.godot/, builds) live in elementalist/.gitignore

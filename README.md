@@ -140,7 +140,7 @@ quit and *Continue* where you left off.
 **Falling** (dying with elements left) costs one random element (its mastery restarts), 30% of your gold
 and the loot found in that run (gear, worn or not, and materials; what you owned before the run and your
 scrap are safe), and sends you back to camp. Dying with no element left ends the hero. Retreating from the
-pause menu costs the run, the same gold and the run's loot, but never an element. Your **oath** (Squire / Knight / Warlord, chosen once) scales monster health and damage
+pause menu costs the run and the same gold, but you keep the run's loot and never lose an element. Your **oath** (Squire / Knight / Warlord, chosen once) scales monster health and damage
 (x0.75 / x1 / x1.25) and the XP, gold and drop luck you earn (x0.8 / x1 / x1.6).
 
 - **Monsters:** slimes, cave bats, skeleton archers, wisps and stone brutes get tougher (and more
