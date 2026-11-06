@@ -24,9 +24,12 @@ extends RefCounted
 ## back to this class, so a preload here would be a cycle).
 const ENEMY_SCENE := "res://scenes/enemies/slime.tscn"
 
-## Everything monsters deal (touch, arrows, slams) is multiplied by this: the dungeon is meant to
-## be punishing, a place to plan resources rather than to trade blows.
-const HARDNESS := 1.35
+## Everything monsters deal (touch, arrows, slams) is multiplied by this. The game is meant to be
+## forgiving: a normal hit takes about 5-8% of a hero's health at the level they reach a floor.
+const HARDNESS := 1.0
+## Monster damage gained per floor (floor_scale): x to depth 10, y after. Health climbs faster
+## (0.35 then 0.14) so kill times hold while hits stay soft.
+const DAMAGE_PER_FLOOR := Vector2(0.08, 0.06)
 const RESIST_MULT := 0.4
 const WEAK_MULT := 1.5
 const VARIANT_HP := 1.25
@@ -124,7 +127,7 @@ const DEFS := {
 		"behavior": "boss", "attack": "both", "boss": true, "mini": true, "knock_resist": 0.8,
 		"attack_range": 110.0, "shot": {"damage": 8.0, "speed": 90.0, "cooldown": 2.4},
 		"dash": {"range": 95.0, "cooldown": 4.0, "windup": 0.45, "time": 0.25, "speed": 200.0, "damage_mult": 1.5},
-		"slam": {"radius": 30.0, "damage": 16.0, "cooldown": 5.0, "telegraph": 0.8},
+		"slam": {"radius": 30.0, "damage": 19.0, "cooldown": 5.0, "telegraph": 0.8},
 		"summon": {"id": "skeleton", "count": 2, "stages": [0.5]},
 	},
 	"ember_matron": {
@@ -132,14 +135,14 @@ const DEFS := {
 		"behavior": "boss", "attack": "both", "boss": true, "mini": true, "knock_resist": 0.7,
 		"attack_range": 120.0, "shot": {"damage": 9.0, "speed": 100.0, "cooldown": 1.5},
 		"dodge": {"chance": 0.25, "cooldown": 3.0},
-		"slam": {"radius": 36.0, "damage": 18.0, "cooldown": 5.5, "telegraph": 0.8},
+		"slam": {"radius": 36.0, "damage": 22.0, "cooldown": 5.5, "telegraph": 0.8},
 		"summon": {"id": "imp", "count": 3, "stages": [0.6, 0.3]},
 	},
 	"bog_hulk": {
 		"name": "Bog Hulk", "sprite": "mini_hulk", "hp": 380.0, "speed": 20.0, "contact": 16.0, "xp": 130,
 		"behavior": "boss", "attack": "both", "boss": true, "mini": true, "knock_resist": 0.9,
 		"attack_range": 90.0, "shot": {"damage": 7.0, "speed": 70.0, "cooldown": 2.0},
-		"slam": {"radius": 44.0, "damage": 22.0, "cooldown": 4.5, "telegraph": 0.9},
+		"slam": {"radius": 44.0, "damage": 26.0, "cooldown": 4.5, "telegraph": 0.9},
 		"summon": {"id": "spitter", "count": 3, "stages": [0.5]},
 	},
 	"slime_king": {
@@ -158,7 +161,7 @@ const DEFS := {
 		"name": "Crypt Lich", "sprite": "boss_lich", "hp": 900.0, "speed": 20.0, "contact": 16.0, "xp": 420, "tier": 2, "rare_gem": "dark",
 		"behavior": "boss", "attack": "both", "boss": true, "knock_resist": 0.9,
 		"attack_range": 135.0, "shot": {"damage": 11.0, "speed": 90.0, "cooldown": 1.4},
-		"slam": {"radius": 52.0, "damage": 34.0, "cooldown": 5.5, "telegraph": 0.9},
+		"slam": {"radius": 52.0, "damage": 30.0, "cooldown": 5.5, "telegraph": 0.9},
 		"summon": {"id": "wraith", "count": 3, "stages": [0.75, 0.5, 0.25]},
 	},
 	"tide_titan": {
@@ -166,14 +169,14 @@ const DEFS := {
 		"behavior": "boss", "attack": "both", "boss": true, "knock_resist": 0.95,
 		"attack_range": 100.0, "shot": {"damage": 10.0, "speed": 80.0, "cooldown": 1.8},
 		"dash": {"range": 110.0, "cooldown": 6.0, "windup": 0.6, "time": 0.3, "speed": 210.0, "damage_mult": 1.6},
-		"slam": {"radius": 60.0, "damage": 38.0, "cooldown": 5.0, "telegraph": 1.0},
+		"slam": {"radius": 60.0, "damage": 32.0, "cooldown": 5.0, "telegraph": 1.0},
 		"summon": {"id": "spitter", "count": 4, "stages": [0.5]},
 	},
 	"thorn_matriarch": {
 		"name": "Thorn Matriarch", "sprite": "boss_matriarch", "hp": 1250.0, "speed": 22.0, "contact": 18.0, "xp": 560, "tier": 3,
 		"behavior": "boss", "attack": "both", "boss": true, "knock_resist": 0.9,
 		"attack_range": 120.0, "shot": {"damage": 9.0, "speed": 85.0, "cooldown": 2.0},
-		"slam": {"radius": 46.0, "damage": 26.0, "cooldown": 4.2, "telegraph": 0.85},
+		"slam": {"radius": 46.0, "damage": 30.0, "cooldown": 4.2, "telegraph": 0.85},
 		"summon": {"id": "sapling", "count": 3, "stages": [0.7, 0.4]},
 	},
 	"cinder_tyrant": {
@@ -208,8 +211,8 @@ const WEIGHTS := {
 	8: {"imp": 2.0, "wraith": 2.0, "duelist": 4.0, "wolf": 3.0, "sapling": 2.0, "shade": 3.0, "slug": 3.0, "brute": 2.0},
 	9: {"wraith": 2.0, "duelist": 3.0, "wolf": 3.0, "shade": 4.0, "slug": 4.0, "brute": 2.0},
 }
-const VARIANT_CHANCE_PER_FLOOR := 0.15  # per depth, capped at VARIANT_CHANCE_MAX
-const VARIANT_CHANCE_MAX := 0.6
+const VARIANT_CHANCE_PER_FLOOR := 0.04  # per depth, capped at VARIANT_CHANCE_MAX: elites stay special
+const VARIANT_CHANCE_MAX := 0.3
 
 
 ## Which WEIGHTS band a dungeon depth belongs to.
@@ -262,7 +265,7 @@ static func roll_wave(rng: RandomNumberGenerator, floor_number: int, count: int)
 static func floor_scale(floor_number: int) -> Vector2:
 	var early := mini(floor_number, 10) - 1   # the first ten floors climb steeply...
 	var late := maxi(floor_number - 10, 0)    # ...the deeper ones more gently, so the last dungeon is hard but not absurd
-	return Vector2(1.0 + 0.35 * early + 0.14 * late, 1.0 + 0.2 * early + 0.07 * late)
+	return Vector2(1.0 + 0.35 * early + 0.14 * late, 1.0 + DAMAGE_PER_FLOOR.x * early + DAMAGE_PER_FLOOR.y * late)
 
 
 ## Creates a configured monster at `pos` under `parent`.

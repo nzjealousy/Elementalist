@@ -103,21 +103,25 @@ moment you touch it, and back to the mouse when you move that). Everything is re
   rewards), rare element passives (mastery level 5) and rare skill passives (many uses of one
   skill).
 
-## Resources and death (the game is meant to be punishing)
+## Resources and death (the game is meant to be forgiving)
 
-- **Recovery is slow.** Health, stamina and mana come back at roughly half the old rate, and health
-  recovery waits 6 seconds after a hit. Plan your fights: kills give back a little stamina and mana,
-  and traits and gear can add health, mana or stamina per kill. Monsters hit 35% harder than their
-  listed numbers, and a forge room heals only half your health.
+- **Healing comes between fights.** Clearing a combat room or a guardian heals 15% of your max HP, a
+  forge room and a level-up heal you fully, and out of combat health comes back at about 0.5% of max
+  HP a second, starting 3 seconds after the last hit. Kills give back a little stamina and mana, and
+  traits and gear can add health, mana or stamina per kill. Every class gains 5 max HP a level.
+- **Monsters hit softly and warn you.** A normal hit takes about 5-8% of your health at the level you
+  reach that floor, a boss slam about 12-21%. Melee monsters bite at most every 1.2 s, a dash always winds up
+  for at least 0.4 s and never lunges faster than 300 px/s, and no monster walks faster than you. A
+  dodge costs 25 stamina and makes you immune for 0.4 s.
 - **Chaining abilities is cheaper.** An F/V/R ability of a *different element* than your last one,
   cast within 3 seconds, costs 30% less mana (a gold frame shows it on the slot).
 - **More elements, more mana.** A fusion costs +30% per extra element. **Elemental Harmony** (owning
   two or more elements) gives small bonuses per extra element, but every spell also costs 4% more.
 - **Attack speed** comes from the new **Dexterity** attribute (+3% per point) and from every character
   level (+1%). It speeds slashes, bolts and fusions, not abilities.
-- **Dying costs elements.** If you have elements you survive, losing as many as the number of times
-  you have died (one, then two, then three...), chosen at random; their mastery starts over. With no
-  element left to lose, dying ends the character: you make a new one.
+- **Dying costs one element.** A fall costs one element, chosen at random (its mastery starts over), 30%
+  of your gold and every item found in that run. With no element left to lose, dying ends the character:
+  you make a new one.
 - **Classes are cards.** At level 3 pick any of the eight classes from a card screen. Your class gains
   **mastery** from kills; at class mastery 5 you choose a subclass (cards again).
 - **Monsters** are melee, ranged or both; imps and duelists **dash** (after a warning flash), wraiths and
@@ -136,8 +140,8 @@ quit and *Continue* where you left off.
 **Falling** (dying with elements left) costs one random element (its mastery restarts), 30% of your gold
 and the loot found in that run (gear, worn or not, and materials; what you owned before the run and your
 scrap are safe), and sends you back to camp. Dying with no element left ends the hero. Retreating from the
-pause menu costs the run, the same gold and the run's loot, but never an element. Your **oath** (Squire / Knight / Warlord, chosen once) scales monster toughness and the
-XP, gold and drop luck you earn.
+pause menu costs the run, the same gold and the run's loot, but never an element. Your **oath** (Squire / Knight / Warlord, chosen once) scales monster health and damage
+(x0.75 / x1 / x1.25) and the XP, gold and drop luck you earn (x0.8 / x1 / x1.6).
 
 - **Monsters:** slimes, cave bats, skeleton archers, wisps and stone brutes get tougher (and more
   elemental) each floor. An **elemental variant** shrugs off its own element and is weak to the one that

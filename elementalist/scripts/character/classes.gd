@@ -94,11 +94,13 @@ const LUCK_CRIT := 0.015
 const LUCK_LOOT := 0.05
 const BASE_CRIT_MULT := 1.5
 
-## Recovery is slow on purpose: resources are something to plan around, not something that refills
-## while you fight. Per-second base values (attributes and passives add to them; see
-## CharacterData.derived), what a kill gives back, and how long recovery pauses after use.
+## Recovery during a fight is slow: resources are something to plan around. Per-second base values
+## (attributes and passives add to them; see CharacterData.derived), what a kill gives back, and how
+## long recovery pauses after use. Health also regains HP_REGEN_SHARE of max HP a second once out of
+## combat, so a hero walks into the next room with most of it back (about 0.5% a second in all).
 const HP_REGEN_BASE := 0.1
 const HP_REGEN_PER_VIT := 0.03
+const HP_REGEN_SHARE := 0.004
 const STAMINA_REGEN_BASE := 12.0
 const STAMINA_REGEN_PER_AGI := 1.2
 const MANA_REGEN_BASE := 2.5

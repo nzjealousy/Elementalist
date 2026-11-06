@@ -74,6 +74,11 @@ func vacuum(player: Node2D) -> void:
 	_collect(player)
 
 
+## The gold a drop of `amount` is worth to this hero: scaled by the oath's reward (Game.reward_mult).
+static func gold_value(amount: int) -> int:
+	return maxi(1, roundi(float(amount) * Game.reward_mult()))
+
+
 func _can_collect() -> bool:
 	return drop["kind"] != "item" or not Game.character.inventory.bag_full()
 
@@ -84,9 +89,10 @@ func _collect(player: Node2D) -> void:
 	var color := Color.WHITE
 	var run_seed := Game.run_seed()  # loot picked up in a run is lost if the run ends in a fall
 	match drop["kind"]:
-		"gold":
-			inv.add_gold(int(drop["amount"]))
-			text = "+%d gold" % int(drop["amount"])
+		"gold":  # every gold drop (monsters, guardians, bosses, chests) passes here: the oath's reward applies once
+			var gold := gold_value(int(drop["amount"]))
+			inv.add_gold(gold)
+			text = "+%d gold" % gold
 			color = Color("ffd84a")
 		"material":
 			inv.add_material(drop["id"], int(drop["amount"]))

@@ -12,12 +12,12 @@ const DEATH_GOLD_LOSS := 0.3  # share of carried gold a fall in the dungeon cost
 ## Chosen when a hero is created and kept in the save. "hardness" scales monster health and damage,
 ## "reward" scales XP, gold and the luck of drops: the harder the oath, the better the spoils.
 const DIFFICULTIES := {
-	"squire": {"name": "Squire", "hardness": 0.8, "reward": 0.8,
-		"desc": "Gentler monsters, smaller spoils. For learning the elements."},
+	"squire": {"name": "Squire", "hardness": 0.75, "reward": 0.8,
+		"desc": "Gentle monsters, smaller spoils. For learning the elements."},
 	"knight": {"name": "Knight", "hardness": 1.0, "reward": 1.0,
-		"desc": "The intended game. Resources are tight; death costs you."},
-	"warlord": {"name": "Warlord", "hardness": 1.3, "reward": 1.6,
-		"desc": "Brutal monsters, 60% richer spoils. Mistakes cost dearly."},
+		"desc": "The intended game: forgiving, with healing between rooms."},
+	"warlord": {"name": "Warlord", "hardness": 1.25, "reward": 1.6,
+		"desc": "Monsters hit harder, 60% richer spoils. Mistakes cost more."},
 }
 
 ## The dungeons of the camp's gate, in order: floors per dungeon and how deep their monsters start.

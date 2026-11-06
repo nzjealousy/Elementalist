@@ -31,12 +31,12 @@ const STUN_IMMUNITY := 1.5   # after a stun ends, no new stun for this long (no 
 @export var speed := 80.0
 @export var dodge_speed := 260.0
 @export var dodge_time := 0.18
-@export var dodge_iframes := 0.3   # invulnerable from the start of the dodge for this long (it was 0.12; the roll itself lasts 0.18 s)
+@export var dodge_iframes := 0.4   # invulnerable from the start of the dodge for this long (the roll itself lasts 0.18 s)
 @export var dodge_cooldown := 0.4
-@export var dodge_stamina_cost := 30.0
+@export var dodge_stamina_cost := 25.0
 @export var max_hp := 100.0
 @export var hp_regen := 0.6  # HP per second
-@export var hp_regen_delay := 6.0  # seconds after a hit before regen resumes
+@export var hp_regen_delay := 3.0  # seconds after a hit before regen resumes
 @export var max_stamina := 100.0
 @export var stamina_regen := 30.0
 @export var hurt_invulnerability := 0.35
@@ -127,7 +127,7 @@ func apply_stats(heal: bool = false) -> void:
 		caster.apply_stats()
 
 
-## A level-up restores a share of max HP (CharacterData.LEVEL_UP_HEAL_FRACTION), not all of it.
+## A level-up restores CharacterData.LEVEL_UP_HEAL_FRACTION of max HP (all of it).
 func _on_level_up(new_level: int) -> void:
 	apply_stats()
 	hp = minf(max_hp, hp + max_hp * CharacterData.LEVEL_UP_HEAL_FRACTION)

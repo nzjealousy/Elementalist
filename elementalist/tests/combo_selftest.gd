@@ -255,7 +255,7 @@ func _test_xp_and_levels() -> void:
 
 func _test_derived_stats() -> void:
 	var d: Dictionary = CharacterData.create_sandbox("wanderer", ["fire"], 1).derived()
-	_check("neutral stats match the tuned combat values", is_equal_approx(d["max_hp"], 100.0) and is_equal_approx(d["hp_regen"], 0.25)
+	_check("neutral stats match the tuned combat values", is_equal_approx(d["max_hp"], 100.0) and is_equal_approx(d["hp_regen"], 0.65)
 		and is_equal_approx(d["max_mana"], 100.0) and is_equal_approx(d["mana_regen"], 4.5)
 		and is_equal_approx(d["max_stamina"], 100.0) and is_equal_approx(d["stamina_regen"], 18.0) and is_equal_approx(d["move_speed"], 80.0))
 	var channeler: Dictionary = CharacterData.create_sandbox("channeler", ["fire"], 1).derived()
@@ -359,8 +359,8 @@ func _test_player_uses_character() -> void:
 	Game.character.leveled_up.connect(func(_l): leveled[0] += 1)
 	player.hp = 10.0
 	Game.character.gain_xp(CharacterData.xp_to_next(1))
-	var expected_hp: float = 10.0 + float(player.max_hp) * CharacterData.LEVEL_UP_HEAL_FRACTION
-	_check("level up heals only a share of max HP", leveled[0] == 1 and is_equal_approx(player.hp, expected_hp) and player.hp < player.max_hp)
+	_check("a level up heals fully", leveled[0] == 1 and is_equal_approx(player.hp, player.max_hp))
+	_check("and a level adds max HP to every class", is_equal_approx(player.max_hp, hp_before + 8.0 + CharacterData.HP_PER_LEVEL))
 	player.queue_free()
 	await get_tree().process_frame
 	var sealed := CharacterData.create("S", "vanguard", CharacterData.SEALED, _rng(1))
@@ -1589,7 +1589,7 @@ func _test_dodge_and_cycling() -> void:
 	player.stamina = 100.0
 	player._dodge_left = 0.0   # the roll is over (0.18 s), but its i-frames (0.3 s) are not
 	player._hurt_cd = 0.0
-	_check("the dodge's i-frames outlast the roll itself", player.dodge_iframes > player.dodge_time and player.is_invulnerable())
+	_check("the dodge's 0.4 s of i-frames outlast the roll itself", player.dodge_iframes == 0.4 and player.dodge_iframes > player.dodge_time and player.is_invulnerable())
 	player._iframes_left = 0.0
 	_check("and then they end", not player.is_invulnerable())
 
@@ -2612,7 +2612,7 @@ func _test_monsters() -> void:
 	_check("and the sprite", bat.sprite.texture.get_size() == AssetDB.get_texture("enemy_bat").get_size() and brute.sprite.texture.get_size() == AssetDB.get_texture("enemy_brute").get_size())
 	_check("big monsters get a bigger body", (brute.get_node("CollisionShape2D").shape as CircleShape2D).radius > (bat.get_node("CollisionShape2D").shape as CircleShape2D).radius)
 	_check("bodies are not shared between monsters", brute.get_node("CollisionShape2D").shape != bat.get_node("CollisionShape2D").shape)
-	_check("a floor scales health and damage", Monsters.floor_scale(1) == Vector2.ONE and Monsters.floor_scale(3).x > 1.5 and Monsters.floor_scale(3).y > 1.2)
+	_check("a floor scales health and damage", Monsters.floor_scale(1) == Vector2.ONE and Monsters.floor_scale(3).x > 1.5 and Monsters.floor_scale(3).y > 1.1)
 	var scaled: Enemy = load(Monsters.ENEMY_SCENE).instantiate()
 	scaled.configure("spitter", "", 2.0, 1.5)
 	_check("the scale applies to health, contact and shot damage (and the dungeon's hardness)", scaled.max_hp == 72.0 and is_equal_approx(scaled.contact_damage, 7.0 * 1.5 * Monsters.HARDNESS) and is_equal_approx(scaled.shot["damage"], 6.0 * 1.5 * Monsters.HARDNESS))
@@ -2732,7 +2732,7 @@ func _test_monsters() -> void:
 				floor_three_variants += wave.filter(func(e): return e["variant"] != "").size()
 	_check("waves hold valid regular monsters", all_ok)
 	_check("floor 1 only has the easy monsters", floor_one_clean)
-	_check("deeper floors have more elemental variants", floor_three_variants > floor_one_variants * 2 and floor_one_variants > 50)
+	_check("deeper floors have more elemental variants", floor_three_variants > floor_one_variants * 2 and floor_one_variants > 20)
 	_check("a wave is reproducible from a seed", Monsters.roll_wave(_rng(5), 2, 6) == Monsters.roll_wave(_rng(5), 2, 6))
 
 	for node in get_children():
@@ -2957,7 +2957,7 @@ func _test_dungeon_gen() -> void:
 					waves_ok = waves_ok and r["waves"].size() >= 1 and r["waves"].size() <= 2 and (f < 2 or r["waves"].size() == 2)
 					var sizes: Array = r["waves"].map(func(w): return w.size())
 					var lo := 2 + (f + 1)
-					var hi := 3 + (f + 1) + (1 if f > 0 else 0)
+					var hi := lo + 1
 					waves_ok = waves_ok and sizes.all(func(s): return s >= lo and s <= hi)
 				else:
 					waves_ok = waves_ok and r["waves"].is_empty()
@@ -2969,6 +2969,21 @@ func _test_dungeon_gen() -> void:
 	_check("doors are a two-tile gap in a wall, clear of the corners", doors_ok)
 	_check("pillars stay off the walls, the doors and the entry point, and apart from each other", obstacles_ok)
 	_check("combat rooms have one or two waves (always two on the last floor) that grow with depth", waves_ok)
+	var first_floor := Vector2i(99, 0)  # fewest, most monsters in a combat room on a tier's first floor
+	var deep_floor := Vector2i(99, 0)   # the same from its third floor on
+	for seed_value in 30:
+		var long_run := DungeonGen.generate(_rng(seed_value), 10)
+		for f in long_run.size():
+			for r in long_run[f]:
+				if r["kind"] != "combat":
+					continue
+				var n: int = r["waves"].reduce(func(total, w): return total + w.size(), 0)
+				if f == 0:
+					first_floor = Vector2i(mini(first_floor.x, n), maxi(first_floor.y, n))
+				elif f >= 2:
+					deep_floor = Vector2i(mini(deep_floor.x, n), maxi(deep_floor.y, n))
+	_check("a tier's first floor has rooms of 3-8 monsters", first_floor.x >= 3 and first_floor.y <= 8)
+	_check("from its third floor a room holds 10-12 monsters, never more", deep_floor.x >= 10 and deep_floor.y == 12)
 	_check("the same seed makes the same dungeon", DungeonGen.generate(_rng(9)) == DungeonGen.generate(_rng(9)))
 	_check("different seeds make different dungeons", DungeonGen.generate(_rng(9)) != DungeonGen.generate(_rng(10)))
 	var kinds := {}
@@ -3035,10 +3050,13 @@ func _test_dungeon_run() -> void:
 	# finish the room (the dungeon also runs on its own between frames, so stand clear of the door)
 	player.global_position = Vector2(float(first["cols"]), float(first["rows"])) * 8.0  # the room's centre
 	dungeon.debug_clear_room()
+	player.hp = 10.0  # after the kills: their XP may level the hero up, which heals fully
 	await get_tree().process_frame
 	await get_tree().process_frame
 	dungeon._physics_process(0.1)
 	_check("when the last monster dies the room is cleared", dungeon.state == "clear" and dungeon.enemies_alive() == 0)
+	var cleared_hp: float = 10.0 + player.max_hp * Dungeon.CLEAR_HEAL  # (plus a frame or two of regen)
+	_check("clearing a combat room heals 15% of max HP", Dungeon.CLEAR_HEAL == 0.15 and player.hp >= cleared_hp - 0.01 and player.hp < cleared_hp + 1.0)
 	await get_tree().process_frame
 	_check("and the door opens", door.open and door.get_node("CollisionShape2D").disabled)
 	var drops_waiting := get_tree().get_nodes_in_group("pickups").size()
@@ -3075,7 +3093,7 @@ func _test_dungeon_run() -> void:
 	player.hp = 5.0
 	player.stamina = 1.0
 	dungeon.debug_goto(forge_at.x, forge_at.y)
-	_check("a forge room heals half your health and refills stamina", is_equal_approx(player.hp, minf(player.max_hp, 5.0 + player.max_hp * Dungeon.FORGE_HEAL)) and is_equal_approx(player.stamina, player.max_stamina))
+	_check("a forge room heals fully and refills stamina", Dungeon.FORGE_HEAL == 1.0 and is_equal_approx(player.hp, player.max_hp) and is_equal_approx(player.stamina, player.max_stamina))
 	_check("and spawns the forge station", dungeon._room_node.get_children().any(func(n): return n is ForgeStation))
 
 	# floors and the boss
@@ -3150,8 +3168,13 @@ func _test_dungeon_run() -> void:
 func _test_recovery_and_kills() -> void:
 	var ch := _bare(CharacterData.create_sandbox(Classes.NEUTRAL_CLASS, ["fire"], 1))
 	var player = await _player_with(ch)
-	_check("recovery is slow: a few HP, some stamina and mana a second", ch.derived()["hp_regen"] < 0.5 and ch.derived()["stamina_regen"] < 20.0 and ch.derived()["mana_regen"] < 6.0)
-	_check("a hit pauses health recovery for six seconds", player.hp_regen_delay == 6.0)
+	var regen_share: float = ch.derived()["hp_regen"] / ch.derived()["max_hp"]
+	_check("out of combat a hero regains about half a percent of max HP a second", regen_share >= 0.004 and regen_share <= 0.008
+		and ch.derived()["stamina_regen"] < 20.0 and ch.derived()["mana_regen"] < 6.0)
+	var deep := _bare(CharacterData.create_sandbox("mystic", ["fire"], 30))
+	var deep_share: float = deep.derived()["hp_regen"] / deep.derived()["max_hp"]
+	_check("and so does a deep, sturdy hero", deep_share >= 0.004 and deep_share <= 0.008)
+	_check("a hit pauses health recovery for three seconds", player.hp_regen_delay == 3.0)
 	player.hp = 50.0
 	player.stamina = 10.0
 	player.caster.mana = 10.0
@@ -3172,8 +3195,10 @@ func _test_recovery_and_kills() -> void:
 	victim.free()
 	var sealed := CharacterData.create("S", Classes.NEUTRAL_CLASS, CharacterData.SEALED, _rng(4))
 	_check("a character without elements has no mana to get back", sealed.derived()["kill_mana"] == 0.0)
-	_check("a level up heals only a fifth of max HP", CharacterData.LEVEL_UP_HEAL_FRACTION == 0.2)
-	_check("monsters hit hard in the dungeon", Monsters.HARDNESS > 1.2)
+	_check("a level up heals all of max HP", CharacterData.LEVEL_UP_HEAL_FRACTION == 1.0)
+	_check("monsters carry no hidden damage multiplier", Monsters.HARDNESS == 1.0)
+	_check("monster damage climbs gently with depth", Monsters.DAMAGE_PER_FLOOR == Vector2(0.08, 0.06)
+		and is_equal_approx(Monsters.floor_scale(10).y, 1.72) and is_equal_approx(Monsters.floor_scale(62).y, 4.84))
 	var slime := _fresh_monster("slime")
 	_check("a configured slime bites for the dungeon's hardness", is_equal_approx(slime.contact_damage, 8.0 * Monsters.HARDNESS))
 	player.hp = player.max_hp
@@ -3181,13 +3206,13 @@ func _test_recovery_and_kills() -> void:
 	player._hurt_cd = 0.0
 	var dodge_before: float = player.stamina
 	player.try_dodge(Vector2.RIGHT)
-	_check("a dodge costs 30 stamina", is_equal_approx(dodge_before - player.stamina, 30.0))
+	_check("a dodge costs 25 stamina (four dodges a bar)", is_equal_approx(dodge_before - player.stamina, 25.0))
 	player._dodge_left = 0.0
 	player._dodge_cd = 0.0
 	ch.traits.append("nimble")
 	player.stamina = 100.0
 	player.try_dodge(Vector2.RIGHT)
-	_check("Nimble makes dodges cost 20 percent less", is_equal_approx(100.0 - player.stamina, 24.0))
+	_check("Nimble makes dodges cost 20 percent less", is_equal_approx(100.0 - player.stamina, 20.0))
 	slime.free()
 	player.queue_free()
 	await get_tree().process_frame
@@ -3524,6 +3549,7 @@ func _test_enemy_abilities() -> void:
 	spitter._contact_cd = 0.0
 	slime._physics_process(0.016)
 	_check("standing on a slime does", player.hp < hp0)
+	_check("and it bites again only after 1.2 s", Enemy.CONTACT_COOLDOWN == 1.2 and is_equal_approx(slime._contact_cd, Enemy.CONTACT_COOLDOWN))
 	player._hurt_cd = 0.0
 	hp0 = player.hp
 	spitter._physics_process(0.016)
@@ -3567,7 +3593,17 @@ func _test_enemy_abilities() -> void:
 	imp3.configure("imp", "", 1.0, 1.0, 3)
 	var imp1: Enemy = load(Monsters.ENEMY_SCENE).instantiate()
 	imp1.configure("imp", "", 1.0, 1.0, 1)
-	_check("deeper imps dash more often, warn less and lunge faster", imp3.dash["cooldown"] < imp1.dash["cooldown"] and imp3.dash["windup"] < imp1.dash["windup"] and imp3.dash["speed"] > imp1.dash["speed"] and imp3.speed > imp1.speed)
+	_check("deeper imps dash more often and lunge faster, but still warn as long", imp3.dash["cooldown"] < imp1.dash["cooldown"] and imp3.dash["windup"] == imp1.dash["windup"] and imp3.dash["speed"] > imp1.dash["speed"] and imp3.speed > imp1.speed)
+	var wolf62: Enemy = load(Monsters.ENEMY_SCENE).instantiate()
+	wolf62.configure("wolf", "", 1.0, 1.0, 62)
+	_check("a dash always winds up for at least 0.4 s", Enemy.DASH_WINDUP_MIN == 0.4 and is_equal_approx(wolf62.dash["windup"], 0.4) and imp1.dash["windup"] >= 0.4)
+	_check("a lunge never passes 300 px/s", Enemy.DASH_SPEED_MAX == 300.0 and is_equal_approx(wolf62.dash["speed"], 300.0))
+	_check("no monster walks faster than the slowest hero", is_equal_approx(wolf62.speed, Enemy.WALK_SPEED_MAX) and Enemy.WALK_SPEED_MAX <= CharacterData.create_sandbox(Classes.NEUTRAL_CLASS, [], 1).derived()["move_speed"])
+	var shade62: Enemy = load(Monsters.ENEMY_SCENE).instantiate()
+	shade62.configure("shade", "", 1.0, 1.0, 62)
+	_check("a dodger never sidesteps more than 45% of hits", is_equal_approx(shade62.dodge_ability["chance"], 0.45))
+	shade62.free()
+	wolf62.free()
 	imp1.free()
 	imp3.free()
 	imp._dash_state = "windup"
@@ -3889,7 +3925,23 @@ func _p5_flow_and_dungeons() -> void:
 	_check("harder oaths mean tougher monsters and richer spoils", diffs["squire"]["hardness"] < diffs["knight"]["hardness"] and diffs["knight"]["hardness"] < diffs["warlord"]["hardness"] and diffs["squire"]["reward"] < diffs["knight"]["reward"] and diffs["knight"]["reward"] < diffs["warlord"]["reward"])
 	var real_meta: Dictionary = Game.meta
 	Game.meta = SaveStore.new_meta("warlord")
-	_check("the oath sets the reward and hardness multipliers", is_equal_approx(Game.reward_mult(), 1.6) and is_equal_approx(Game.hardness_mult(), 1.3))
+	_check("the oath sets the reward and hardness multipliers", is_equal_approx(Game.reward_mult(), 1.6) and is_equal_approx(Game.hardness_mult(), 1.25))
+	_check("the oaths scale monsters by 0.75, 1.0 and 1.25", diffs["squire"]["hardness"] == 0.75 and diffs["knight"]["hardness"] == 1.0 and diffs["warlord"]["hardness"] == 1.25)
+	var gold_before: int = Game.character.inventory.gold
+	var coin := Pickup.new()
+	coin.drop = {"kind": "gold", "amount": 10}
+	add_child(coin)
+	var collector := Node2D.new()
+	add_child(collector)
+	coin.vacuum(collector)
+	var picked: int = Game.character.inventory.gold - gold_before
+	Game.character.inventory.gold = gold_before
+	collector.free()
+	_check("drop gold follows the oath's reward: 10 gold is 16 to a Warlord", Pickup.gold_value(10) == 16 and picked == 16)
+	Game.meta = SaveStore.new_meta("squire")
+	var squire_gold := Pickup.gold_value(10)
+	Game.meta = SaveStore.new_meta("warlord")
+	_check("and 8 to a Squire", squire_gold == 8)
 	_check("a richer oath improves drop luck", Game.loot_bonus() > 0.5)
 	_check("only the first dungeon is open at the start", Game.tier_unlocked(1) and not Game.tier_unlocked(2))
 	Game.meta["tier_cleared"] = 1
@@ -3935,7 +3987,7 @@ func _p5_bosses() -> void:
 	var speed_before: float = lich.speed
 	lich._check_enrage()
 	warden._check_enrage()
-	_check("a boss enrages when badly hurt: faster and quicker to attack", lich.enraged and lich.speed > speed_before and is_equal_approx(lich._enrage_cooldown(), 0.65))
+	_check("a boss enrages when badly hurt: faster and quicker to attack", lich.enraged and lich.speed > speed_before and is_equal_approx(lich._enrage_cooldown(), 0.8))
 	_check("a mini boss never enrages", not warden.enraged and warden.mini and warden.boss)
 	_check("a boss that can shoot also keeps a slam", lich.shot.size() > 0 and lich.slam.size() > 0)
 	holder.queue_free()
@@ -5557,7 +5609,7 @@ func _test_hero_stun() -> void:
 	var slammed := boss._telegraph != null
 	if slammed:
 		boss._telegraph._physics_process(10.0)
-	_check("a boss slam that lands stuns the hero", slammed and player.is_stunned() and is_equal_approx(player._stun_left, Enemy.SLAM_STUN))
+	_check("a boss slam that lands stuns the hero for a quarter second", slammed and player.is_stunned() and Enemy.SLAM_STUN == 0.25 and is_equal_approx(player._stun_left, Enemy.SLAM_STUN))
 	player._stun_left = 0.0
 	player._stun_immune = 0.0
 	player._hurt_cd = 0.0

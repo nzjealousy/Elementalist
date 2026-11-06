@@ -131,7 +131,7 @@ Coming-of-age ceremony · 1 village hub · 1 dungeon with 3–4 room types · 3 
 - **Attributes shape skills and elements:** Intellect drives spell damage, each element has a
   governing attribute that scales its status effects, and individual skills scale their size,
   speed, knockback or cooldown from an attribute.
-- **Level-ups heal 40% of max HP**, not all of it.
+- **Level-ups heal 40% of max HP**, not all of it. (Superseded: a level-up now heals fully, see section 18.)
 
 ## 15. Design updates (Phase 4.2: the game is about managing resources)
 
@@ -140,7 +140,8 @@ hard, and the choices that cost resources (more elements, more fusion, chained a
 
 - **Slow recovery, small refills.** Recovery is about half the old rate; a hit pauses health recovery for
   six seconds; a level-up heals a fifth; a forge room heals half. A kill gives back a little stamina and
-  mana, and traits and gear can add health, mana or stamina per kill.
+  mana, and traits and gear can add health, mana or stamina per kill. (Superseded by the forgiving tuning,
+  section 18: a 3 s pause, full heals at forges and level-ups, 15% on every cleared room.)
 - **More elements cost more.** A fused cast costs +30% mana per extra element and each hit is weaker. Q
   can lock every element you own (the fuse needs two). A blade holds only one imbued element. **Elemental
   Harmony** (the multi-element passive) now gives small bonuses but makes every spell cost 4% more per
@@ -199,7 +200,7 @@ hard, and the choices that cost resources (more elements, more fusion, chained a
   floor ends in a mini boss, the last floor in a boss. Depth carries across dungeons, so the second starts
   where the first ends (monster level 6 to 15). Dungeon I looks like a burned vault, Dungeon II like a flooded crypt.
 - **Difficulty is an oath**, chosen once per hero: Squire, Knight (the intended game), Warlord. Harder oaths
-  multiply monster toughness and also XP, gold, drop luck and the leaderboard score.
+  multiply monster health and damage (x0.75 / x1 / x1.25) and also XP, gold, drop luck and the leaderboard score.
 - **Punishing but rewarding.** Failing costs one element, 30% of gold and the loot found in the run; retreating
   costs the same gold and loot but no element; there is no free exit. In return the boss drops two gear pieces and maybe an element gem, a cleared dungeon pays a bonus,
   and a harder oath pays more.
@@ -229,3 +230,24 @@ hard, and the choices that cost resources (more elements, more fusion, chained a
   shadows. Drawn entirely in 2D, so pixels and text stay sharp. A setting switches back to the flat top-down picture.
 * **Multiplayer.** From the title screen: host or join (address and port), wait in the lobby, then a co-op dungeon (up to four heroes, each
   keeps its XP and loot; a fallen hero returns after 5 s) or an arena duel (first to three kills).
+
+## 18. Forgiving tuning
+
+The tone moved from punishing to forgiving: monsters hit softer, every lethal attack can be read and avoided,
+healing comes between fights and mistakes are cheap. The numbers are measured in [BALANCE.md](BALANCE.md). This
+supersedes the healing and recovery figures of sections 12 and 15.
+
+* **Healing between fights.** Clearing a combat room or a guardian heals 15% of max HP; a forge room and a level-up
+  heal fully. Out of combat health returns at about 0.5% of max HP a second, 3 s after the last hit. Every class
+  gains 5 max HP a level on top of Vitality.
+* **Soft hits.** At the level a hero reaches a floor (Knight oath), a normal hit takes about 5-8% of max HP, an
+  elemental variant about 7-14%, a guardian's slam about 9-19% and a final boss's slam about 12-21%: no class
+  falls to fewer than five boss slams. Monsters carry no hidden damage multiplier, and their damage climbs gently with depth.
+* **Readable attacks.** Melee monsters bite at most every 1.2 s; a dash always winds up for at least 0.4 s and never
+  lunges faster than 300 px/s; no monster walks faster than the slowest hero; a dodger sidesteps at most 45% of
+  hits; a slam stuns for 0.25 s; an enraged boss attacks only a little faster (cooldowns x0.8). A dodge costs 25
+  stamina and gives 0.4 s of immunity.
+* **Smaller rooms, rarer elites.** A room holds 3-8 monsters on a dungeon's first floor and at most 12 from its
+  third. Elemental variants are 4% more likely per depth, at most 30% of a wave.
+* **Oaths.** Squire x0.75 monsters (health and damage) and x0.8 spoils; Knight x1 and x1; Warlord x1.25 monsters and
+  x1.6 spoils. Spoils are XP, every gold drop, the clear bonus and drop luck.

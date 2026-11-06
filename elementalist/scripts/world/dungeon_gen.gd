@@ -24,6 +24,7 @@ const DOOR_WIDTH := 2  # tiles
 const WALL_MARGIN := 3 # obstacles keep this many tiles from walls, doors and the entry point
 const OPPOSITE := {"north": "south", "east": "west", "south": "north", "west": "east"}
 const SIDES := ["north", "east", "south", "west"]
+const WAVE_GROWTH_FLOORS := 3  # waves grow over a tier's first three floors, then stay at 5-6 (two waves: 10-12 a room)
 
 
 ## Every MINI_BOSS_EVERY-th floor (that is not the last) ends in a mini boss instead of a third room.
@@ -110,7 +111,9 @@ static func _make_room(rng: RandomNumberGenerator, floor_number: int, index: int
 		"combat":
 			room["obstacles"] = _place_obstacles(rng, room, rng.randi_range(0, 1 + mini(floor_number, 4)))
 			var wave_count := rng.randi_range(1, 2) if floor_number < 3 else 2
-			var size_range := Vector2i(2 + mini(floor_number, 5), 3 + mini(floor_number, 5) + (1 if floor_number > 1 else 0))
+			# waves of 3-4 on a tier's first floor, 4-5 on its second, 5-6 from its third: at most 12 monsters a room
+			var grown := mini(floor_number, WAVE_GROWTH_FLOORS)
+			var size_range := Vector2i(2 + grown, 3 + grown)
 			for w in wave_count:
 				room["waves"].append(Monsters.roll_wave(rng, depth, rng.randi_range(size_range.x, size_range.y)))
 		"miniboss":

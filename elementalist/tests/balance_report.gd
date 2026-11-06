@@ -13,9 +13,9 @@ const REF_ELEMENT := "fire"     # the element every measured hero owns
 const REF_RANGED := "channeler" # the reference ranged hero (fireball) for times to kill
 const REF_MELEE := "vanguard"   # the reference melee hero (slash)
 ## The forgiving targets the owner asked for: share of max HP one hit takes at the intended level.
-const TARGETS := {"normal": Vector2(0.05, 0.08), "elite": Vector2(0.10, 0.15), "boss": Vector2(0.15, 0.25)}
+const TARGETS := {"normal": Vector2(0.05, 0.08), "elite": Vector2(0.10, 0.15), "guardian": Vector2(0.15, 0.20), "boss": Vector2(0.15, 0.25)}
+const CONTACT_COOLDOWN := Enemy.CONTACT_COOLDOWN  # seconds between touch hits that land
 ## Literals that live inside game functions (no constant to read); named here with where they come from.
-const CONTACT_COOLDOWN := 0.9        # Enemy._physics_process: seconds between touch hits that land
 const CLEAR_BONUS_PER_TIER := 150.0  # Dungeon._finish_run: a clear pays 150 x tier x reward gold
 const DODGE_EASE := 0.675            # Player._physics_process: the roll eases from full to 35% speed (67.5% on average)
 ## "Typical drop" armour: [below item level 3, from item level 3]. Uncommon, +0, affixes left out (they are random).
@@ -362,6 +362,7 @@ func _floor_stats(tier: int, f: int) -> Dictionary:
 	var waves := 0
 	var fights := 0
 	var forges := 0
+	var guardians := 0
 	var low := 999
 	var high := 0
 	for layout in layouts:
@@ -380,11 +381,15 @@ func _floor_stats(tier: int, f: int) -> Dictionary:
 					monsters += n
 					low = mini(low, n)
 					high = maxi(high, n)
-				"miniboss", "boss":
+				"miniboss":
+					fights += 1
+					guardians += 1
+				"boss":
 					fights += 1
 				"forge":
 					forges += 1
 	return {"per_room": float(monsters) / maxi(combat_rooms, 1), "min": low, "max": high, "waves": float(waves) / maxi(combat_rooms, 1),
+		"cleared": float(combat_rooms + guardians) / layouts.size(),
 		"variant_share": float(variants) / maxi(monsters, 1), "fights": float(fights) / layouts.size(),
 		"forge": float(forges) / layouts.size(), "combat": float(combat_rooms) / layouts.size()}
 
@@ -403,6 +408,7 @@ func _run_income(tier: int, oath: String) -> Dictionary:
 		"gems": 0.0, "items": 0.0, "salvage_gold": 0.0, "salvage_scrap": 0.0, "value": 0.0}
 	var rarities := {}
 	var layouts: Array = _layouts[tier]
+	Game.meta["difficulty"] = oath  # drop gold follows the oath's reward (Pickup.gold_value)
 	for s in layouts.size():
 		var rng := RandomNumberGenerator.new()
 		rng.seed = 50000 + 100 * tier + s + 7919 * OATHS.find(oath)
@@ -430,8 +436,7 @@ func _run_income(tier: int, oath: String) -> Dictionary:
 								_tally(t, rarities, drops, "boss" if big else "mini")
 							else:
 								_tally(t, rarities, Loot.enemy_drops(rng, ilvl, bonus, REF_ELEMENT, true, ""), "boss" if big else "mini")
-		Game.meta["difficulty"] = oath
-		t["bonus"] = float(t["bonus"]) + roundi(CLEAR_BONUS_PER_TIER * tier * Game.reward_mult())
+		t["bonus"] =float(t["bonus"]) + roundi(CLEAR_BONUS_PER_TIER * tier * Game.reward_mult())
 	for key in t:
 		t[key] = float(t[key]) / layouts.size()
 	for key in rarities:
@@ -445,7 +450,7 @@ func _tally(t: Dictionary, rarities: Dictionary, drops: Array, gold_key: String)
 	for entry in drops:
 		match String(entry["kind"]):
 			"gold":
-				t[gold_key] = float(t[gold_key]) + int(entry["amount"])
+				t[gold_key] = float(t[gold_key]) + Pickup.gold_value(int(entry["amount"]))
 			"material":
 				var id := String(entry["id"])
 				var key := "scrap" if id == "scrap" else ("gel" if id == "slime_gel" else ("gems" if id.begins_with("gem_") else "essence"))
@@ -473,7 +478,10 @@ func _section_dials() -> void:
 		["Dodge stamina cost / roll distance (approx)", "%s / %s px" % [_f(_player["dodge_cost"], 0), _f(float(_player["dodge_speed"]) * float(_player["dodge_time"]) * DODGE_EASE, 1)]],
 		["I-frames after a hit / HP regen pause after a hit", "%s s / %s s" % [_f(_player["hurt_iframes"], 2), _f(_player["regen_delay"], 1)]],
 		["Stamina regen pause after spending", "%s s" % _f(Player.STAMINA_REGEN_DELAY, 2)],
-		["Forge room heal / level-up heal", "%s / %s of max HP" % [_p(Dungeon.FORGE_HEAL), _p(CharacterData.LEVEL_UP_HEAL_FRACTION)]],
+		["Forge room heal / level-up heal / room-clear heal", "%s / %s / %s of max HP" % [_p(Dungeon.FORGE_HEAL), _p(CharacterData.LEVEL_UP_HEAL_FRACTION), _p(Dungeon.CLEAR_HEAL)]],
+		["Out-of-combat regen / max HP per level", "%s of max HP a second (plus Vitality) / +%s" % [_p(Classes.HP_REGEN_SHARE, 1), _f(CharacterData.HP_PER_LEVEL, 0)]],
+		["Touch cooldown / dash wind-up floor / dash speed cap", "%s s / %s s / %s px/s" % [_f(Enemy.CONTACT_COOLDOWN, 1), _f(Enemy.DASH_WINDUP_MIN, 2), _f(Enemy.DASH_SPEED_MAX, 0)]],
+		["Dodge chance cap / monster walk speed cap", "%s / %s px/s" % [_p(Enemy.DODGE_CHANCE_MAX, 0), _f(Enemy.WALK_SPEED_MAX, 0)]],
 		["Slam stun / stun immunity after", "%s s / %s s" % [_f(Enemy.SLAM_STUN, 2), _f(Player.STUN_IMMUNITY, 2)]],
 		["Boss enrage at / its cooldown multiplier", "%s HP / x%s" % [_p(Enemy.ENRAGE_AT), _f(float(_enemy("slime_king", "", 1, 1, 1)["enrage_cd"]), 2)]],
 		["Max level", str(CharacterData.MAX_LEVEL)],
@@ -503,7 +511,10 @@ func _section_monsters() -> void:
 			var sc := _scale(int(s["depth"]), oath)
 			cells.append("x%s / x%s" % [_f(sc.x, 2), _f(sc.y * Monsters.HARDNESS, 2)])
 		rows.append(cells)
-	_table(["Where", "Squire 0.8", "Knight 1.0", "Warlord 1.3"], rows)
+	var oath_heads := ["Where"]
+	for oath in OATHS:
+		oath_heads.append("%s %s" % [String(Game.DIFFICULTIES[oath]["name"]), _f(float(Game.DIFFICULTIES[oath]["hardness"]), 2)])
+	_table(oath_heads, rows)
 
 	print("### 1b. Every monster that can spawn there, Knight\n")
 	print("Touch = contact damage (no warning, lands at most every %s s). Shot: damage @ cooldown, flight time from its preferred distance." % _f(CONTACT_COOLDOWN, 1))
@@ -613,8 +624,9 @@ func _section_heroes() -> void:
 func _section_fights() -> void:
 	print("## 3. Fight maths (Knight, first-clear level, the seven classes in typical gear of the floor's loot level)\n")
 	print("### 3a. Share of max HP one hit takes (lowest-highest across classes; hits to die for the frailest)\n")
-	print("Targets (forgiving): normal %s-%s, elite %s-%s, boss %s-%s. 'Factor' = multiply today's damage by this to land mid-target.\n" % [
-		_p(TARGETS["normal"].x, 0), _p(TARGETS["normal"].y, 0), _p(TARGETS["elite"].x, 0), _p(TARGETS["elite"].y, 0), _p(TARGETS["boss"].x, 0), _p(TARGETS["boss"].y, 0)])
+	print("Targets (forgiving): normal %s-%s, elite %s-%s, guardian %s-%s, boss %s-%s. 'Factor' = multiply today's damage by this to land mid-target.\n" % [
+		_p(TARGETS["normal"].x, 0), _p(TARGETS["normal"].y, 0), _p(TARGETS["elite"].x, 0), _p(TARGETS["elite"].y, 0),
+		_p(TARGETS["guardian"].x, 0), _p(TARGETS["guardian"].y, 0), _p(TARGETS["boss"].x, 0), _p(TARGETS["boss"].y, 0)])
 	var hit_rows := []
 	var time_rows := []
 	var heal_rows := []
@@ -638,7 +650,7 @@ func _section_fights() -> void:
 		var boss_cell := _share_cell(heroes, float(boss["slam"])) if not boss.is_empty() else "-"
 		var big_hit := float(boss["slam"]) if not boss.is_empty() else float(b["mini_slam"])
 		var factors := "%s / %s / %s" % [_factor(heroes, float(b["main"]), "normal"), _factor(heroes, float(b["elite"]), "elite"),
-			_factor(heroes, big_hit, "boss")]
+			_factor(heroes, big_hit, "boss" if not boss.is_empty() else "guardian")]
 		var vit_heroes := _class_line(level, ilvl, true)
 		var vit_low := INF
 		var vit_high := 0.0
@@ -664,7 +676,7 @@ func _section_fights() -> void:
 			_f(room_dps, 1), "%s-%s" % [_f(frail_hp / room_dps, 1), _f(sturdy_hp / room_dps, 1)]])
 
 		var gained := _levels_gained("knight", tier, f)
-		var heal := float(fs["forge"]) * Dungeon.FORGE_HEAL + gained * CharacterData.LEVEL_UP_HEAL_FRACTION
+		var heal := float(fs["forge"]) * Dungeon.FORGE_HEAL + gained * CharacterData.LEVEL_UP_HEAL_FRACTION + float(fs["cleared"]) * Dungeon.CLEAR_HEAL
 		var budget := heal / maxf(float(fs["fights"]), 1.0)
 		var median := _median_share(heroes, float(b["main"]))
 		var regen_low := INF
@@ -684,7 +696,8 @@ func _section_fights() -> void:
 	_table(["Where", "Hero DPS", "Normal HP", "TTK normal (s)", "Boss HP", "TTK boss (s)", "Monsters/room", "Room HP", "Room clear (s)", "Room DPS", "Stand still (s)"], time_rows)
 
 	print("### 3c. Healing between rooms\n")
-	print("Fights/floor = combat + guardian + boss rooms. Heal/floor = chance of a forge room x %s + levels gained x %s." % [_p(Dungeon.FORGE_HEAL, 0), _p(CharacterData.LEVEL_UP_HEAL_FRACTION, 0)])
+	print("Fights/floor = combat + guardian + boss rooms. Heal/floor = chance of a forge room x %s + levels gained x %s + combat and guardian rooms cleared x %s." % [
+		_p(Dungeon.FORGE_HEAL, 0), _p(CharacterData.LEVEL_UP_HEAL_FRACTION, 0), _p(Dungeon.CLEAR_HEAL, 0)])
 	print("Budget = heal per fight; hits = how many median normal hits that budget covers. Regen: seconds to regain 10%% of max HP, after %s s without a hit.\n" % _f(_player["regen_delay"], 0))
 	_table(["Where", "Fights/floor", "Forge chance", "Levels gained", "Heal/floor", "Budget/fight", "Normal hits/fight", "Regen 10% (s)"], heal_rows)
 	_healing_sources()
@@ -707,7 +720,8 @@ func _healing_sources() -> void:
 	rows.append(["Natural regen, Novice level 10", "%s HP/s = %s of max HP per minute" % [_f(float(novice["hp_regen"]), 2), _p(float(novice["hp_regen"]) * 60.0 / float(novice["hp"]), 1)]])
 	rows.append(["Forge room / camp", "%s of max HP, all stamina and mana / everything" % _p(Dungeon.FORGE_HEAL, 0)])
 	rows.append(["Level-up", _p(CharacterData.LEVEL_UP_HEAL_FRACTION, 0) + " of max HP"])
-	rows.append(["Potions, drops that heal, heal on room clear", "none exist"])
+	rows.append(["Clearing a combat or guardian room", _p(Dungeon.CLEAR_HEAL, 0) + " of max HP"])
+	rows.append(["Potions, drops that heal", "none exist"])
 	print("Every healing source in the game:\n")
 	_table(["Source", "Amount"], rows)
 
@@ -802,7 +816,7 @@ func _section_economy() -> void:
 			var t: Dictionary = _economy[oath][tier]
 			cells.append("%s (kills %s)" % [_f(float(t["gold"]), 0), _f(float(t["kills"]), 0)])
 		rows.append(cells)
-	print("Gold of one clear by oath (only the clear bonus and drop luck follow the oath's reward):\n")
+	print("Gold of one clear by oath (drop gold, the clear bonus and drop luck all follow the oath's reward):\n")
 	_table(["Tier", "Squire", "Knight", "Warlord"], rows)
 
 	print("### 4b. What the forge charges (Forge.*_cost)\n")
@@ -929,7 +943,7 @@ func _section_outliers() -> void:
 		int(_monster("slime", 62, "knight")["xp"]), CharacterData.xp_to_next(29)])
 	var low_gold := float(_economy["squire"][5]["kills"])
 	var high_gold := float(_economy["warlord"][5]["kills"])
-	lines.append("Oath reward: T5 kill gold is %s on Squire and %s on Warlord (x%s), but XP is x%s: drop gold ignores the reward multiplier." % [
+	lines.append("Oath reward: T5 kill gold is %s on Squire and %s on Warlord (x%s); XP is x%s." % [
 		_f(low_gold, 0), _f(high_gold, 0), _f(high_gold / maxf(low_gold, 1.0), 2), _f(float(_tier_xp["warlord"][5]) / maxf(float(_tier_xp["squire"][5]), 1.0), 2)])
 	for ilvl in [10, 30, 60, 80]:
 		var st := _stats(_hero("vanguard", 30, ilvl))

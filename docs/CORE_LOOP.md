@@ -26,10 +26,10 @@ the open questions at the end are the ones worth your call.
 | Scale | What the player does | What pulls them forward |
 |---|---|---|
 | **Seconds** (a fight) | Read the monsters, spend mana, stamina and health on the right skill, dodge, chain abilities of different elements for the discount, fuse two elements for a combo | Combos, kills that give back resources, enemies that dash, dodge or shoot |
-| **Minutes** (a run) | Move room to room, choose when to use the forge room's half heal, decide whether to push to the mini boss | Loot, XP and levels (every second level offers a reward), mastery unlocking passives, chests |
+| **Minutes** (a run) | Move room to room, heal a little with every cleared room and fully at a forge room, decide whether to push to the mini boss | Loot, XP and levels (every second level offers a reward), mastery unlocking passives, chests |
 | **Hours** (the hero) | Return to camp, forge and enchant gear, clear the next dungeon, find a Light or Dark gem, pick a class and later a subclass, climb the leaderboard | New elements (gems from bosses), class mastery, deeper dungeons, better difficulty oath |
 
-## What a run costs and pays (punishing but rewarding)
+## What a run costs and pays (forgiving but rewarding)
 
 * **Cost of failing**: you keep your levels and the gear you owned before the run, but lose **one element** (at
   random, its mastery restarts), **30 % of your gold** and **the loot found in the run** (gear, worn or not, and
@@ -39,8 +39,11 @@ the open questions at the end are the ones worth your call.
   an element), so leaving is never free.
 * **Reward for finishing**: the boss drops two gear pieces and (sometimes) an elemental **gem**; the dungeon pays a
   clear bonus; the next dungeon opens. The second dungeon's bosses also carry the rare **Light** and **Dark** gems.
-* **The oath** (chosen at hero creation): *Squire* (x0.8 monsters, x0.8 spoils), *Knight* (x1/x1), *Warlord*
-  (x1.3 monsters, x1.6 spoils and drop luck). The leaderboard multiplies the score by the same reward factor, so
+* **Healing between fights**: a cleared combat room or guardian heals 15% of max HP, a forge room and a level-up heal
+  fully, and out of combat health returns at about 0.5% of max HP a second (3 s after the last hit). Monsters hit
+  softly (a normal hit is about 5-8% of max HP) and every dash winds up for at least 0.4 s, so mistakes are cheap.
+* **The oath** (chosen at hero creation): *Squire* (x0.75 monsters, x0.8 spoils), *Knight* (x1/x1), *Warlord*
+  (x1.25 monsters, x1.6 spoils: XP, every gold drop, the clear bonus and drop luck). The leaderboard multiplies the score by the same reward factor, so
   the risk is visible and rewarded.
 
 ## Why it holds up

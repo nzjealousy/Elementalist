@@ -14,7 +14,16 @@ const AURA_TIME := 4.0
 const VULN_MULT := 1.25
 const SHATTER_MULT := 1.5  # physical hit on a rooted or stunned enemy
 const ENRAGE_AT := 0.3   # a boss below this share of its health enrages
-const SLAM_STUN := 0.5   # a slam that lands stuns the hero this long (it is telegraphed, so it can be dodged)
+const SLAM_STUN := 0.25  # a slam that lands stuns the hero this long (it is telegraphed, so it can be dodged)
+const CONTACT_COOLDOWN := 1.2  # seconds between touch hits that land
+const ENRAGE_COOLDOWN := 0.8   # an enraged boss's attack cooldowns are multiplied by this
+## Sharpening with the monster's level (configure) stops at these: a dash always has a readable
+## wind-up and never outruns a roll, a dodger never sidesteps most hits, and no monster walks
+## faster than the slowest hero (a level-1 Novice, 80 px/s).
+const DASH_WINDUP_MIN := 0.4
+const DASH_SPEED_MAX := 300.0
+const DODGE_CHANCE_MAX := 0.45
+const WALK_SPEED_MAX := 80.0
 const GRUNT_GAP_MS := 450  # the "enemy_hurt" grunt plays at most this often per monster
 var _grunt_at := 0
 var _stun_sprite: Sprite2D
@@ -139,15 +148,15 @@ func configure(id: String, variant_element: String = "", hp_scale: float = 1.0, 
 	contact_damage = float(def["contact"]) * damage_scale
 	xp_reward = int(def["xp"])
 	var sharpen := float(monster_level - 1)  # each level: +4% speed, dash and dodge get better
-	speed *= 1.0 + 0.04 * sharpen
+	speed = minf(speed * (1.0 + 0.04 * sharpen), maxf(speed, WALK_SPEED_MAX))
 	dash = def.get("dash", {}).duplicate()
 	if not dash.is_empty():
 		dash["cooldown"] = maxf(1.2, float(dash["cooldown"]) * (1.0 - 0.12 * sharpen))
-		dash["windup"] = maxf(0.2, float(dash["windup"]) * (1.0 - 0.1 * sharpen))
-		dash["speed"] = float(dash["speed"]) * (1.0 + 0.12 * sharpen)
+		dash["windup"] = maxf(DASH_WINDUP_MIN, float(dash["windup"]) * (1.0 - 0.1 * sharpen))
+		dash["speed"] = minf(DASH_SPEED_MAX, float(dash["speed"]) * (1.0 + 0.12 * sharpen))
 	dodge_ability = def.get("dodge", {}).duplicate()
 	if not dodge_ability.is_empty():
-		dodge_ability["chance"] = minf(0.7, float(dodge_ability["chance"]) + 0.08 * sharpen)
+		dodge_ability["chance"] = minf(DODGE_CHANCE_MAX, float(dodge_ability["chance"]) + 0.08 * sharpen)
 		dodge_ability["cooldown"] = maxf(0.8, float(dodge_ability["cooldown"]) * (1.0 - 0.1 * sharpen))
 	if attack_type == "ranged":
 		contact_damage = 0.0  # it never touches you: it shoots
@@ -481,7 +490,7 @@ func _physics_process(delta: float) -> void:
 			# Only start the cooldown if the hit connected; i-frames shouldn't waste it.
 			var lunge := float(dash["damage_mult"]) if _dash_state == "dash" else 1.0
 			if target.take_damage(damage_out(contact_damage * lunge), global_position):
-				_contact_cd = 0.9
+				_contact_cd = CONTACT_COOLDOWN
 				_start_pose("bite", POSE_TIMES["bite"])
 
 	_attack(delta, target)
@@ -594,7 +603,7 @@ func _land_slam() -> void:
 func _check_enrage() -> void:
 	if not enraged and not mini and hp / max_hp <= ENRAGE_AT:
 		enraged = true
-		speed *= 1.25
+		speed = minf(speed * 1.25, maxf(speed, WALK_SPEED_MAX))
 		FloatText.spawn(get_parent(), global_position + Vector2(0, -16), "Enraged!", Color("ff5a4a"), 11)
 		Sfx.play("enrage")
 		Sfx.duck(1.0)
@@ -602,7 +611,7 @@ func _check_enrage() -> void:
 
 
 func _enrage_cooldown() -> float:
-	return 0.65 if enraged else 1.0
+	return ENRAGE_COOLDOWN if enraged else 1.0
 
 
 ## At each health fraction in summon.stages the boss calls minions around itself (once each).

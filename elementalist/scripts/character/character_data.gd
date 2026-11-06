@@ -37,7 +37,8 @@ const SEALED := "sealed"              # can never hold elements; martial skills 
 const MAX_LEVEL := 30
 const MASTERY_CAP := 10
 const FREE_POINTS_PER_LEVEL := 2
-const LEVEL_UP_HEAL_FRACTION := 0.2  # a level-up restores this share of max HP, not all of it
+const LEVEL_UP_HEAL_FRACTION := 1.0  # a level-up restores this share of max HP: all of it
+const HP_PER_LEVEL := 5.0            # every class gains this much max HP a level, on top of Vitality
 
 var display_name := "Hero"
 var look_skin := 0                      # which skin tone and hair colour the hero was given (HeroLook)
@@ -465,9 +466,10 @@ func derived() -> Dictionary:
 	var wis := float(attributes["wisdom"]) + _mod(m, "wisdom_add")
 	var luck := float(attributes["luck"]) + _mod(m, "luck_add")
 	var dex := float(attributes["dexterity"]) + _mod(m, "dexterity_add")
+	var max_hp := 60.0 + vit * 8.0 + HP_PER_LEVEL * (level - 1) + _mod(m, "max_hp_add")
 	return {
-		"max_hp": 60.0 + vit * 8.0 + _mod(m, "max_hp_add"),
-		"hp_regen": Classes.HP_REGEN_BASE + vit * Classes.HP_REGEN_PER_VIT + _mod(m, "hp_regen_add"),
+		"max_hp": max_hp,
+		"hp_regen": Classes.HP_REGEN_BASE + vit * Classes.HP_REGEN_PER_VIT + max_hp * Classes.HP_REGEN_SHARE + _mod(m, "hp_regen_add"),
 		"max_mana": (50.0 + intel * 10.0 + _mod(m, "max_mana_add")) if uses_mana() else 0.0,
 		"mana_regen": maxf(Classes.MANA_REGEN_BASE + intel * Classes.MANA_REGEN_PER_INT + Classes.WISDOM_MANA_REGEN * (wis - 5.0) + _mod(m, "mana_regen_add"), 0.0) if uses_mana() else 0.0,
 		"max_stamina": 70.0 + agi * 6.0 + _mod(m, "max_stamina_add"),

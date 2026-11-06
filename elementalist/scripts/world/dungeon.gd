@@ -17,7 +17,8 @@ extends Node2D
 const TILE := 16
 const WAVE_DELAY := 1.2   # seconds before a room's first wave, and between waves
 const FADE_TIME := 0.25
-const FORGE_HEAL := 0.5   # share of max HP a forge room restores (stamina and mana are refilled)
+const FORGE_HEAL := 1.0   # share of max HP a forge room restores (stamina and mana are refilled)
+const CLEAR_HEAL := 0.15  # share of max HP a cleared combat or guardian room gives back
 const MIN_SPAWN_DISTANCE := 100.0  # monsters appear at least this far from the player
 
 var layout: Array = []   # floors -> rooms (see DungeonGen)
@@ -234,7 +235,7 @@ func _load_room(floor_number: int, room_number: int) -> void:
 			forge.position = _centre()
 			_room_node.add_child(forge)
 			_heal_player()
-			_clear_room("A place to rest: the forge (G). Half your health, all your stamina and mana.")
+			_clear_room("A place to rest: the forge (G). All your health, stamina and mana.")
 	if String(room["kind"]) in ["combat", "boss", "miniboss"]:
 		var goal := "Clear the room to open the door"
 		if room["kind"] == "boss":
@@ -553,6 +554,19 @@ func _clear_room(message: String) -> void:
 	if _exit_door:
 		_exit_door.unlock()
 	Game.say(message)
+	if String(room.get("kind", "")) in ["combat", "miniboss"]:
+		_clear_heal()
+
+
+## A won fight gives back CLEAR_HEAL of max HP, shown as a green "+N" over the hero.
+func _clear_heal() -> void:
+	var player := _player()
+	if player == null or not ("hp" in player) or player.hp <= 0.0 or player.hp >= player.max_hp:
+		return
+	var gain := minf(player.max_hp - player.hp, player.max_hp * CLEAR_HEAL)
+	player.hp += gain
+	Sfx.play("heal", &"SFX", -4.0)
+	FloatText.spawn(_room_node, player.global_position + Vector2(0, -10), "+%d" % roundi(gain), Color("7fe88a"), 9)
 
 
 func _heal_player(share: float = FORGE_HEAL) -> void:
@@ -560,7 +574,7 @@ func _heal_player(share: float = FORGE_HEAL) -> void:
 	if player and "hp" in player:
 		if player.hp < player.max_hp:
 			Sfx.play("heal", &"SFX", -4.0)
-		player.hp = minf(player.max_hp, player.hp + player.max_hp * share)  # a forge: half your health, not all of it
+		player.hp = minf(player.max_hp, player.hp + player.max_hp * share)
 		player.stamina = player.max_stamina
 		if player.caster:
 			player.caster.mana = player.caster.max_mana
