@@ -570,17 +570,25 @@ they are used.
   (`CanvasModulate`, or a multiply overlay) would dull the telegraphs and could not spare the labels and bars that live on the stage. Instead the
   floor is lit *inside the flat world*: the floor tiles carry a small shader (`Lighting.FLOOR_SHADER`) that multiplies them by the ambient, and 24
   `PointLight2D`s in the world canvas add the pools (a ground circle of radius r / sqrt 2 becomes the r-wide ellipse after the skew); the shader also
-  adds a touch of the light's own colour (`tint` 0.15), because the floors are near black and a plain light only multiplies them. On the stage,
+  adds a touch of the light's own colour (`tint` 0.15), because the floors are near black and a plain light only multiplies them. Under a
+  pool the shader also pulls the floor's own hue toward grey (`neutral` 0.9, scaled by how saturated the light is), so a warm pool on a cold
+  floor (crypt teal, spire violet, hollow green) reads as warm light and not as a grey-pink mix; a white light leaves the floor's hue alone. On the stage,
   one subtracting `PointLight2D` (an all-white 8 x 8 texture spanning 8192 px) takes 1 - ambient off the walls and props, and 24 more lights sit at
   `project(p) - 8 px`. Lessons from testing: a `DirectionalLight2D` ignores the item cull mask (it dimmed the telegraphs), and a light only reaches
-  canvas layers inside its `range_layer_min..max` (the stage lights use `_layer.layer`, -2). One radial `GradientTexture2D` (128 px, soft falloff)
-  serves every pool; no PNG.
+  canvas layers inside its `range_layer_min..max` (the stage lights use `_layer.layer`, -2). Two radial `GradientTexture2D`s (128 px) serve
+  the pools: the soft one for all, a steep one (bright core, fast falloff) for bosses, swapped on a pair only when its kind changes; no PNG.
 * **Budget.** `MAX_LIGHTS` = 24 light pairs, built once and reused. Each frame the tracked nodes on screen become candidates in fixed packed
   arrays; `Lighting.light_key(kind, distance to the hero, index)` ranks them and the pure `Lighting.choose(keys, cap)` keeps, in order: the hero,
-  partners (co-op avatars, arena rivals), bosses (mini bosses too), the 6 nearest bolts (`MAX_BOLTS`), monsters by distance, props (gate, forge,
-  altar), loot of rare or better. Colours: the hero's glow (`Player._glow`), a partner's glow code, a monster's variant element or the colour its
-  art glows in (mean of its bright, saturated pixels, read once per picture), a bolt's element, loot's rarity colour.
-* **Motion and comfort.** In "full", orange and red lights flicker by at most +-8% (2.1 and 3.7 Hz sines) and bosses breathe +-8% at 0.45 Hz;
+  partners (co-op avatars, arena rivals), bosses (mini bosses too), the exit `Door`, the 6 nearest bolts (`MAX_BOLTS`), monsters by distance,
+  props (gate, forge, altar), loot of rare or better. Colours: the hero's glow (`Player._glow`), a partner's glow code, a monster's variant
+  element or the colour its art glows in (mean of its bright, saturated pixels, read once per picture), a bolt's element, loot's rarity colour.
+* **Pools by kind.** A boss's pool is 60 px (no wider than the hero's 64) on the steep texture, so the boss stands in a spot of light. A monster
+  whose glow is pale (saturation under `PALE_SATURATION` 0.45: the wraith, the lich, the matriarch, the sovereign, the dummy) would light a flat
+  white patch: `Lighting.pool_colour` gives it its own hue at saturation 0.6 (a near-grey one takes `PALE_TINT`, a cold blue), and
+  `Lighting.flags_of` marks it `SOFT` (energy x 0.7; not for bosses). The exit door's pool sits 12 px inside the room in front of it:
+  `DOOR_LOCKED` (dim cold blue, `SOFT`) while barred, `DOOR_OPEN` (warm amber, which flickers like fire) once open. The entry is a plain sealed
+  wall block and carries no light.
+* **Motion and comfort.** In "full", orange and red lights (not white or grey ones) flicker by at most +-8% (2.1 and 3.7 Hz sines) and bosses breathe +-8% at 0.45 Hz;
   "soft" and "off" never move.
 * **Setting.** `Settings.lighting`: "full" (default), "soft" (ambient 40% of the way back to unlit, pools at 60%, no flicker) or "off" (nothing
   built); validated in `Settings._clean`, applies from the next scene (`Lighting (next scene)` in the Game tab, which now scrolls like the

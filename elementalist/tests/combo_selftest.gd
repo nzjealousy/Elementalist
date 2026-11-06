@@ -4909,6 +4909,19 @@ func _test_iso() -> void:
 	await get_tree().process_frame
 	await get_tree().process_frame
 	_check("a monster that goes takes its stand-ins with it", not view._mirrors.has(enemy.sprite) if is_instance_valid(enemy) else true)
+	var exit_door := Door.new()
+	exit_door.setup(Rect2(hero.global_position + Vector2(-16, -40), Vector2(32, 16)), "north")
+	dungeon._room_node.add_child(exit_door)
+	var crowd: Array = []
+	for i in 30:  # more lights on screen than the budget
+		crowd.append(Monsters.spawn(dungeon._room_node, "slime", hero.global_position + Vector2(-40 + (i % 6) * 16, -24 + floori(i / 6.0) * 12), "", Vector2.ONE, 1))
+	await get_tree().process_frame
+	await get_tree().process_frame
+	_check("a door carries a light; a crowd still lights at most MAX_LIGHTS", view.lighting._tracked.has(exit_door) and view.lighting.lights_on() == Lighting.MAX_LIGHTS)
+	for slime in crowd:
+		slime.queue_free()
+	exit_door.queue_free()
+	await get_tree().process_frame
 	_check("the view is centred on the hero", view.screen_point_of(hero.global_position).distance_to(get_viewport().get_visible_rect().size * 0.5) < 60.0)
 	var player_dir := IsoView.screen_dir(Vector2.RIGHT)
 	_check("east runs right and down the screen", player_dir.x > 0.0 and player_dir.y > 0.0)
@@ -4951,6 +4964,7 @@ func _test_lighting() -> void:
 	for i in 10:
 		keys.append(Lighting.light_key(Lighting.BOLT, 50.0 + i, 31 + i))
 	keys.append(Lighting.light_key(Lighting.HERO, 0.0, 41))
+	keys.append(Lighting.light_key(Lighting.DOOR, 500.0, 42))
 	keys.append(Lighting.UNUSED)
 	var kept := Lighting.choose(keys, Lighting.MAX_LIGHTS)
 	var kinds := {}
@@ -4961,9 +4975,27 @@ func _test_lighting() -> void:
 		if kind == Lighting.ENEMY:
 			enemy_far = maxi(enemy_far, (keys[i] >> 8) & 0xFFFFFFFF)
 	var enemies_kept: int = kinds.get(Lighting.ENEMY, 0)
-	_check("the light budget keeps the hero first and the boss, however far", kept == Lighting.MAX_LIGHTS and keys[0] >> 40 == Lighting.HERO and keys[1] >> 40 == Lighting.BOSS)
+	_check("the light budget keeps the hero first, then the boss and the exit door, however far", kept == Lighting.MAX_LIGHTS and keys[0] >> 40 == Lighting.HERO \
+		and keys[1] >> 40 == Lighting.BOSS and keys[2] >> 40 == Lighting.DOOR)
 	_check("only the nearest few bolts light up", kinds.get(Lighting.BOLT, 0) == Lighting.MAX_BOLTS)
-	_check("the farthest monsters are the ones left dark", enemies_kept == Lighting.MAX_LIGHTS - 2 - Lighting.MAX_BOLTS and enemy_far == int(300.0 - (30 - enemies_kept) * 9.0))
+	_check("the farthest monsters are the ones left dark", enemies_kept == Lighting.MAX_LIGHTS - 3 - Lighting.MAX_BOLTS and enemy_far == int(300.0 - (30 - enemies_kept) * 9.0))
+	# Pale monsters, doors, the boss pool.
+	var grey := Lighting.pool_colour(Lighting.ENEMY, Color(0.92, 0.92, 0.95))
+	var ghost := Color(0.65, 1.0, 0.9)  # a washed-out teal, like the wraith's art
+	var tinted := Lighting.pool_colour(Lighting.ENEMY, ghost)
+	_check("a pale monster's pool is tinted, never white: a grey one goes cold, a washed-out one keeps its hue", grey == Lighting.PALE_TINT \
+		and tinted.s >= Lighting.PALE_SATURATION and absf(tinted.h - ghost.h) < 0.01 and Lighting.pool_colour(Lighting.HERO, Color.WHITE) == Color.WHITE \
+		and Lighting.pool_colour(Lighting.ENEMY, Color(1.0, 0.5, 0.25)) == Color(1.0, 0.5, 0.25))
+	_check("a pale monster's pool is softer, a pale boss's is not", Lighting.flags_of(Lighting.ENEMY, ghost) & Lighting.SOFT != 0 \
+		and Lighting.flags_of(Lighting.BOSS, ghost) & Lighting.SOFT == 0 and Lighting.flags_of(Lighting.ENEMY, Color(1.0, 0.5, 0.25)) & Lighting.SOFT == 0)
+	_check("fire-like lights flicker, white and grey never", Lighting.flags_of(Lighting.ENEMY, Color(1.0, 0.5, 0.25)) & Lighting.FLICKER != 0 \
+		and Lighting.flags_of(Lighting.HERO, Color.WHITE) & Lighting.FLICKER == 0 and Lighting.flags_of(Lighting.ENEMY, Color(0.95, 0.9, 0.9)) & Lighting.FLICKER == 0)
+	_check("an open door glows warm, a barred one dim and cold", Lighting.DOOR_OPEN.h < 0.17 and Lighting.DOOR_LOCKED.h > 0.5 and Lighting.DOOR_LOCKED.h < 0.75 \
+		and Lighting.flags_of(Lighting.DOOR, Lighting.DOOR_LOCKED, true) & Lighting.SOFT != 0 and Lighting.flags_of(Lighting.DOOR, Lighting.DOOR_OPEN, false) & Lighting.SOFT == 0)
+	var steep := Lighting.pool_texture(true).gradient
+	var plain_pool := Lighting.pool_texture().gradient
+	_check("the boss's pool is no wider than the hero's and falls off faster", Lighting.RADIUS[Lighting.BOSS] <= Lighting.RADIUS[Lighting.HERO] \
+		and steep.sample(0.3).a < plain_pool.sample(0.3).a and steep.sample(0.0).a == 1.0)
 	var few := PackedInt64Array([Lighting.light_key(Lighting.ENEMY, 5.0, 0), Lighting.UNUSED, Lighting.UNUSED])
 	_check("fewer candidates than lights: each gets one, empty slots none", Lighting.choose(few, Lighting.MAX_LIGHTS) == 1)
 

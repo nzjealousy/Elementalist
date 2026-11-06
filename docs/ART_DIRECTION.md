@@ -80,7 +80,9 @@ rebuilds all art and runs the art gate. The two other styles stay in `style.py` 
    | spire | deep violet | 0.9, 0.8, 1.0 | 0.72 | 0.65, 0.58, 0.72 |
 
    The floors are already near black, so the strengths sit higher (0.72 to 0.82) than a typical moody grade would; lower and the far floor of a
-   vault room drops to about RGB 20. Screenshots: `art/lighting_<place>.png`, `art/lighting_telegraph.png`, `art/lighting_soft.png`, `art/lighting_off.png`.
+   vault room drops to about RGB 20. A pool takes the floor's hue toward grey in proportion to the light's own saturation, so a fire hero
+   reads amber on the crypt, hollow and spire floors; pale monsters light their own hue, not white; the exit door glows cold while barred and
+   warm once open (see docs/ARCHITECTURE.md, Lighting). Screenshots (taken before that pass): `art/lighting_<place>.png`, `art/lighting_telegraph.png`, `art/lighting_soft.png`, `art/lighting_off.png`.
 9. **Particles** (`SkillFx`, `AmbientMotes`). Every effect is square 1-2 px specks, never a soft blob; colour comes only from the element
    (`Elements.COLORS`), the loot's rarity colour or a tinted off-white (floor dust a cold grey-violet, level-up gold, reward violet, the hero's
    death a cold blue), never pure black or white, and nothing is dimmed by the room's light. Each place has its own air, at most 24 faint specks

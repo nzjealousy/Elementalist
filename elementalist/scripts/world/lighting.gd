@@ -1,7 +1,7 @@
 class_name Lighting
 extends Node
 ## The light of the isometric view: each place is dimmed to its own ambient colour and soft round pools of light
-## follow the hero, partners, their bolts, the monsters on screen, the boss, the camp's props and rare loot.
+## follow the hero, partners, their bolts, the monsters on screen, the boss, the exit door, the camp's props and rare loot.
 ##
 ## Only what carries the light-mask bit LIT is lit: the floor tiles (in the flat world, seen through the ground
 ## picture), the wall blocks and the props on the stage. They are dimmed to the ambient (the floor by its own shader,
@@ -28,22 +28,42 @@ const SOFT_ENERGY := 0.6       # ...and the pools keep this share of their stren
 
 ## The floor: dimmed to the ambient here, and lit by the pools. The dungeon floors are near black and a plain light
 ## only multiplies a tile's own colour, so a pool also adds a touch of its own colour (tint): it reads as the element's light.
+## Under a pool the floor's own hue is also pulled toward grey (neutral), so a warm light on a cold floor reads as warm
+## light instead of a grey-pink mix of the two.
 const FLOOR_SHADER := """
 shader_type canvas_item;
 uniform vec3 ambient = vec3(1.0);
 uniform float tint = 0.15;
+uniform float neutral = 0.9;
 void fragment() {
 	COLOR.rgb *= ambient;
 }
 void light() {
-	LIGHT = vec4(LIGHT_COLOR.rgb * (COLOR.rgb / ambient + vec3(tint)) * LIGHT_ENERGY, LIGHT_COLOR.a);
+	vec3 lum = vec3(0.3, 0.59, 0.11);
+	vec3 c = LIGHT_COLOR.rgb;
+	float n = neutral * (1.0 - min(c.r, min(c.g, c.b)) / max(max(c.r, max(c.g, c.b)), 0.001));  // only a coloured light takes the floor's hue
+	vec3 tile = COLOR.rgb / ambient;
+	vec3 lit = mix(tile, vec3(dot(tile, lum)), n);
+	LIGHT = vec4(c * (lit + vec3(tint)) * LIGHT_ENERGY + (vec3(dot(COLOR.rgb, lum)) - COLOR.rgb) * n * min(LIGHT_ENERGY, 1.0), LIGHT_COLOR.a);
 }
 """
 
 ## Light kinds, in priority order (a lower kind always wins a pair first).
-enum {HERO, PARTNER, BOSS, BOLT, ENEMY, PROP, LOOT}
-const RADIUS := [64.0, 56.0, 84.0, 26.0, 26.0, 60.0, 14.0]   # by kind: the pool's half-width on the screen (px)
-const ENERGY := [1.1, 0.9, 0.7, 1.2, 0.8, 0.8, 0.8]          # by kind, tuned by eye on the dark floors (a boss's pool is wide, so dimmer)
+enum {HERO, PARTNER, BOSS, DOOR, BOLT, ENEMY, PROP, LOOT}
+const RADIUS := [64.0, 56.0, 60.0, 48.0, 26.0, 26.0, 60.0, 14.0]   # by kind: the pool's half-width on the screen (px)
+const ENERGY := [1.1, 0.9, 0.9, 0.9, 1.2, 0.8, 0.8, 0.8]          # by kind, tuned by eye on the dark floors
+
+## A monster whose glow is pale (ghost, bone, lich: mixed or washed-out art) would light a flat white patch: its pool
+## takes its own hue at PALE_SATURATION + 0.15 (a grey one takes a cold spectral tint) and, but for a boss, is softer.
+## A barred door glows dim and cold, an open one warm, so the way out is easy to find.
+const PALE_SATURATION := 0.45
+const PALE_TINT := Color(0.55, 0.7, 1.0)
+const SOFTER := 0.7              # energy share of a pale monster's pool and of a barred door
+const DOOR_OPEN := Color(1.0, 0.78, 0.45)
+const DOOR_LOCKED := Color(0.5, 0.62, 1.0)
+const DOOR_INWARD := {"north": Vector2(0, 12), "south": Vector2(0, -12), "west": Vector2(12, 0), "east": Vector2(-12, 0)}  # a door's pool lies on the floor in front of it
+const FLICKER := 1               # candidate flags
+const SOFT := 2
 
 ## The ambient of each place (Dungeon._theme): a tint (brightest channel 1) times how bright the world stays.
 const AMBIENT := {
@@ -69,13 +89,15 @@ var _pos := PackedVector2Array()
 var _colour := PackedColorArray()
 var _kind := PackedInt32Array()
 var _phase := PackedFloat32Array()
-var _fire := PackedByteArray()
+var _flags := PackedByteArray()  # FLICKER, SOFT
 var _time := 0.0
 var _hero_hex := ""
 var _hero_colour := Color.WHITE
 var _partner_colours := PackedColorArray()   # by glow code (Player.glow_code)
 var _art_glows: Dictionary = {}              # picture id -> the colour its art glows in
 var _floor_material: ShaderMaterial
+var _pool: GradientTexture2D
+var _boss_pool: GradientTexture2D
 
 
 func _ready() -> void:
@@ -84,10 +106,11 @@ func _ready() -> void:
 	shader.code = FLOOR_SHADER
 	_floor_material = ShaderMaterial.new()
 	_floor_material.shader = shader
-	var texture := pool_texture()
+	_pool = pool_texture()
+	_boss_pool = pool_texture(true)
 	for i in MAX_LIGHTS:
-		_world_lights.append(_light(self, 0, texture))
-		_stage_lights.append(_light(stage, stage.layer, texture))
+		_world_lights.append(_light(self, 0, _pool))
+		_stage_lights.append(_light(stage, stage.layer, _pool))
 	var plain := GradientTexture2D.new()  # all white: the dark light covers everything evenly
 	plain.gradient = Gradient.new()
 	plain.gradient.colors = PackedColorArray([Color.WHITE, Color.WHITE])
@@ -104,7 +127,7 @@ func _ready() -> void:
 	_pos.resize(MAX_CANDIDATES)
 	_colour.resize(MAX_CANDIDATES)
 	_kind.resize(MAX_CANDIDATES)
-	_fire.resize(MAX_CANDIDATES)
+	_flags.resize(MAX_CANDIDATES)
 	set_theme("vault")
 
 
@@ -119,11 +142,13 @@ func _light(holder: Node, layer: int, texture: Texture2D) -> PointLight2D:
 	return light
 
 
-## The one soft round light every pool shares: full in the middle, fading smoothly to nothing at the rim.
-static func pool_texture() -> GradientTexture2D:
+## The soft round light the pools share: full in the middle, fading smoothly to nothing at the rim. A boss's is `steep`:
+## a bright core that falls off fast, so the boss stands in a spot of light instead of flattening the room.
+static func pool_texture(steep: bool = false) -> GradientTexture2D:
 	var gradient := Gradient.new()
 	gradient.offsets = PackedFloat32Array([0.0, 0.3, 0.6, 0.85, 1.0])
-	gradient.colors = PackedColorArray([Color(1, 1, 1, 1.0), Color(1, 1, 1, 0.8), Color(1, 1, 1, 0.42), Color(1, 1, 1, 0.12), Color(1, 1, 1, 0.0)])
+	var alphas := [1.0, 0.55, 0.2, 0.05, 0.0] if steep else [1.0, 0.8, 0.42, 0.12, 0.0]
+	gradient.colors = PackedColorArray(alphas.map(func(a): return Color(1, 1, 1, a)))
 	var texture := GradientTexture2D.new()
 	texture.gradient = gradient
 	texture.fill = GradientTexture2D.FILL_RADIAL
@@ -160,7 +185,7 @@ func track(node: Node) -> void:
 	if node is Sprite2D and (node as Sprite2D).light_mask == LIT:
 		(node as Sprite2D).material = _floor_material
 		return
-	var keep := node is Player or node is RemoteAvatar or node is Enemy or node is Projectile \
+	var keep := node is Player or node is RemoteAvatar or node is Enemy or node is Projectile or node is Door \
 		or node is CampGate or node is ForgeStation or node is ElementAltar
 	if node is Pickup:  # loot: only the high rarities glow
 		var drop: Dictionary = (node as Pickup).drop
@@ -181,6 +206,8 @@ func _kind_of(node: Node2D) -> int:
 		return BOLT
 	if node is Pickup:
 		return LOOT
+	if node is Door:
+		return DOOR
 	return PROP
 
 
@@ -203,7 +230,26 @@ func _colour_of(node: Node2D, kind: int) -> Color:
 			return _bright(Elements.color_of(element if element != "" else "martial"))
 		LOOT:
 			return _bright(Items.rarity_color((node as Pickup).drop["item"]))
+		DOOR:
+			return DOOR_OPEN if (node as Door).open else DOOR_LOCKED
 	return art_glow((node as Interactable).sprite_id)
+
+
+## The flags of a candidate light: fire-like colours flicker; a pale monster (not a boss: its steep pool is small
+## already) and a barred door are softer.
+static func flags_of(kind: int, colour: Color, locked: bool = false) -> int:
+	var pale := colour.s < PALE_SATURATION  # white and grey have hue 0, but are no fire
+	var flags := FLICKER if not pale and (colour.h < 0.11 or colour.h > 0.97) else 0
+	if (kind == DOOR and locked) or (kind == ENEMY and pale):
+		flags |= SOFT
+	return flags
+
+
+## A monster's pool colour: a pale glow is tinted (see PALE_SATURATION); any other light keeps its colour.
+static func pool_colour(kind: int, colour: Color) -> Color:
+	if (kind == ENEMY or kind == BOSS) and colour.s < PALE_SATURATION:
+		return PALE_TINT if colour.s < 0.12 else Color.from_hsv(colour.h, PALE_SATURATION + 0.15, 1.0)
+	return colour
 
 
 ## The colour a picture glows in: the mean of its bright, saturated pixels (read once per picture, then cached).
@@ -280,13 +326,16 @@ func _process(delta: float) -> void:
 			continue
 		var kind := _kind_of(node)
 		var pos := node.global_position
+		if kind == DOOR:
+			pos += DOOR_INWARD.get((node as Door).side, Vector2.ZERO)
 		if not screen.grow(RADIUS[kind]).has_point(view.screen_point_of(pos)):
 			continue  # off the screen: its pool would not show
 		_pos[count] = pos
 		_kind[count] = kind
-		_colour[count] = _colour_of(node, kind)
+		var colour := _colour_of(node, kind)
+		_flags[count] = flags_of(kind, colour, kind == DOOR and not (node as Door).open)
+		_colour[count] = pool_colour(kind, colour)
 		_phase[count] = float(node.get_instance_id() % 997)
-		_fire[count] = 1 if _colour[count].h < 0.11 or _colour[count].h > 0.97 else 0   # fire-like lights flicker
 		_keys[count] = light_key(kind, pos.distance_to(centre), count)
 		count += 1
 	var kept := choose(_keys, MAX_LIGHTS)
@@ -303,19 +352,25 @@ func _process(delta: float) -> void:
 func _place(slot: int, c: int, full: bool) -> void:
 	var kind := _kind[c]
 	var energy: float = ENERGY[kind]
+	if _flags[c] & SOFT:
+		energy *= SOFTER
 	if not full:
 		energy *= SOFT_ENERGY  # soft: dimmer, and still
 	elif kind == BOSS:
 		energy *= 1.0 + 0.08 * sin(_time * TAU * 0.45 + _phase[c])   # a slow breath
-	elif _fire[c] == 1:  # a gentle flicker: under +-8%, under 4 Hz (photosensitivity)
+	elif _flags[c] & FLICKER:  # a gentle flicker: under +-8%, under 4 Hz (photosensitivity)
 		energy *= 1.0 + 0.05 * sin(_time * TAU * 2.1 + _phase[c]) + 0.03 * sin(_time * TAU * 3.7 + _phase[c] * 1.7)
 	var radius: float = RADIUS[kind]
+	var texture := _boss_pool if kind == BOSS else _pool
 	var floor_light := _world_lights[slot]
+	var wall_light := _stage_lights[slot]
+	if floor_light.texture != texture:  # set only on a change: the pairs serve every kind
+		floor_light.texture = texture
+		wall_light.texture = texture
 	floor_light.position = _pos[c]
 	floor_light.color = _colour[c]
 	floor_light.energy = energy
 	floor_light.texture_scale = radius / TEXTURE_RADIUS * 0.70710678   # a ground circle of radius r is r * sqrt(2) wide on the screen
-	var wall_light := _stage_lights[slot]
 	wall_light.position = IsoView.project(_pos[c]) - Vector2(0.0, LIFT)
 	wall_light.color = _colour[c]
 	wall_light.energy = energy
