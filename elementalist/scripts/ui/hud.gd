@@ -199,11 +199,11 @@ func _draw_actions(font: Font, caster: SkillCaster) -> void:
 	x += SLOT + GAP
 	_lock_slot(Vector2(x, y), caster)
 	x += LOCK_SLOT + GAP
-	_skill_slot(Vector2(x, y), caster, caster.skill_for("area"), "F")
+	_skill_slot(Vector2(x, y), caster, caster.skill_for("area"), Controls.key_of("skill_area"))
 	x += SLOT + GAP
-	_skill_slot(Vector2(x, y), caster, caster.skill_for("support"), "V")
+	_skill_slot(Vector2(x, y), caster, caster.skill_for("support"), Controls.key_of("skill_support"))
 	x += SLOT + GAP
-	_skill_slot(Vector2(x, y), caster, caster.skill_for("special"), "R")
+	_skill_slot(Vector2(x, y), caster, caster.skill_for("special"), Controls.key_of("skill_special"))
 
 
 ## The boss's name and health at the top centre; the bar reaches `half` px either side of the middle.
@@ -259,7 +259,7 @@ func _draw_status(font: Font, caster: SkillCaster, character: CharacterData) -> 
 		todo.append("%d reward%s" % [character.pending_rewards.size(), "" if character.pending_rewards.size() == 1 else "s"])
 	var y := 26.0
 	if not todo.is_empty():
-		_ctrl.draw_string(font, Vector2(3, y), "! TAB: " + ", ".join(todo), HORIZONTAL_ALIGNMENT_LEFT, -1, 6, GOLD)
+		_ctrl.draw_string(font, Vector2(3, y), "! %s: %s" % [Controls.key_of("character_sheet"), ", ".join(todo)], HORIZONTAL_ALIGNMENT_LEFT, -1, 6, GOLD)
 		y += 7.0
 	var elements: Array[String] = _player.imbue_elements()
 	if _player.imbued and not elements.is_empty():
@@ -268,9 +268,9 @@ func _draw_status(font: Font, caster: SkillCaster, character: CharacterData) -> 
 	if Settings.get_value("show_tips"):
 		var tip := ""
 		if caster.lmb_mode() == "locked":
-			tip = "Q locks elements; Fuse needs two" if caster.lock_available() else "Fuse needs two elements"
+			tip = ("%s locks elements; Fuse needs two" % Controls.key_of("skill_lock")) if caster.lock_available() else "Fuse needs two elements"
 		elif not character.castable_elements().is_empty() and not _player.imbued and Classes.style_of(character.class_id) == "ranged":
-			tip = "E imbues: RMB then shoots bolts"
+			tip = "%s imbues: %s then shoots bolts" % [Controls.key_of("imbue"), Controls.key_of("attack_basic")]
 		if tip != "":
 			_label(font, Vector2(3, y), tip, 5, Color(1, 1, 1, 0.65))  # dim, but it must still read on a bright floor
 
@@ -282,18 +282,18 @@ func _lmb_slot(pos: Vector2, caster: SkillCaster) -> void:
 		"fusion":
 			_fusion_slot(pos, caster, caster.primary_id())
 		"knife":
-			_skill_slot(pos, caster, caster.primary_id(), "LMB", "Knife")
+			_skill_slot(pos, caster, caster.primary_id(), Controls.key_of("skill_primary"), "Knife")
 		"slash":
-			_plain_slot(pos, "LMB", "Slash", Color("9090c0"))
+			_plain_slot(pos, Controls.key_of("skill_primary"), "Slash", Color("9090c0"))
 		_:
-			_plain_slot(pos, "LMB", "Fuse", Color(0.2, 0.22, 0.3, 0.9))
+			_plain_slot(pos, Controls.key_of("skill_primary"), "Fuse", Color(0.2, 0.22, 0.3, 0.9))
 			_ctrl.draw_rect(Rect2(pos, Vector2(SLOT, SLOT)), Color(0, 0, 0, 0.45))
 
 
 ## RMB: "Bolt" (ranged class, imbued) or "Slash". The colour follows the imbued element.
 func _rmb_slot(pos: Vector2, caster: SkillCaster) -> void:
 	if caster.rmb_mode() == "bolt":
-		_skill_slot(pos, caster, caster.bolt_id(), "RMB", "Bolt")
+		_skill_slot(pos, caster, caster.bolt_id(), Controls.key_of("attack_basic"), "Bolt")
 	else:
 		_melee_slot(pos)
 
@@ -311,7 +311,7 @@ func _fusion_slot(pos: Vector2, caster: SkillCaster, id: String) -> void:
 		_ctrl.draw_rect(Rect2(pos, Vector2(SLOT, SLOT * cd)), Color(INK, 0.7))
 	if not caster.can_afford(id):
 		_ctrl.draw_rect(rect, Color(0.05, 0.1, 0.35, 0.45))
-	_label(font, pos + Vector2(2, 6), "LMB", 5, Color(1, 1, 1, 0.8))
+	_label(font, pos + Vector2(2, 6), Controls.key_of("skill_primary"), 5, Color(1, 1, 1, 0.8))
 	_label(font, pos + Vector2(2, 17), "Fuse", 6, Color.WHITE)
 	_label(font, pos + Vector2(SLOT - 4.0, 6), str(parts.size()), 5, GOLD)  # how many are fused; "x2" ran into "LMB"
 
@@ -333,7 +333,7 @@ func _lock_slot(pos: Vector2, caster: SkillCaster) -> void:
 			_ctrl.draw_rect(rect.grow(-1.0), Color(label["color"], 0.45))
 	# A pale combo (Steam, Frost ...) lights the slab almost white: its text turns to ink there.
 	var pale: bool = not caster.locked.is_empty() and caster.locked.size() < 3 and Color(label["color"]).get_luminance() > 0.6
-	_label(font, pos + Vector2(2, 6), "Q", 5, INK if pale else Color(1, 1, 1, 0.8))
+	_label(font, pos + Vector2(2, 6), Controls.key_of("skill_lock"), 5, INK if pale else Color(1, 1, 1, 0.8))
 	var text := String(label["name"]).substr(0, 8)
 	if not available:  # needs two elements to have anything to fuse
 		text = "none" if Game.character.castable_elements().is_empty() else "2 el"
@@ -386,7 +386,7 @@ func _melee_slot(pos: Vector2) -> void:
 	var lit: bool = _player.imbued and not imbued_elements.is_empty()
 	if lit:
 		color = Elements.color_of(imbued_elements[0])
-	_plain_slot(pos, "RMB", "Slash", color, lit)
+	_plain_slot(pos, Controls.key_of("attack_basic"), "Slash", color, lit)
 	if _player.stamina < float(m["stamina"]):
 		_ctrl.draw_rect(rect, Color(INK, 0.55))
 

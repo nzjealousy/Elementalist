@@ -123,6 +123,7 @@ func _drain(dealt: float) -> void:
 func _burst(except: Node) -> void:
 	var element := String(hit.get("element", ""))
 	SkillFx.ring(get_parent(), global_position, splash, Elements.color_of(element), 0.28, 1.5)
+	Sfx.play_at("explode", global_position, 300.0, -4.0)  # as an area landing (AoeEffect): its splash hits stay quiet
 	for node in get_tree().get_nodes_in_group("enemies"):
 		var enemy := node as Enemy
 		if enemy == null or enemy == except or enemy.global_position.distance_to(global_position) > splash:
@@ -130,4 +131,5 @@ func _burst(except: Node) -> void:
 		var h := hit.duplicate()
 		h["damage"] = float(hit.get("damage", 0.0)) * SPLASH_SHARE
 		h["from"] = global_position
+		h["burst"] = true
 		enemy.take_hit(h)

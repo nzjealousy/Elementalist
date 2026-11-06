@@ -102,7 +102,7 @@ func show_tab(tab: String) -> void:
 		button.button_pressed = id == _tab
 		button.pressed.connect(show_tab.bind(id))
 		tab_row.add_child(button)
-	var close_hint := _label(" TAB: close", Color(1, 1, 1, 0.45))
+	var close_hint := _label(" %s: close" % Controls.key_of("character_sheet"), Color(1, 1, 1, 0.45))
 	close_hint.autowrap_mode = TextServer.AUTOWRAP_OFF  # a wrapping label here would stretch the whole row
 	tab_row.add_child(close_hint)
 
@@ -341,7 +341,10 @@ func _fill_skills() -> void:
 		sets.append("martial")
 	var columns := [_column(136), _column(136)]
 	columns[0].add_child(_label("Skills (numbers include your stats)", GOLD))
-	columns[1].add_child(_label("RMB: bolt while imbued (ranged classes)\nF area (Lv %d)   V buff/debuff (Lv %d)\nR special (reward)\nLMB fuses 2-3 elements locked with Q" % [Classes.AREA_LEVEL, Classes.SUPPORT_LEVEL], DIM))
+	var key := Controls.key_of
+	columns[1].add_child(_label("%s: bolt while imbued (ranged classes)\n%s area (Lv %d)   %s buff/debuff (Lv %d)\n%s special (reward)\n%s fuses 2-3 elements locked with %s" % [
+		key.call("attack_basic"), key.call("skill_area"), Classes.AREA_LEVEL, key.call("skill_support"), Classes.SUPPORT_LEVEL,
+		key.call("skill_special"), key.call("skill_primary"), key.call("skill_lock")], DIM))
 	if sets.is_empty():
 		columns[0].add_child(_label("No skills: no elements and no martial training.", DIM))
 	for i in sets.size():
@@ -355,7 +358,8 @@ func _fill_skills() -> void:
 ## A skill: key and name, then cost, cooldown, damage and scaling on an indented second line; dim if not yet learned.
 func _skill_line(ch: CharacterData, id: String, slot: String) -> Label:
 	var def: Dictionary = SkillDB.DEFS[id]
-	var key: String = {"primary": "RMB" if SkillDB.set_of(id) != "martial" else "LMB", "area": "F", "support": "V", "special": "R"}[slot]
+	var key := Controls.key_of({"primary": "attack_basic" if SkillDB.set_of(id) != "martial" else "skill_primary", "area": "skill_area",
+		"support": "skill_support", "special": "skill_special"}[slot])
 	if not ch.can_use_skill(id):
 		var how := "reward" if slot == "special" else "Lv %d" % ch.skill_unlock_level(id)
 		return _label("  %s %s  (%s)" % [key, def["name"], how], DIM)

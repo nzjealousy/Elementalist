@@ -130,6 +130,8 @@ func show_tab(tab: String) -> void:
 func _fill_craft() -> void:
 	var inv := Game.character.inventory
 	_content.add_child(_label("New gear is rolled: usually plain, sometimes better. Item level = your level.", DIM))
+	if inv.bag_full():  # every craft button below is greyed out: say why where it shows, not only in a tooltip
+		_content.add_child(_label("Bag full: salvage something to craft.", Color("ff7a7a")))
 	for base_id in Items.gear_bases():
 		var problem := Forge.craft_problem(inv, base_id)
 		var base: Dictionary = Items.BASES[base_id]

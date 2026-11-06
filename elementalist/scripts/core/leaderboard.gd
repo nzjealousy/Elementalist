@@ -25,16 +25,15 @@ static func score_for(stats: Dictionary) -> int:
 	return int(round(float(score) * float(stats.get("reward_mult", 1.0))))
 
 
+## The board as saved: the file, else its .bak (the board before the last write, SaveStore.write_atomic), as SaveStore.load_slot.
 static func entries() -> Array:
-	var text := FileAccess.get_file_as_string(path) if FileAccess.file_exists(path) else ""
-	var json := JSON.new()
-	var parsed: Variant = json.data if (not text.is_empty() and json.parse(text) == OK) else null
-	var out: Array = []
-	if parsed is Dictionary and parsed.get("entries") is Array:
-		for entry in parsed["entries"]:
-			if entry is Dictionary and entry.has("score"):
-				out.append(entry)
-	return out
+	for candidate in [path, path + ".bak"]:
+		var text := FileAccess.get_file_as_string(candidate) if FileAccess.file_exists(candidate) else ""
+		var json := JSON.new()
+		var parsed: Variant = json.data if (not text.is_empty() and json.parse(text) == OK) else null
+		if parsed is Dictionary and parsed.get("entries") is Array:
+			return parsed["entries"].filter(func(entry): return entry is Dictionary and entry.has("score"))
+	return []
 
 
 ## Adds a run and keeps the best MAX_ENTRIES. Returns the 1-based rank it earned, or 0 if it did

@@ -209,6 +209,12 @@ func label_of(event: InputEvent) -> String:
 	return "?"
 
 
+## The key or mouse button bound to an action as hint text ("F", "LMB"; "-" when unbound). The HUD reads it every
+## frame and the sheet on every rebuild, so a rebind shows at once.
+func key_of(action: StringName) -> String:
+	return label_of(event_for(action, "desk"))
+
+
 const _KEY_NAMES := {KEY_TAB: "TAB", KEY_ESCAPE: "Esc"}
 const _MOUSE_NAMES := {
 	MOUSE_BUTTON_LEFT: "LMB", MOUSE_BUTTON_RIGHT: "RMB", MOUSE_BUTTON_MIDDLE: "MMB",

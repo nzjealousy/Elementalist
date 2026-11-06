@@ -198,11 +198,6 @@ func begin_net_client(kind: String) -> void:
 	_load_game_scene()
 
 
-## True while a multiplayer session (or its lobby handshake) owns the world, so nothing is saved mid-way.
-func in_net_session() -> bool:
-	return mode in ["coop", "arena"] or (mode == "dungeon" and has_node("/root/Net") and get_node("/root/Net").is_online())
-
-
 ## Back to camp: the run ends (won, fallen or abandoned) and the hero is saved.
 func return_to_camp() -> void:
 	if Net.is_online():

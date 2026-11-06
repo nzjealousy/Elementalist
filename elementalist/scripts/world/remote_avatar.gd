@@ -16,6 +16,8 @@ var moving := false
 var dodging := false
 var stunned := false
 var glow := -1   # the glow code its pictures were made with (Player.glow_code); -1 until the first state
+var casts := -1  # the hero's cast count (Player.cast_count); -1 until the first state that carries it
+var cast_code := 0  # the glow code of the element of its last cast (0: martial)
 var net_pos := Vector2.ZERO
 var sprite: Sprite2D
 
@@ -23,6 +25,7 @@ var _prefix := ""
 var _base_look: Dictionary = {}   # the hero's look before the glow; recoloured whenever the glow changes
 var _anim: SpriteAnim
 var _hurt_cd := 0.0
+var _cast_sound_at := 0   # ticks (ms) before which a new cast count plays no sound
 var _label: Label
 var _stun_sprite: Sprite2D
 
@@ -63,12 +66,20 @@ func _ready() -> void:
 	net_pos = global_position
 
 
-## [x, y, aim_x, aim_y, hp, max_hp, flags] (flags: Player.pack_flags: moving, dodging, stunned, glow code).
+## [x, y, aim_x, aim_y, hp, max_hp, flags (, casts, cast element code)] (flags: Player.pack_flags: moving, dodging, stunned,
+## glow code). A new cast count plays that element's cast sound here, once however many casts one update covers.
 func apply_state(state: Array) -> void:
 	net_pos = Vector2(float(state[0]), float(state[1]))
 	aim = Vector2(float(state[2]), float(state[3]))
-	hp = float(state[4])
 	max_hp = maxf(float(state[5]), 1.0)
+	hp = clampf(float(state[4]), 0.0, max_hp)
+	if Net.all_numbers(state, 9):
+		cast_code = int(state[8])
+		if casts >= 0 and int(state[7]) != casts and Time.get_ticks_msec() >= _cast_sound_at:
+			_cast_sound_at = Time.get_ticks_msec() + int(500.0 / Net.SYNC_RATE)  # a flood of updates sounds at twice the sync rate at most
+			var element := Player.glow_element(cast_code)
+			Sfx.play_at("cast_" + (element if element != "" else "martial"), net_pos, 260.0, -4.0)
+		casts = int(state[7])
 	var flags := Player.unpack_flags(int(state[6]))
 	moving = flags["moving"]
 	dodging = flags["dodging"]
@@ -127,5 +138,6 @@ func take_damage(amount: float, from: Vector2, stun_time: float = 0.0) -> bool:
 		return false
 	_hurt_cd = HURT_COOLDOWN
 	Net.send_damage(peer, amount, from, stun_time)
+	Sfx.play_at("player_hurt", global_position, 260.0, -4.0)  # as the local hero's hurt, quieter; HURT_COOLDOWN spaces them
 	FloatText.spawn(get_parent(), global_position + Vector2(0, -4), "-%d" % int(round(amount)), Color("ff9a5a"), 8)
 	return true

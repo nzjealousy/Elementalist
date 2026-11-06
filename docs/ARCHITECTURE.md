@@ -378,7 +378,8 @@ Put it in a loadout's `support` slot.
   versions up and refuses newer ones). A slot is `{version, saved_at, character, meta, run}`: plain data
   only, never objects. `run` is the dungeon in progress (`tier, seed, floor, room, kills, time, hp`); the layout
   is rebuilt from the seed with `DungeonGen.generate(rng, floors, tier, depth_offset)`.
-  `SaveStore.write_atomic` (also used by `Leaderboard.record`) never replaces the old file when a write fails.
+  `SaveStore.write_atomic` (also used by `Leaderboard.record`) never replaces the old file when a write fails;
+  `Leaderboard.entries()` reads the file, then its `.bak`, the same way.
 - **When it saves:** entering a room (autosave), begin_run / return_to_camp / training, the pause menu, and
   closing the window (`Game._notification`, `NOTIFICATION_WM_CLOSE_REQUEST`). Permadeath deletes the slot and
   sets `Game.slot = -1`. A hero picked for multiplayer (`use_hero`) has `keep_saved_run`: saves write back the
@@ -407,10 +408,10 @@ Put it in a loadout's `support` slot.
 
   | Event | Sound | Where |
   |---|---|---|
-  | Button press / hover or focus | `ui_click` / `ui_tick` | `UiKit.button` (the sheet's and forge's `_button` use it) |
+  | Button press / hover or focus | `ui_click` / `ui_tick` | `UiKit.button` (the sheet's, the forge's `_button` and the run end's button use it; Enter on the run end clicks too) |
   | Back, Close, Cancel, Resume, Leave; Esc / pad B closing a screen | `ui_back` | `UiKit.BACK_LABELS`; each screen's cancel handler |
   | Element key 1-7 | `ui_tick` (-8 dB) | `SkillCaster._process` |
-  | Denied action: forge fails, equip refused, cast on cooldown or unaffordable | `error` (UI, at most one per 0.3 s) | `ForgeScreen`, `CharacterSheet._equip`, `SkillCaster._refused`; limit in `Sfx.play` |
+  | Denied action: forge fails, equip refused, cast on cooldown or unaffordable | `error` (UI, at most one per 0.3 s) | `ForgeScreen`, `CharacterSheet._equip`, `SkillCaster._refused`; limit in `Sfx.play`. An unearned special is silent (pad B is R and every menu's back), and F, V and R ignore a press on the first frame after a pause (it closed a menu) |
   | Equip / unequip | `equip` | `CharacterSheet._equip`, `_unequip` |
   | Deliberate save: back to camp, new hero, save and quit | `save` (-6 dB) | `Game.return_to_camp`, `NewCharacterMenu._begin`, `PauseMenu._save_and_leave` (room autosaves are silent) |
   | Camp gate, next floor | `portal` | `Game.begin_run`, `Dungeon._advance` |
@@ -418,8 +419,9 @@ Put it in a loadout's `support` slot.
   | Run won / lost | `run_win` / `run_lose` (music fades out, ducked) | `RunEndScreen.show_result` |
   | Walking into a barred door / door opens | `door_locked` (once per bump) / `door_open` | `Door` |
   | Hit contact / monster grunt | `hit` / `enemy_hurt` (-9 dB, non-lethal, no combo, at most every 0.45 s per monster) | `Enemy.take_hit` |
-  | Area skill lands; a boss dies | `explode` (its own hits skip `hit`) | `AoeEffect._ready`; `Enemy._damage` (`enemy_die` for the rest) |
+  | Area skill lands; a bolt bursts on impact (splash); a boss dies | `explode` (their own hits skip `hit`) | `AoeEffect._ready`; `Projectile._burst`; `Enemy._damage` (`enemy_die` for the rest) |
   | Casts, buffs, melee, dodge, hurt, death | `cast_<element>` / `cast_martial`, `buff`, `slash` / `spin`, `dodge`, `player_hurt`, `player_die` | `SkillCaster`, `Player` |
+  | A co-op partner casts (not a fusion, silent for its caster too) / is hurt by the host's monsters | `cast_<element>` / `cast_martial`, `player_hurt` (-4 dB, by distance) | `RemoteAvatar.apply_state` (once per new cast count in the state, however many casts it covers, and at most twice the sync rate), `RemoteAvatar.take_damage` (on the host, spaced by `HURT_COOLDOWN`) |
   | Combo, telegraph, slam, enrage, boss roar, level-up, reward, pickups, chest, forge | same-named files | `Enemy`, `Dungeon`, `Pickup`, `Chest`, `ForgeScreen` |
 
   `_test_audio_coverage` scans the scripts for these names: a call to a missing file, a file nobody plays, or a theme without a track fails it.
@@ -441,7 +443,9 @@ buttons call `show_tab.call_deferred(...)`, so tests `await` a frame after click
   `UiKit.button` / `UiKit.focus_first`; the sheet and the forge focus their open tab and keep the pad's place across
   rebuilds with `UiKit.focused_index` / `restore_focus`; the run-end button takes focus after 0.6 s, since A and Space
   also dodge). Esc and pad B (`pause` / `ui_cancel`) close a screen or go back one level; the run-end screen and the
-  first hero's creation are modal on purpose. Key hints use the names `Controls.label_of` gives (LMB, RMB, TAB, Esc).
+  first hero's creation are modal on purpose. Key hints use the names `Controls.label_of` gives (LMB, RMB, TAB, Esc);
+  the HUD's slot keys and tips and the sheet's keys read the current binding through `Controls.key_of(action)` (the HUD every frame, the
+  sheet on every rebuild), so a rebind shows at once. With a full bag the forge's Craft tab says so above its greyed-out buttons.
 - **The fit sweep** (`_test_ui_fit_sweep`): every screen, tab and state, opened with a stuffed hero (16-letter name,
   level 30, 3-digit numbers, full bag), must fit both 320x180 and the 420x180 a 21:9 window gives (`_ui_view`), staying
   centred there: `_ui_fit_problems` flags Controls outside the view or their parent, cut labels, overlapping controls
@@ -505,6 +509,9 @@ look shaped exactly like `HeroLook.for_character`, else the default). A guest's 
 a whitelisted status (`CoopHost.clean_hit` / `clean_apply`) and rate-limited per peer (`take_token`, 60 a second, burst 100); PvP hits pass
 only in an arena session, to a peer in the roster, as damage and origin alone (`Net.clean_pvp_hit`). The other way, a guest caps what the host
 gives it before it reaches the save (`Net.clean_kill`, `Net.clean_clear_reward`) and skips malformed snapshot entries (`Net.all_numbers`).
+Numbers must be finite: `Net.all_numbers` refuses NaN and INF, so a guest's position update with one is dropped whole (and a partner's health
+is clamped to its maximum, as an arena rival's is). An arena kill scores only for a killer in the roster who is not the victim, a PvP hit
+whose attacker is its target is ignored, and a guest makes no ghost for a monster id `Monsters.DEFS` does not know.
 
 **Five dungeons.** `Game.TIERS` holds five dungeons (floors 5, 10, 12, 15, 20; depth offsets 0, 5, 15, 27, 42) with themes (`vault`, `crypt`,
 `hollow`, `ember`, `spire`) for tiles and music. `Monsters.band_of(depth)` picks one of nine weight bands; `floor_scale` climbs steeply to depth
@@ -554,7 +561,8 @@ they are used.
 * **Stun:** a boss or mini-boss slam that lands stuns the hero (`Enemy.SLAM_STUN` 0.5 s, `Player.stun`): no moving, slashing, dodging, casting or imbuing, the stun
   clip and three stars; `Player.STUN_IMMUNITY` (1.5 s) follows, so no stun-lock. Dodge and spin i-frames refuse it. For a partner on another machine the stun
   rides with the damage (`Net.send_damage(peer, amount, from, stun_time)`; `Net.PROTOCOL` is 2).
-* **Net flags:** `Player.net_state()` is `[x, y, aim_x, aim_y, hp, max_hp, flags]`; `Player.pack_flags`/`unpack_flags`: 1 moving, 2 dodging, 4 stunned, glow code from
+* **Net flags:** `Player.net_state()` is `[x, y, aim_x, aim_y, hp, max_hp, flags, casts, cast element code]` (`Player.cast_count` counts the casts
+  that sounded, `cast_code` is the last one's glow code; `Net.PROTOCOL` 4); `Player.pack_flags`/`unpack_flags`: 1 moving, 2 dodging, 4 stunned, glow code from
   bit 3 (0 none, 1..7 = fire water air mineral earth light dark: append new elements, never reorder). `RemoteAvatar` and the arena ghosts re-register their look
   with `HeroLook.with_glow` when the code changes; a stunned partner or rival gets the stars (`SkillFx.stun_stars`, which also lines them up in the flat view).
 

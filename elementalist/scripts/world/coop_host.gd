@@ -5,7 +5,7 @@ extends Node
 ## of the world ~15 times a second and keeps the arena score. See Net for the whole picture.
 ##
 ## Snapshot: {e: [[net_id, monster_id, variant, x, y, hp, max_hp, aura, boss, effect kinds]],
-##            p: [[peer, x, y, aim_x, aim_y, hp, max_hp, flags]], door: bool, t: run text, boss: net id,
+##            p: [[peer, x, y, aim_x, aim_y, hp, max_hp, flags, casts, cast element code]], door: bool, t: run text, boss: net id,
 ##            score: {peer: kills}}
 
 ## A guest's hit is rebuilt from these (numbers a client sends are not trusted).
@@ -147,9 +147,9 @@ func on_client_down(_peer: int) -> void:
 	pass  # a downed hero shows hp <= 0 in its state; Dungeon.check_wipe reads that
 
 
-## Arena: peer `victim` fell, last hurt by `killer`.
+## Arena: peer `victim` fell, last hurt by `killer` (a peer in the roster, never the victim: the victim's machine names it).
 func on_pvp_down(victim: int, killer: int) -> void:
-	if not arena or killer == 0 or killer == victim or not scores.has(killer):
+	if not arena or killer == 0 or killer == victim or not Net.roster.has(killer) or not scores.has(killer):
 		return
 	scores[killer] = int(scores[killer]) + 1
 	Net.send_say("%s defeated %s  (%d)" % [_name_of(killer), _name_of(victim), int(scores[killer])])
@@ -206,7 +206,7 @@ func snapshot() -> Dictionary:
 			players.append(PvpGhost.state_of(peer, avatar))
 		else:
 			players.append([peer, avatar.global_position.x, avatar.global_position.y, avatar.aim.x, avatar.aim.y, avatar.hp, avatar.max_hp,
-				Player.pack_flags(avatar.moving, avatar.dodging, avatar.stunned, avatar.glow)])
+				Player.pack_flags(avatar.moving, avatar.dodging, avatar.stunned, avatar.glow), avatar.casts, avatar.cast_code])
 	var boss_id := 0
 	if Game.boss != null and is_instance_valid(Game.boss) and not Game.boss.ghost:
 		boss_id = Game.boss.net_id

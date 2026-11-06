@@ -106,7 +106,8 @@ func _run_host() -> void:
 	Net.send_damage(guest, 7.5, Vector2(1, 2), Enemy.SLAM_STUN)
 	Net.send_say("hello guest")
 	await get_tree().create_timer(1.5).timeout
-	_check("the guest's position reached the host", not host_states.is_empty() and host_states[0].size() == 7 and absf(float(host_states[0][0]) - 11.0) < 0.01)
+	_check("the guest's position reached the host", not host_states.is_empty() and host_states[0].size() == 9 and absf(float(host_states[0][0]) - 11.0) < 0.01)
+	_check("with the guest's cast count and its element", not host_states.is_empty() and int(host_states[0][7]) == 2 and int(host_states[0][8]) == Player.glow_code("air"))
 	_check("the guest's hit reached the host", host_hits.size() == 1 and host_hits[0][0] == 42 and float(host_hits[0][1]["damage"]) == 9.0 and host_hits[0][1]["from"] == Vector2(1, 1))
 	_check("the guest's fall reached the host", host_downs == 1)
 	_check("the guest's duel hit on the host arrived", got_pvp.size() == 1 and float(got_pvp[0][0]["damage"]) == 4.0 and int(got_pvp[0][1]) == guest)
@@ -133,7 +134,7 @@ func _run_client() -> void:
 	_check("the guest knows it is a guest", Net.is_client() and Net.my_id() != 1)
 
 	await get_tree().create_timer(0.8).timeout
-	Net.send_position([11.0, 21.0, 31.0, 21.0, 90.0, 100.0, 3])
+	Net.send_position([11.0, 21.0, 31.0, 21.0, 90.0, 100.0, 3, 2, Player.glow_code("air")])
 	Net.send_hit(42, {"damage": 9.0, "element": "fire", "from": Vector2(1, 1), "knockback": 50.0})
 	Net.send_down()
 	Net.send_pvp_hit(1, {"damage": 4.0, "element": "air", "from": Vector2(0, 0)})

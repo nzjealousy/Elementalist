@@ -26,7 +26,7 @@ signal said(text: String)
 
 const DEFAULT_PORT := 24680
 const MAX_PLAYERS := 4
-const PROTOCOL := 3   # 2: DAMAGE carries a stun time, and the state flags carry stunned and the glow; 3: each monster carries its pose code
+const PROTOCOL := 4   # 2: DAMAGE carries a stun time, and the state flags carry stunned and the glow; 3: each monster carries its pose code; 4: each player state ends with a cast count and the last cast's element
 const SYNC_RATE := 15.0          # snapshots and position updates per second
 const ARENA_KILLS := 3           # kills that win an arena match
 const PVP_DAMAGE := 0.7          # a player's hit on another player lands at this share
@@ -203,12 +203,13 @@ func clean_num(value: Variant, low: float, high: float, fallback: float = 0.0) -
 	return clampf(number if is_finite(number) else 0.0, low, high)
 
 
-## True if `values` is an Array whose first `count` entries are all numbers (a snapshot or position entry).
+## True if `values` is an Array whose first `count` entries are all finite numbers (a snapshot or position entry:
+## a NaN or INF position would throw the avatar or ghost out of the world).
 func all_numbers(values: Variant, count: int) -> bool:
 	if not (values is Array and values.size() >= count):
 		return false
 	for i in count:
-		if not (values[i] is int or values[i] is float):
+		if not (values[i] is int or (values[i] is float and is_finite(values[i]))):
 			return false
 	return true
 
@@ -436,9 +437,9 @@ func _pvp_hit(target: int, hit: Dictionary) -> void:
 
 
 ## Players hurt each other only in the arena, and only with the numbers the receiver uses (Dungeon._on_host_pvp_damage,
-## CoopClient._on_pvp_damage). The host's own hits come through here too.
+## CoopClient._on_pvp_damage). The host's own hits come through here too. Nobody can hit themselves.
 func _pvp_deliver(target: int, hit: Dictionary, attacker: int) -> void:
-	if String(session.get("kind", "")) != "arena" or not roster.has(target):
+	if String(session.get("kind", "")) != "arena" or not roster.has(target) or target == attacker:
 		return
 	var clean := clean_pvp_hit(hit)
 	if target == 1:

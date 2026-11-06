@@ -48,6 +48,7 @@ var cooldowns: Dictionary = {}    # skill id (or fusion id) -> seconds left
 static var windups_enabled := true
 const WINDUP_SLOW := 0.5       # the hero moves at this share of their speed while charging a skill
 var _windup: Dictionary = {}   # {"id", "left", "total", "fx"} while a skill is charging
+var _last_frame := 0           # the process frame _process last ran in (a gap means the game was paused)
 
 
 func _ready() -> void:
@@ -195,6 +196,9 @@ func _unhandled_input(event: InputEvent) -> void:
 
 
 func _process(delta: float) -> void:
+	# The first frame after a pause: a key pressed now closed a menu (pad B is also ui_cancel), so F, V and R ignore it.
+	var resumed := Engine.get_process_frames() - _last_frame > 1
+	_last_frame = Engine.get_process_frames()
 	tick_windup(delta)
 	mana = minf(max_mana, mana + mana_regen * delta)
 	_chain_left = maxf(0.0, _chain_left - delta)
@@ -224,8 +228,11 @@ func _process(delta: float) -> void:
 	if Input.is_action_just_pressed("skill_lock"):
 		toggle_lock()
 	for slot in ["area", "support", "special"]:
-		if Input.is_action_just_pressed("skill_" + slot) and not try_cast(skill_for(slot)):
-			_refused(skill_for(slot))
+		if resumed or not Input.is_action_just_pressed("skill_" + slot):
+			continue
+		var id := skill_for(slot)
+		if not try_cast(id) and (slot != "special" or Game.character.can_use_skill(id)):
+			_refused(id)  # an unearned special stays silent: pad B is R and also every menu's back
 
 
 ## A press that cast nothing (on cooldown, too little mana or stamina, not learned yet): a quiet buzz. Holding

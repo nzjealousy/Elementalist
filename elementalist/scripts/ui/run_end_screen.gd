@@ -55,12 +55,9 @@ func show_result(won: bool, lines: Array, final: bool = false) -> void:
 		var row := _label(String(line), Color.WHITE, 7)
 		row.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		column.add_child(row)
-	var button := Button.new()
-	button.text = "Main menu (Enter)" if final else ("Return to camp (Enter)" if Game.slot >= 0 else "New dungeon (Enter)")
-	button.focus_mode = Control.FOCUS_ALL
-	button.custom_minimum_size = Vector2(110, 0)
+	var label := "Main menu (Enter)" if final else ("Return to camp (Enter)" if Game.slot >= 0 else "New dungeon (Enter)")
+	var button := UiKit.button(label, restart, 110.0)  # the click (and the focus tick) every menu button has
 	button.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
-	button.pressed.connect(restart)
 	column.add_child(button)
 	# Pad A presses it once focused (this screen has no other way out, on purpose). Not at once: A and Space also dodge,
 	# and a player mashing them as the run ends would skip the summary.
@@ -72,6 +69,7 @@ func show_result(won: bool, lines: Array, final: bool = false) -> void:
 func _input(event: InputEvent) -> void:
 	if _open and event is InputEventKey and event.pressed and not event.echo and event.keycode in [KEY_ENTER, KEY_KP_ENTER]:
 		get_viewport().set_input_as_handled()  # before the restart: the reload removes this node (and its viewport)
+		Sfx.ui("ui_click")  # Enter is the button's press
 		restart()
 
 

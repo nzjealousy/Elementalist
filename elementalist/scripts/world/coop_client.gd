@@ -61,8 +61,8 @@ func apply_snapshot(snapshot: Dictionary) -> void:
 		return
 	for entry in snapshot.get("e", []):
 		if not (entry is Array and entry.size() >= 10 and entry[1] is String and entry[2] is String and entry[7] is String and entry[9] is Array \
-				and Net.all_numbers([entry[0], entry[3], entry[4], entry[5], entry[6]], 5)):
-			continue  # a broken entry: [net_id, monster_id, variant, x, y, hp, max_hp, aura, boss, effect kinds, pose]
+				and Net.all_numbers([entry[0], entry[3], entry[4], entry[5], entry[6]], 5) and Monsters.DEFS.has(entry[1])):
+			continue  # a broken entry or an unknown monster: [net_id, monster_id, variant, x, y, hp, max_hp, aura, boss, effect kinds, pose]
 		var id := int(entry[0])
 		var ghost: Enemy = ghosts.get(id)
 		if ghost == null or not is_instance_valid(ghost):

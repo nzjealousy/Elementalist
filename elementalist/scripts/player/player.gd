@@ -47,6 +47,8 @@ var aim_direction := Vector2.RIGHT
 var caster: SkillCaster
 var imbued := false  # the blade is coated (see class comment); toggled with E, no timer
 var buffs: Dictionary = {}  # kind -> {"time": seconds left, "power": float}
+var cast_count := 0  # casts that played a cast sound here (not fusions): partners play it too when it changes (net_state)
+var cast_code := 0   # the glow code of that cast's element (0: martial)
 
 var _dodge_left := 0.0
 var _dodge_cd := 0.0
@@ -162,11 +164,12 @@ func set_camera_limits(rect: Rect2i) -> void:
 
 
 ## The player's body rectangle in world space (full sprite), used for enemy contact hits.
-## What the other players are told about this hero: [x, y, aim_x, aim_y, hp, max_hp, flags] (flags: see pack_flags).
+## What the other players are told about this hero: [x, y, aim_x, aim_y, hp, max_hp, flags, casts, cast element code]
+## (flags: see pack_flags; casts and its code: cast_count, cast_code).
 func net_state() -> Array:
 	var aim_point := global_position + aim_direction * 40.0
 	return [global_position.x, global_position.y, aim_point.x, aim_point.y, hp, max_hp,
-		pack_flags(velocity.length() > 8.0, is_dodging(), is_stunned(), glow_code(_glow_element()))]
+		pack_flags(velocity.length() > 8.0, is_dodging(), is_stunned(), glow_code(_glow_element())), cast_count, cast_code]
 
 
 ## The flags of a net state: 1 moving, 2 dodging, 4 stunned, and from bit 3 up (code << 3) the glow code (see glow_code).
@@ -182,6 +185,12 @@ static func unpack_flags(flags: int) -> Dictionary:
 ## (fire water air mineral earth light dark = 1..7). Both builds must agree on that order: append new elements, never reorder.
 static func glow_code(element: String) -> int:
 	return (Elements.MAIN + Elements.RARE).find(element) + 1
+
+
+## The element of a glow code; "" for none and for anything unknown (a bad packet).
+static func glow_element(code: int) -> String:
+	var all: Array = Elements.MAIN + Elements.RARE
+	return String(all[code - 1]) if code >= 1 and code <= all.size() else ""
 
 
 ## The colour of a glow code; anything unknown (a bad packet) is the default pale steel.
@@ -528,6 +537,9 @@ func spend_stamina(amount: float) -> void:
 
 ## A skill left the hero's hand: a bolt or a fused cast is an attack, an area, a buff or a special is a cast.
 func _on_cast(skill_id: String) -> void:
+	if SkillDB.DEFS.has(skill_id):  # a fusion casts silently (SkillCaster._spawn_fusion), so it is not counted
+		cast_count += 1
+		cast_code = glow_code(String(SkillDB.DEFS[skill_id]["element"]))
 	var primary := skill_id.begins_with("fusion:") or (SkillDB.DEFS.has(skill_id) and SkillDB.slot_of(skill_id) == "primary")
 	if primary:
 		_attack_time = 0.24

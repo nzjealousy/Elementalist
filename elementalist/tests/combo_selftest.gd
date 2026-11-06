@@ -104,6 +104,7 @@ func _ready() -> void:
 	await _test_enemy_attack_poses()
 	await _test_net_world()
 	_test_net_trust()
+	await _test_demo_leftovers()
 	_test_audio_coverage()
 	_test_items()
 	_test_inventory_and_gear_stats()
@@ -3915,7 +3916,9 @@ func _p5_leaderboard() -> void:
 	var file := FileAccess.open(Leaderboard.path, FileAccess.WRITE)
 	file.store_string("nonsense")
 	file.close()
-	_check("a damaged board reads as empty", Leaderboard.entries().is_empty())
+	var fell_back := Leaderboard.entries().size() == Leaderboard.MAX_ENTRIES  # the board before the last write
+	DirAccess.remove_absolute(Leaderboard.path + ".bak")
+	_check("a damaged board reads its backup, and with no backup as empty", fell_back and Leaderboard.entries().is_empty())
 	Leaderboard.clear()
 	Leaderboard.path = real_path
 
@@ -5562,7 +5565,7 @@ func _test_hero_stun() -> void:
 	_check("the stun poses play, over the hurt pose", player._anim.clip_start == HeroComposer.CLIPS["stun"].x)
 	player._hurt_pose = 0.0
 	var state: Array = player.net_state()
-	_check("the others are told the hero is stunned", state.size() == 7 and Player.unpack_flags(int(state[6]))["stunned"])
+	_check("the others are told the hero is stunned", state.size() == 9 and Player.unpack_flags(int(state[6]))["stunned"])
 	player._knock = Vector2.ZERO
 	Input.action_press("move_right")
 	await get_tree().physics_frame
@@ -5642,7 +5645,7 @@ func _test_hero_stun() -> void:
 	player.caster.selected = 1
 	var glow_flags := Player.unpack_flags(int(player.net_state()[6]))
 	_check("the hero's state carries its glow", Player.glow_color(int(glow_flags["glow"])).to_html(false) == player._glow_hex() and int(glow_flags["glow"]) == Player.glow_code(String(player.caster.elements[1])))
-	_check("the protocol was bumped for the new messages (3: monster pose codes)", Net.PROTOCOL == 3)
+	_check("the protocol was bumped for the new messages (4: the cast count in a player's state)", Net.PROTOCOL == 4)
 
 	# a co-op partner: their pictures follow their glow, and they show the stun
 	var ranger_look := HeroLook.for_class("ranger")
@@ -5751,13 +5754,15 @@ func _test_net_world() -> void:
 	_check("a guest's dungeon builds the room and spawns nothing", client != null and guest_dungeon.state == "viewer" and get_tree().get_nodes_in_group("enemies").size() == 0)
 	Net.roster = {1: Net.local_info(), 5: {"name": "Pip", "class": "ranger", "level": 4, "look": HeroLook.for_class("ranger")}}
 	var snapshot := {"e": [[7, "slime", "fire", 100.0, 80.0, 30.0, 52.0, "water", 0, ["dot"], 5], [8, "grave_warden", "", 140.0, 90.0, 200.0, 300.0, "", 1, []],
-			[1], "junk", [9, "slime", "", 1.0, 2.0, 3.0, 4.0, "", 0, 5], [10, "slime", "", 1.0, 2.0, 3.0, 4.0, "", 0, [], "odd"]],
+			[1], "junk", [9, "slime", "", 1.0, 2.0, 3.0, 4.0, "", 0, 5], [10, "slime", "", 1.0, 2.0, 3.0, 4.0, "", 0, [], "odd"],
+			[11, "dragon_god", "", 1.0, 2.0, 3.0, 4.0, "", 0, []], [12, "slime", "", NAN, 2.0, 3.0, 4.0, "", 0, []], [13, "slime", "", 1.0, INF, 3.0, 4.0, "", 0, []]],
 		"p": [[5, 60.0, 70.0, 90.0, 70.0, 80.0, 100.0, 1]], "door": false, "t": "Floor 2/5", "boss": 8, "score": {}}
 	client.apply_snapshot(snapshot)
 	await get_tree().process_frame
 	var ghost: Enemy = client.ghosts.get(7)
 	_check("broken monster entries are skipped; an odd pose code is no pose", client.ghosts.size() == 3 and client.ghosts.has(10) and client.ghosts[10].net_pose == 0 \
 		and not client.ghosts.has(9) and not client.ghosts.has(1))
+	_check("a monster id the game does not know, or a NaN / INF position, makes no ghost", not client.ghosts.has(11) and not client.ghosts.has(12) and not client.ghosts.has(13))
 	_check("a ghost takes the host's pose code (an entry without one is at rest)", ghost != null and ghost.net_pose == 5 and client.ghosts[8].net_pose == 0)
 	client.ghosts[10].queue_free()
 	client.ghosts.erase(10)
@@ -6052,6 +6057,234 @@ func _test_net_trust() -> void:
 	_check("a huge bonus and an unknown tier are capped", Net.clean_clear_reward({"bonus": 1e12, "tier": 99}) == {"bonus": Net.CLEAR_BONUS_MAX, "tier": 0})
 	_check("odd-typed rewards are nothing", Net.clean_clear_reward({"bonus": "lots", "tier": "5"}) == {"bonus": 0, "tier": 0} \
 		and Net.clean_clear_reward({}) == {"bonus": 0, "tier": 0})
+
+
+# ---------- demo leftovers: partner sounds, bursts, pad B, key hints, bag full, net trust, the leaderboard backup ----------
+
+## The file name of the sound Sfx played last, or "" if nothing was played since Sfx._next_voice was `before`.
+func _sound_since(before: int) -> String:
+	if Sfx._next_voice == before:
+		return ""
+	var voice: AudioStreamPlayer = Sfx._voices[posmod(Sfx._next_voice - 1, Sfx.VOICES)]
+	return voice.stream.resource_path.get_file() if voice.stream != null else ""
+
+
+func _test_demo_leftovers() -> void:
+	var listener := get_tree().get_first_node_in_group("player") as Node2D
+	var here := listener.global_position if listener != null else Vector2.ZERO  # play_at is heard near the local hero
+
+	# a partner's casts and hurts are heard
+	var avatar := RemoteAvatar.new()
+	avatar.setup(5, {"name": "Pip", "class": "ranger", "look": HeroLook.for_class("ranger")})
+	add_child(avatar)
+	avatar.global_position = here
+	await get_tree().process_frame
+	var mark := Sfx._next_voice
+	avatar.apply_state([here.x, here.y, 0.0, 0.0, 50.0, 100.0, 0, 4, Player.glow_code("fire")])
+	_check("a partner's first state plays no cast (it only learns the count)", _sound_since(mark) == "" and avatar.casts == 4)
+	avatar.apply_state([here.x, here.y, 0.0, 0.0, 50.0, 100.0, 0, 6, Player.glow_code("fire")])
+	_check("a new cast count plays that element's cast sound once", _sound_since(mark).begins_with("cast_fire") and Sfx._next_voice == posmod(mark + 1, Sfx.VOICES))
+	mark = Sfx._next_voice
+	avatar.apply_state([here.x, here.y, 0.0, 0.0, 50.0, 100.0, 0, 7, 0])
+	_check("a flood of updates sounds no faster than twice the sync rate", _sound_since(mark) == "" and avatar.casts == 7)
+	avatar._cast_sound_at = 0
+	avatar.apply_state([here.x, here.y, 0.0, 0.0, 50.0, 100.0, 0, 8, 0])
+	_check("a martial cast plays the martial cast sound", _sound_since(mark).begins_with("cast_martial"))
+	mark = Sfx._next_voice
+	avatar.apply_state([here.x, here.y, 0.0, 0.0, 999.0, 100.0, 0, 8, 0])
+	_check("the same count plays nothing, and a partner's health is kept within its maximum", _sound_since(mark) == "" and avatar.hp == 100.0)
+	avatar._hurt_cd = 0.0
+	mark = Sfx._next_voice
+	_check("a partner hurt on the host is heard", avatar.take_damage(5.0, here + Vector2(10, 0)) and _sound_since(mark).begins_with("player_hurt"))
+	mark = Sfx._next_voice
+	_check("but not again within its hurt cooldown", not avatar.take_damage(5.0, here) and _sound_since(mark) == "")
+	var hero := PLAYER.instantiate() as Player
+	add_child(hero)
+	await get_tree().process_frame
+	var counted: int = hero.cast_count
+	hero._on_cast("fireball")
+	hero._on_cast("fusion:fire+water")
+	var state: Array = hero.net_state()
+	_check("the hero's state counts its sounded casts (a fusion is silent) and names the element", hero.cast_count == counted + 1 \
+		and int(state[7]) == hero.cast_count and int(state[8]) == Player.glow_code("fire") and Player.glow_element(int(state[8])) == "fire" and Player.glow_element(99) == "")
+	hero.queue_free()
+
+	# the host takes no NaN or INF position from a guest
+	var host := CoopHost.new()
+	host.avatars[5] = avatar
+	host.on_client_state(5, [30.0, 40.0, 0.0, 0.0, 50.0, 100.0, 0])
+	host.on_client_state(5, [NAN, 40.0, 0.0, 0.0, 50.0, 100.0, 0])
+	host.on_client_state(5, [30.0, INF, 0.0, 0.0, 50.0, 100.0, 0])
+	host.on_client_state(5, [30.0, 40.0, -INF, 0.0, 50.0, 100.0, 0])
+	_check("a NaN or INF in a guest's position update is refused whole", avatar.net_pos == Vector2(30, 40) and avatar.aim == Vector2.ZERO \
+		and not Net.all_numbers([1.0, NAN], 2) and Net.all_numbers([1, 2.5], 2))
+
+	# arena scores: the killer must be a real peer, never the victim; nobody hits themselves
+	host.arena = true
+	host.scores = {1: 0, 5: 0, 7: 0}
+	Net.roster = {1: Net.local_info(), 5: {"name": "Pip"}}
+	host.on_pvp_down(1, 7)
+	host.on_pvp_down(5, 5)
+	host.on_pvp_down(1, 0)
+	_check("a kill by somebody not in the roster, or by the victim, scores nothing", host.scores == {1: 0, 5: 0, 7: 0})
+	host.on_pvp_down(1, 5)
+	_check("a kill by a peer in the roster scores", host.scores[5] == 1)
+	host.avatars.clear()
+	host.free()
+	var got: Array = []
+	var on_pvp := func(hit, attacker): got.append([hit, attacker])
+	Net.pvp_damage_received.connect(on_pvp)
+	Net.session = {"kind": "arena"}
+	Net._pvp_deliver(1, {"damage": 5.0}, 1)
+	_check("a PvP hit on yourself is ignored", got.is_empty())
+	Net._pvp_deliver(1, {"damage": 5.0}, 5)
+	_check("while a rival's hit still lands", got.size() == 1)
+	Net.pvp_damage_received.disconnect(on_pvp)
+	Net.roster = {}
+	Net.session = {}
+	avatar.queue_free()
+
+	# a bolt that bursts on impact explodes, and its splash hits add no "hit" on top
+	listener = get_tree().get_first_node_in_group("player") as Node2D
+	here = listener.global_position if listener != null else Vector2.ZERO
+	var near := _fresh_monster("slime", "", here + Vector2(8, 0))
+	await get_tree().process_frame
+	near._grunt_at = Time.get_ticks_msec() + 100000  # no grunt either: the explode is the only sound
+	var bolt := Projectile.new()
+	bolt.setup(Vector2.ZERO, {"damage": 5.0, "element": "fire"}, 1.0, [], {"splash": 20.0})
+	add_child(bolt)
+	bolt.global_position = here  # burst at once, before a physics frame could touch the slime
+	mark = Sfx._next_voice
+	bolt._burst(null)
+	_check("a bolt bursting on impact plays the explode sound, and its splash plays no hit", _sound_since(mark).begins_with("explode") \
+		and Sfx._next_voice == posmod(mark + 1, Sfx.VOICES) and near.hp < near.max_hp)
+	near.queue_free()
+	bolt.queue_free()
+
+	# the run end's button is a kit button: it ticks on focus and clicks on a press
+	var end := RunEndScreen.new()
+	add_child(end)
+	await get_tree().process_frame
+	end.show_result(false, ["Fell on floor 1"])
+	await get_tree().process_frame
+	var end_button := end.find_children("*", "Button", true, false)[0] as Button
+	mark = Sfx._next_voice
+	end_button.mouse_entered.emit()
+	_check("the run end's button sounds like every menu button", _sound_since(mark).begins_with("ui_tick"))
+	end._open = false
+	get_tree().paused = false
+	end.free()
+
+	# pad B: an unearned special makes no buzz, and a press that closed a menu casts nothing
+	var saved := Game.character
+	var player: Node2D = await _player_with(CharacterData.create_sandbox("mystic", ["fire"], 10))
+	var caster: SkillCaster = player.caster
+	await get_tree().process_frame
+	caster.cooldowns[caster.skill_for("area")] = 5.0
+	Sfx._error_at = -100000
+	Input.action_press("skill_area")
+	caster._process(0.0)
+	Input.action_release("skill_area")
+	var area_buzz := Sfx._error_at != -100000
+	await get_tree().process_frame  # a press stays "just pressed" for the rest of its frame, released or not
+	Sfx._error_at = -100000
+	Input.action_press("skill_special")
+	caster._process(0.0)
+	Input.action_release("skill_special")
+	_check("an area on cooldown buzzes, an unearned special (pad B is also back) does not", area_buzz and Sfx._error_at == -100000 \
+		and not Game.character.can_use_skill(caster.skill_for("special")))
+	await get_tree().process_frame
+	Sfx._error_at = -100000
+	caster._last_frame = Engine.get_process_frames() - 5  # as after a menu paused the game
+	Input.action_press("skill_area")
+	caster._process(0.0)
+	Input.action_release("skill_area")
+	_check("the press that closed a menu is not taken as a skill", Sfx._error_at == -100000)
+	player.queue_free()
+	Game.character = saved
+	await get_tree().process_frame
+
+	# key hints follow a rebind
+	var shipped := InputMap.action_get_events("skill_area")
+	_check("the hints read the bindings by their readable names", Controls.key_of("skill_area") == Controls.label_of(Controls.event_for("skill_area", "desk")) \
+		and Controls.key_of("skill_area") != "-")
+	var fresh_key := InputEventKey.new()
+	fresh_key.keycode = KEY_F9
+	var stolen := Controls.rebind("skill_area", fresh_key)
+	var sheet := CharacterSheet.new()
+	add_child(sheet)
+	await get_tree().process_frame
+	sheet.show_tab("skills")
+	await get_tree().process_frame
+	var sheet_text := " ".join(sheet.find_children("*", "Label", true, false).map(func(l): return l.text))
+	_check("after a rebind the HUD and the sheet show the new key", stolen == "" and Controls.key_of("skill_area") == "F9" and sheet_text.contains("F9 area (Lv") \
+		and not sheet_text.contains("\nF area (Lv"))
+	sheet.free()
+	InputMap.action_erase_events("skill_area")
+	for event in shipped:
+		InputMap.action_add_event("skill_area", event)
+
+	# a full bag says why crafting is greyed out
+	var crafter := CharacterData.create_sandbox("vanguard", ["fire"], 5)
+	Game.character = crafter
+	var forge := ForgeScreen.new()
+	add_child(forge)
+	await get_tree().process_frame
+	forge.show_tab("craft")
+	await get_tree().process_frame
+	var roomy := forge.find_children("*", "Label", true, false).any(func(l): return l.text.begins_with("Bag full"))
+	var rng := _rng(5)
+	while not crafter.inventory.bag_full():
+		var loot := Loot.roll_item(rng, 5, 0.0)
+		if not loot.is_empty():
+			crafter.inventory.add_item(loot)
+	forge.show_tab("craft")
+	await get_tree().process_frame
+	var reason := forge.find_children("*", "Label", true, false).any(func(l): return l.text.begins_with("Bag full"))
+	var greyed := forge._content.find_children("*", "Button", true, false).all(func(b): return b.disabled)
+	_check("a full bag shows a visible reason by the greyed-out craft buttons", reason and greyed and not roomy)
+	forge.free()
+	Game.character = saved
+
+	# the leaderboard falls back on its backup
+	var real_path: String = Leaderboard.path
+	Leaderboard.path = "user://test_leaderboard_bak.json"
+	Leaderboard.clear()
+	Leaderboard.record({"name": "First", "score": 100})
+	Leaderboard.record({"name": "Second", "score": 50})
+	var damaged := FileAccess.open(Leaderboard.path, FileAccess.WRITE)
+	damaged.store_string("{not json")
+	damaged.close()
+	var from_backup := Leaderboard.entries()
+	DirAccess.remove_absolute(Leaderboard.path)
+	var after_lost := Leaderboard.entries()
+	_check("a damaged or missing leaderboard reads its backup", from_backup.size() == 1 and from_backup[0]["name"] == "First" and after_lost.size() == 1)
+	Leaderboard.clear()
+	Leaderboard.path = real_path
+
+	# a host's multiplayer run never lands in their slot: no "continue" from it afterwards
+	var real_dir: String = SaveStore.dir
+	var real_slot: int = Game.slot
+	var real_meta: Dictionary = Game.meta
+	var real_run: Dictionary = Game.run
+	var real_mode: String = Game.mode
+	var real_keep: bool = Game.keep_saved_run
+	SaveStore.dir = "user://test_saves"
+	SaveStore.delete_slot(2)
+	SaveStore.save_slot(2, crafter.to_dict(), SaveStore.new_meta(), {})
+	Game.use_hero(2)
+	Game.mode = "dungeon"
+	Game.run = {"tier": 1, "seed": 77, "floor": 2, "room": 1}  # the hosted co-op run (Game.begin_run while online)
+	Game.save_game()
+	_check("a host with no solo run of their own gets none from the co-op run", SaveStore.load_slot(2)["run"].is_empty())
+	SaveStore.delete_slot(2)
+	SaveStore.dir = real_dir
+	Game.slot = real_slot
+	Game.meta = real_meta
+	Game.run = real_run
+	Game.mode = real_mode
+	Game.keep_saved_run = real_keep
+	Game.character = saved
 
 
 # ---------- UI fit sweep: every screen, every tab, at 320x180 and at a 21:9-wide 420x180 ----------
