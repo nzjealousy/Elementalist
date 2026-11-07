@@ -41,4 +41,4 @@ break the start-up.
   `df83973413260ce026403bee87e1c864c49a2182258dc96bb89123e4a6d08575`.
 * Smoke test: started with `--windowed`, still running after 8 s, then killed.
 * Not verified: reaching the camp from the title screen, combat, saving from the build. The build shares
-  `%APPDATA%\Godotpp_userdata\Elementalist\` (saves, settings, leaderboard) with the editor runs.
+  `%APPDATA%\Godot\app_userdata\Elementalist\` (saves, settings, leaderboard) with the editor runs.
