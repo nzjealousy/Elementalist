@@ -279,6 +279,32 @@ func take_damage(amount: float, from: Vector2) -> bool:
 	return true
 
 
+var _potion_cd := 0.0
+
+
+## Drinks a potion ("health" or "mana"): restores a share of the maximum. Returns whether it was drunk.
+func drink(kind: String) -> bool:
+	if hp <= 0.0 or _potion_cd > 0.0:
+		return false
+	var inv := Game.character.inventory
+	var is_health := kind == "health"
+	var full := hp >= max_hp if is_health else (caster == null or caster.mana >= caster.max_mana)
+	var problem := Potions.drink_problem(inv, kind, full)
+	if problem != "":
+		FloatText.spawn(get_parent(), global_position + Vector2(0, -10), problem, Color("ff7a7a"), 7)
+		Sfx.play("error")
+		return false
+	inv.pay({Potions.id_of(kind): 1})
+	_potion_cd = Potions.COOLDOWN
+	if is_health:
+		heal(max_hp * Potions.HEAL_SHARE)
+	else:
+		caster.mana = minf(caster.max_mana, caster.mana + caster.max_mana * Potions.MANA_SHARE)
+	Sfx.play("heal")
+	FloatText.spawn(get_parent(), global_position + Vector2(0, -10), "%s potion" % kind.capitalize(), Color("e0455a") if is_health else Color("4aa0ff"), 8)
+	return true
+
+
 ## Restores health (a draining bolt, a pickup); never past the maximum.
 func heal(amount: float) -> void:
 	hp = minf(max_hp, hp + maxf(amount, 0.0))
@@ -655,6 +681,10 @@ func _physics_process(delta: float) -> void:
 	regen_hp(delta)
 	if Input.is_action_just_pressed("imbue"):
 		try_imbue()
+	_potion_cd = maxf(0.0, _potion_cd - delta)
+	for kind in Potions.KINDS:
+		if Input.is_action_just_pressed("potion_" + kind):
+			drink(kind)
 	_stamina_delay -= delta
 	if _stamina_delay <= 0.0:
 		stamina = minf(max_stamina, stamina + stamina_regen * delta)

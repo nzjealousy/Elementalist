@@ -40,6 +40,7 @@ deletes that hero's save: it is permadeath.
 | `R` | Special skill (learned only as a level reward) |
 | `1`-`5` or mouse wheel | Select element (or the martial set) |
 | `E` | Toggle **imbue** (no cooldown, no timer). A blade holds **one** element, the selected one: slashes carry it for a little mana, and ranged classes can shoot it with RMB |
+| `H` / `J` | Drink a **health** / **mana** potion (heals 40% of max HP / restores 50% of mana; 1.5 s between drinks; carry up to 5 of each; buy them from the camp merchant, monsters drop them rarely, bosses always). Pad: L3 / R3 |
 | `Space` | Dodge roll (stamina, short i-frames). **Dodge + RMB = a 360 degree spin**: costs more stamina, can be imbued, and you take no damage until it finishes |
 | `G` | Use what you stand next to: open a chest, use the forge |
 | `I` | Gear: open the character sheet on the Gear tab (click a bag item to wear it, a worn item to take it off) |

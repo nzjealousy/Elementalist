@@ -111,6 +111,7 @@ func _ready() -> void:
 	_test_forge()
 	_test_shop()
 	_test_beta_fixes()
+	await _test_potions()
 	_test_loot()
 	await _test_world_loot()
 	await _test_reward_cards()
@@ -1491,15 +1492,17 @@ func _test_touch_geometry() -> void:
 	var slime := _dummy()
 	await get_tree().process_frame
 	var spots := {
-		"below": Vector2(0, 13), "above": Vector2(0, -13),
-		"right": Vector2(12, 0), "left": Vector2(-12, 0),
-		"diagonal": Vector2(11, 12),
+		"below": Vector2(0, 9), "above": Vector2(0, -9),
+		"right": Vector2(8, 0), "left": Vector2(-8, 0),
+		"diagonal": Vector2(7, 8),
 	}
 	for name in spots:
 		slime.global_position = spots[name]
 		_check("slime counts as touching from %s" % name, slime.touches(player))
 	slime.global_position = Vector2(0, 22)
 	_check("slime several pixels away does not touch", not slime.touches(player))
+	slime.global_position = Vector2(0, slime.hit_rect().size.y * 0.5 + 13.0 - 1.0)  # edges just meeting (1 px inside the old margin)
+	_check("a slime whose edge only just meets the hero (inside the old margin) no longer touches", not slime.touches(player))
 	player.queue_free()
 	slime.queue_free()
 
@@ -1921,6 +1924,42 @@ func _test_beta_fixes() -> void:
 	_check("the forge and the merchant have hand-set light colours", Lighting.PROP_COLOURS.has("forge") and Lighting.PROP_COLOURS.has("shopkeeper"))
 	var arena_ghost := PvpGhost.state_of(2, Enemy.new())
 	_check("an arena rival's state carries its cast counter and element", arena_ghost.size() == 10)
+
+
+func _test_potions() -> void:
+	var inv := Inventory.new()
+	_check("no potion to drink", Potions.drink_problem(inv, "health", false) == "No health potion")
+	_check("buying needs gold", Potions.buy_problem(inv, "health").begins_with("Need") and not Potions.buy(inv, "health"))
+	inv.gold = 1000
+	_check("a bought potion costs its price", Potions.buy(inv, "health") and inv.gold == 880 and inv.count("potion_health") == 1)
+	_check("a full stat can't use a potion", Potions.drink_problem(inv, "health", true) == "Already full")
+	_check("a hurt hero can", Potions.drink_problem(inv, "health", false) == "")
+	_check("pickups stop at the carry limit", Potions.add(inv, "mana", 9) == Potions.MAX_CARRY and inv.count("potion_mana") == Potions.MAX_CARRY and Potions.add(inv, "mana") == 0)
+	_check("no buying past the limit", Potions.buy_problem(inv, "mana").begins_with("Carrying"))
+	var rng := _rng(11)
+	var seen := 0
+	for i in 4000:
+		for drop in Loot.enemy_drops(rng, 5):
+			if drop["kind"] == "material" and Potions.is_potion(String(drop["id"])):
+				seen += 1
+	_check("monsters rarely drop potions (about 5%)", seen > 100 and seen < 320)
+	_check("a boss always drops both", Loot.boss_drops(_rng(2), 5).filter(func(d): return d["kind"] == "material" and Potions.is_potion(String(d["id"]))).size() == 2)
+	Game.character = CharacterData.create_sandbox("channeler", ["fire"], 5)
+	var player: Player = PLAYER.instantiate()
+	add_child(player)
+	await get_tree().process_frame
+	player.hp = player.max_hp * 0.2
+	Game.character.inventory.add_material("potion_health", 2)
+	var before := player.hp
+	_check("drinking a health potion heals 40% of max", player.drink("health") and absf(player.hp - minf(player.max_hp, before + player.max_hp * 0.4)) < 0.01 and Game.character.inventory.count("potion_health") == 1)
+	_check("a second drink waits for the cooldown", not player.drink("health") and Game.character.inventory.count("potion_health") == 1)
+	player.caster.mana = 0.0
+	Game.character.inventory.add_material("potion_mana", 1)
+	player._potion_cd = 0.0
+	_check("a mana potion restores half the mana", player.drink("mana") and absf(player.caster.mana - player.caster.max_mana * 0.5) < 0.01)
+	_check("the potion keys exist, H and J, pad L3 and R3", Controls.key_of("potion_health") == "H" and Controls.key_of("potion_mana") == "J" and Controls.label_of(Controls.event_for("potion_health", "pad")) == "Pad L3")
+	player.queue_free()
+	_neutral_character()
 
 
 func _test_forge() -> void:

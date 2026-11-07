@@ -320,6 +320,12 @@ sells three legendaries in different slots (item level = hero level + 2 per dung
 value, rolled each time the camp is built (`Game.shop_stock`). The merchant lights the camp with a warm
 lantern (`Lighting.PROP_COLOURS`).
 
+**Potions** (`Potions`, rules; `Player.drink`): two bag materials, `potion_health` and `potion_mana`, at most 5 of each
+(pickups stop at the cap), drunk with `potion_health` (H, pad L3) and `potion_mana` (J, pad R3) for 40% of max HP / 50% of max
+mana, 1.5 s shared cooldown. The merchant's *Potions* tab sells them (120 / 100 gold), monsters drop one about 5% of the time
+(the roll is last in `Loot.enemy_drops`), bosses always drop both. Potions are never lost with a run's loot. The HUD shows the counts under the hero's status lines.
+Enemy melee needs a 3 px overlap (`Enemy.CONTACT_MARGIN` = -3; it was +1).
+
 **World objects** (`scripts/world/`): `Interactable` (G within `radius`, shows a prompt) is the base
 of `Chest` and `ForgeStation`; `Pickup` drifts to the player and is collected on touch (gear waits
 while the bag is full; everything vanishes after 120 s, or is vacuumed up when you leave a room).

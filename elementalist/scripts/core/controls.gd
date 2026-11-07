@@ -23,7 +23,7 @@ const ACTIONS := [
 	["skill_primary", "Fuse / main attack", "Combat"], ["attack_basic", "Slash / bolt", "Combat"],
 	["skill_lock", "Lock elements (Q)", "Combat"], ["skill_area", "Area skill", "Combat"],
 	["skill_support", "Support skill", "Combat"], ["skill_special", "Special skill", "Combat"],
-	["imbue", "Imbue weapon", "Combat"],
+	["imbue", "Imbue weapon", "Combat"], ["potion_health", "Health potion", "Combat"], ["potion_mana", "Mana potion", "Combat"],
 	["element_prev", "Previous element", "Elements"], ["element_next", "Next element", "Elements"],
 	["element_1", "Element 1", "Elements"], ["element_2", "Element 2", "Elements"],
 	["element_3", "Element 3", "Elements"], ["element_4", "Element 4", "Elements"],
@@ -45,6 +45,7 @@ const PAD_DEFAULTS := {
 	"skill_primary": ["a", JOY_AXIS_TRIGGER_RIGHT, 1.0], "interact": ["a", JOY_AXIS_TRIGGER_LEFT, 1.0],
 	"element_prev": ["b", JOY_BUTTON_DPAD_LEFT], "element_next": ["b", JOY_BUTTON_DPAD_RIGHT],
 	"inventory": ["b", JOY_BUTTON_DPAD_UP], "imbue": ["b", JOY_BUTTON_DPAD_DOWN],
+	"potion_health": ["b", JOY_BUTTON_LEFT_STICK], "potion_mana": ["b", JOY_BUTTON_RIGHT_STICK],
 	"character_sheet": ["b", JOY_BUTTON_BACK], "pause": ["b", JOY_BUTTON_START],
 }
 
@@ -59,7 +60,7 @@ func _ready() -> void:
 		if not InputMap.has_action(name):
 			InputMap.add_action(name, 0.2)
 	# Light and dark are rare elements; their number keys are not in project.godot.
-	for pair in [["element_6", KEY_6], ["element_7", KEY_7]]:
+	for pair in [["element_6", KEY_6], ["element_7", KEY_7], ["potion_health", KEY_H], ["potion_mana", KEY_J]]:
 		if not InputMap.has_action(pair[0]):
 			InputMap.add_action(pair[0])
 			var key := InputEventKey.new()

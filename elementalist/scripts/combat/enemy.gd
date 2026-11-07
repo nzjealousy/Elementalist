@@ -27,7 +27,7 @@ const WALK_SPEED_MAX := 80.0
 const GRUNT_GAP_MS := 450  # the "enemy_hurt" grunt plays at most this often per monster
 var _grunt_at := 0
 var _stun_sprite: Sprite2D
-const CONTACT_MARGIN := 1.0  # px; bodies this close count as touching
+const CONTACT_MARGIN := -3.0  # px; a touch needs the bodies to overlap by this much (was +1: a touch from a distance)
 ## Humanoids are drawn on the hero rig, taller than the bodies they fight with: they keep the hit box they had when their picture
 ## was small (the drawing grew, the fight did not). The other monsters keep the size their picture had before the pictures were baked
 ## 15% smaller (tools/art/shrink.py), so no hit box changed.
@@ -413,7 +413,7 @@ func picture_height() -> float:
 
 
 ## True when this enemy's body overlaps the target's hurtbox on any side. The target needs
-## a hurtbox() -> Rect2. Grown by CONTACT_MARGIN so visually touching sprites count.
+## a hurtbox() -> Rect2. Grown by CONTACT_MARGIN (negative: the bodies must overlap a little).
 func touches(target: Node2D) -> bool:
 	return target.has_method("hurtbox") and hit_rect().grow(CONTACT_MARGIN).intersects(target.hurtbox())
 

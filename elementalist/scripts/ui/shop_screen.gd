@@ -1,10 +1,10 @@
 class_name ShopScreen
 extends CanvasLayer
 ## The camp merchant's menu, opened with G at the shopkeeper (Esc or G closes; the game pauses).
-## Tabs:  Gems (the elements the hero lacks)  and  Legendary (three rotating items).
+## Tabs:  Gems (the elements the hero lacks), Legendary (three rotating items) and Potions (health and mana).
 ## The rules live in Shop (tested without any UI); this only lists and calls them.
 
-const TABS := ["gems", "legendary"]
+const TABS := ["gems", "legendary", "potions"]
 const PANEL_SIZE := Vector2i(304, 172)
 const GOLD := Color("ffd84a")
 const DIM := Color(1, 1, 1, 0.4)
@@ -109,10 +109,10 @@ func show_tab(tab: String) -> void:
 	_content.custom_minimum_size = Vector2(280, 0)
 	_content.add_theme_constant_override("separation", 1)
 	scroll.add_child(_content)
-	if _tab == "gems":
-		_fill_gems()
-	else:
-		_fill_legendary()
+	match _tab:
+		"gems": _fill_gems()
+		"legendary": _fill_legendary()
+		_: _fill_potions()
 	if _open:
 		UiKit.restore_focus(self, focus_at, tab_row.get_child(TABS.find(_tab) + 1))
 
@@ -154,6 +154,28 @@ func _fill_legendary() -> void:
 		_content.add_child(button)
 	if inv.bag_full():
 		_content.add_child(_label("Bag full: salvage something first.", Color("ff7a7a")))
+
+
+func _fill_potions() -> void:
+	var inv := Game.character.inventory
+	_content.add_child(_label("Carry up to %d of each. Drink with %s (health) and %s (mana)." % [Potions.MAX_CARRY, Controls.key_of("potion_health"), Controls.key_of("potion_mana")], DIM))
+	for kind in Potions.KINDS:
+		var problem := Potions.buy_problem(inv, kind)
+		var text := "%s Potion  %dg  (you hold %d)" % [kind.capitalize(), int(Potions.PRICES[kind]), inv.count(Potions.id_of(kind))]
+		var button := UiKit.button(text, func(): pass)
+		button.alignment = HORIZONTAL_ALIGNMENT_LEFT
+		button.disabled = problem != ""
+		button.tooltip_text = problem
+		button.add_theme_color_override("font_color", Items.MATERIALS[Potions.id_of(kind)]["color"])
+		button.pressed.connect(_buy_potion.bind(kind))
+		_content.add_child(button)
+
+
+func _buy_potion(kind: String) -> void:
+	var ok := Potions.buy(Game.character.inventory, kind)
+	Sfx.play("forge" if ok else "error")
+	_status = ("Bought a %s potion" % kind) if ok else "Could not buy"
+	show_tab.call_deferred(_tab)
 
 
 func _switch_tab(id: String) -> void:

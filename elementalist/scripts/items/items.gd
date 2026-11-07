@@ -142,6 +142,8 @@ const MATERIALS := {
 	"essence_earth": {"name": "Earth Essence", "color": Color("5fbf4a")},
 	"essence_air": {"name": "Air Essence", "color": Color("d9f2ff")},
 	"essence_mineral": {"name": "Mineral Essence", "color": Color("b5a58a")},
+	"potion_health": {"name": "Health Potion", "color": Color("e0455a")},
+	"potion_mana": {"name": "Mana Potion", "color": Color("4aa0ff")},
 	# Elemental gems: dropped by bosses. Using one attunes you to its element (CharacterData.use_gem).
 	"gem_fire": {"name": "Fire Gem", "color": Color("ff6a2b")},
 	"gem_water": {"name": "Water Gem", "color": Color("3fa7ff")},

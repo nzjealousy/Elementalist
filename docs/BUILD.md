@@ -34,14 +34,11 @@ Always export **release**: the debug keys (F5 sandbox hero and friends in `Dunge
 The `godot_ai` addon is still packed, because `project.godot` autoloads its `game_helper.gd`; excluding it would
 break the start-up.
 
-## Last result (2026-11-07)
+## Last result (2026-11-07, rebuilt with potions and the shorter melee reach)
 
-* Export: exit code 0, no errors or warnings in the log, no `res://tests/` file packed.
-* `build/Elementalist.exe`: 112,791,744 bytes (about 108 MB), SHA256
-  `2DC5E59BD566E44467C653B26703F4A4B45B9105C2CD2C8E978ABB6779B82770`.
-* Smoke test: started with `Elementalist.exe --windowed`; it stayed alive for several minutes, printed only the
-  engine banner and the D3D12 / Forward+ device line, nothing on stderr, and showed the title screen
-  (Continue, New game, Multiplayer, Hall of heroes, Settings, Quit). Then it was killed.
-* Not verified: reaching the camp from the title screen (Continue was not clicked), combat, saving from the
-  build. The build shares `%APPDATA%\Godot\app_userdata\Elementalist\` (saves, settings, leaderboard) with the
-  editor runs, so a playtest on this machine plays the same saves.
+* Export: exit code 0; the old exe was deleted first, `build/` holds only the new one.
+* `build/Elementalist.exe`: 112,809,408 bytes (about 108 MB), SHA256
+  `df83973413260ce026403bee87e1c864c49a2182258dc96bb89123e4a6d08575`.
+* Smoke test: started with `--windowed`, still running after 8 s, then killed.
+* Not verified: reaching the camp from the title screen, combat, saving from the build. The build shares
+  `%APPDATA%\Godotpp_userdata\Elementalist\` (saves, settings, leaderboard) with the editor runs.

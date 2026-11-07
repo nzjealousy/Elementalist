@@ -77,6 +77,11 @@ static func enemy_drops(rng: RandomNumberGenerator, ilvl: int, bonus: float = 0.
 		var item := roll_item(rng, ilvl, bonus, "", "common", allow_spell)
 		if not item.is_empty():
 			out.append({"kind": "item", "item": item})
+	var potion := rng.randf()  # last, so the rolls above are unchanged
+	if potion < float(Potions.DROP_CHANCE["health"]):
+		out.append({"kind": "material", "id": "potion_health", "amount": 1})
+	elif potion < float(Potions.DROP_CHANCE["health"]) + float(Potions.DROP_CHANCE["mana"]):
+		out.append({"kind": "material", "id": "potion_mana", "amount": 1})
 	return out
 
 
@@ -88,6 +93,8 @@ static func boss_drops(rng: RandomNumberGenerator, ilvl: int, bonus: float = 0.0
 	var out: Array[Dictionary] = []
 	out.append({"kind": "gold", "amount": rng.randi_range(60, 90) + ilvl * 4})
 	out.append({"kind": "material", "id": "scrap", "amount": rng.randi_range(8, 12)})
+	out.append({"kind": "material", "id": "potion_health", "amount": 1})
+	out.append({"kind": "material", "id": "potion_mana", "amount": 1})
 	var first := roll_item(rng, ilvl, bonus + 0.5, "", "rare", allow_spell)
 	if not first.is_empty():
 		out.append({"kind": "item", "item": first})

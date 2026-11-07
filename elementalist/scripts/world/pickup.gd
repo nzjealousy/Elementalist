@@ -95,11 +95,15 @@ func _collect(player: Node2D) -> void:
 			text = "+%d gold" % gold
 			color = Color("ffd84a")
 		"material":
-			inv.add_material(drop["id"], int(drop["amount"]))
-			if run_seed >= 0 and drop["id"] != "scrap":  # scrap is never lost
+			var amount := int(drop["amount"])
+			if Potions.is_potion(drop["id"]):
+				amount = Potions.add(inv, String(drop["id"]).trim_prefix("potion_"), amount)  # capped at MAX_CARRY
+			else:
+				inv.add_material(drop["id"], amount)
+			if run_seed >= 0 and drop["id"] != "scrap" and not Potions.is_potion(drop["id"]):  # scrap and potions are never lost
 				var found: Dictionary = Game.run.get_or_add("found", {})
-				found[drop["id"]] = int(found.get(drop["id"], 0)) + int(drop["amount"])
-			text = "+%d %s" % [int(drop["amount"]), Items.material_name(drop["id"])]
+				found[drop["id"]] = int(found.get(drop["id"], 0)) + amount
+			text = ("+%d %s" % [amount, Items.material_name(drop["id"])]) if amount > 0 else "%s: full" % Items.material_name(drop["id"])
 			color = Items.MATERIALS[drop["id"]]["color"]
 		"item":
 			if run_seed >= 0:

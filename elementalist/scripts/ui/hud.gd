@@ -261,6 +261,10 @@ func _draw_status(font: Font, caster: SkillCaster, character: CharacterData) -> 
 	if not todo.is_empty():
 		_ctrl.draw_string(font, Vector2(3, y), "! %s: %s" % [Controls.key_of("character_sheet"), ", ".join(todo)], HORIZONTAL_ALIGNMENT_LEFT, -1, 6, GOLD)
 		y += 7.0
+	var inv := character.inventory
+	_ctrl.draw_string(font, Vector2(3, y), "%s Health x%d   %s Mana x%d" % [Controls.key_of("potion_health"), inv.count("potion_health"), Controls.key_of("potion_mana"), inv.count("potion_mana")],
+		HORIZONTAL_ALIGNMENT_LEFT, -1, 6, Color(1, 1, 1, 0.7))
+	y += 7.0
 	var elements: Array[String] = _player.imbue_elements()
 	if _player.imbued and not elements.is_empty():
 		_ctrl.draw_string(font, Vector2(3, y), "Imbued: %s" % String(elements[0]).capitalize(), HORIZONTAL_ALIGNMENT_LEFT, -1, 6, Elements.color_of(elements[0]).lightened(0.3))
