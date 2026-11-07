@@ -53,6 +53,8 @@ var hurt_time := 0.0        # > 0 while the red hit indicator is showing (HUD)
 var hurt_dir := Vector2.ZERO  # screen direction the last hit came from
 var slot := -1              # save slot of the hero being played (-1: none, e.g. the sandbox or tests)
 var meta: Dictionary = SaveStore.new_meta()  # long-term hero state (difficulty, dungeons cleared ...)
+var shop_sold: Array = []   # gems bought from the camp merchant this visit (reset on entering camp)
+var shop_stock: Array[Dictionary] = []  # the merchant's legendaries this visit (Shop.roll_stock)
 var run: Dictionary = {}    # the dungeon in progress ({} in camp): tier, seed, floor, room, hp ...
 var mode := "camp"          # "camp", "dungeon" or "training": what the main scene builds
 var stashed_hero: CharacterData  # the real hero, kept aside while a sandbox hero trains

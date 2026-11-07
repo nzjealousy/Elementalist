@@ -96,6 +96,7 @@ func _ready() -> void:
 		parent.add_child.call_deferred(PauseMenu.new())
 		parent.add_child.call_deferred(ClassCards.new())
 		parent.add_child.call_deferred(ForgeScreen.new())
+		parent.add_child.call_deferred(ShopScreen.new())
 		_end_screen = RunEndScreen.new()
 		parent.add_child.call_deferred(_end_screen)
 		var fade_layer := CanvasLayer.new()
@@ -276,6 +277,11 @@ func _build_camp() -> void:
 	var board := CampBoard.new()
 	board.position = middle + Vector2(56, 0)
 	_room_node.add_child(board)
+	var merchant := Shopkeeper.new()
+	merchant.position = middle + Vector2(0, 40)
+	_room_node.add_child(merchant)
+	Game.shop_sold = []
+	Game.shop_stock = Shop.roll_stock(Game.loot_rng, Game.character.level, int(Game.meta.get("tier_cleared", 0)), Game.loot_allows_spell())
 	var gate := CampGate.new()
 	gate.position = middle + Vector2(0, -float(room["rows"]) * TILE * 0.5 + TILE * 1.5)
 	_room_node.add_child(gate)
@@ -792,6 +798,8 @@ func _on_net_room(data: Dictionary) -> void:
 func set_net_door(open: bool) -> void:
 	if _exit_door and open and not _exit_door.open:
 		_exit_door.unlock()
+		if String(room.get("kind", "")) in ["combat", "miniboss"]:
+			_clear_heal()  # the host's heal on a won fight, for a guest too
 
 
 ## Arena scoreboard in the run text.

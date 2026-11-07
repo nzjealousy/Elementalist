@@ -10,7 +10,7 @@ the open questions at the end are the ones worth your call.
 
 ```
               ┌────────────────────────── CAMP ──────────────────────────┐
-              │  heal, save · forge (craft, upgrade, enchant) · gear     │
+              │  heal, save · forge · merchant (gems, legendaries) · gear   │
               │  hall of heroes (leaderboard) · the gate                 │
               └──────────────┬───────────────────────────▲───────────────┘
                              │ choose a dungeon           │ return (win, fall or retreat)

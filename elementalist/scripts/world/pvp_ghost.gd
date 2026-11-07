@@ -23,12 +23,19 @@ static func make(parent: Node, peer: int, info: Dictionary) -> Enemy:
 	return enemy
 
 
-## state: [x, y, aim_x, aim_y, hp, max_hp, flags] (flags: Player.pack_flags: moving, dodging, stunned, glow code).
+## state: [x, y, aim_x, aim_y, hp, max_hp, flags (, casts, cast element code)] (flags: Player.pack_flags: moving, dodging, stunned, glow code).
 static func apply_state(enemy: Enemy, state: Array) -> void:
 	enemy.net_pos = Vector2(float(state[0]), float(state[1]))
 	enemy.net_aim = Vector2(float(state[2]), float(state[3]))
 	enemy.max_hp = maxf(float(state[5]), 1.0)
 	enemy.hp = clampf(float(state[4]), 0.0, enemy.max_hp)
+	if Net.all_numbers(state, 9):  # a new cast plays that element's cast sound, as for a co-op partner (RemoteAvatar)
+		if enemy.net_casts >= 0 and int(state[7]) != enemy.net_casts and Time.get_ticks_msec() >= enemy.net_cast_sound_at:
+			enemy.net_cast_sound_at = Time.get_ticks_msec() + int(500.0 / Net.SYNC_RATE)
+			var element := Player.glow_element(int(state[8]))
+			Sfx.play_at("cast_" + (element if element != "" else "martial"), enemy.net_pos, 260.0, -4.0)
+		enemy.net_casts = int(state[7])
+		enemy.net_cast_code = int(state[8])
 	var flags := Player.unpack_flags(int(state[6]))
 	enemy.net_moving = flags["moving"]
 	enemy.net_dodging = flags["dodging"]
@@ -40,4 +47,4 @@ static func apply_state(enemy: Enemy, state: Array) -> void:
 
 static func state_of(peer: int, enemy: Enemy) -> Array:
 	return [peer, enemy.net_pos.x, enemy.net_pos.y, enemy.net_aim.x, enemy.net_aim.y, enemy.hp, enemy.max_hp,
-		Player.pack_flags(enemy.net_moving, enemy.net_dodging, enemy.net_stunned, enemy.net_glow)]
+		Player.pack_flags(enemy.net_moving, enemy.net_dodging, enemy.net_stunned, enemy.net_glow), maxi(enemy.net_casts, 0), enemy.net_cast_code]

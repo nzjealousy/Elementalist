@@ -25,7 +25,7 @@ static func slot_path(slot: int) -> String:
 
 
 static func new_meta(difficulty: String = "knight") -> Dictionary:
-	return {"difficulty": difficulty, "tier_cleared": 0, "runs": 0, "play_time": 0.0}
+	return {"difficulty": difficulty, "tier_cleared": 0, "gems_bought": 0, "runs": 0, "play_time": 0.0}
 
 
 ## Writes a slot atomically. Returns OK or the error to show the player.

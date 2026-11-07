@@ -464,7 +464,10 @@ func _spawn(id: String, def: Dictionary) -> void:
 		"buff":
 			var buff: Dictionary = def["buff"]
 			Sfx.play("heal" if String(buff["kind"]) == "mend" else "buff")
-			body.add_buff(String(buff["kind"]), float(buff["time"]), float(buff["power"]), String(def["element"]))
+			var power := float(buff["power"])
+			if String(buff["kind"]) == "mend" and String(def["element"]) != "":
+				power *= clampf(character.spell_damage_mult(String(def["element"])), 1.0, 1.6)  # healing grows with spell power, as damage does
+			body.add_buff(String(buff["kind"]), float(buff["time"]), power, String(def["element"]))
 		"projectile":
 			var speed := float(def["speed"]) * character.skill_scale(id, "speed") * float(stats["projectile_speed_mult"])
 			var count := int(def.get("spread_count", 1))

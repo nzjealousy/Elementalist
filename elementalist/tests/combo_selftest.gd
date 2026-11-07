@@ -109,6 +109,8 @@ func _ready() -> void:
 	_test_items()
 	_test_inventory_and_gear_stats()
 	_test_forge()
+	_test_shop()
+	_test_beta_fixes()
 	_test_loot()
 	await _test_world_loot()
 	await _test_reward_cards()
@@ -1868,6 +1870,57 @@ func _test_inventory_and_gear_stats() -> void:
 	old_save.erase("inventory")
 	_check("a save from before items existed still loads", CharacterData.from_dict(old_save).inventory != null)
 	_neutral_character()
+
+
+func _test_shop() -> void:
+	var c := CharacterData.create_sandbox("channeler", ["fire"], 5)
+	var meta := SaveStore.new_meta()
+	var sold: Array = []
+	_check("a new meta counts no gems bought", meta["gems_bought"] == 0)
+	_check("gem prices rise 50% per gem and stop at x3", Shop.gem_price(0) == 600 and Shop.gem_price(1) == 900 and Shop.gem_price(4) == 1800 and Shop.gem_price(40) == 1800)
+	_check("the shop offers the missing main elements, not Light or Dark early", ",".join(Shop.gem_offers(c, 0, sold)) == "water,air,mineral,earth")
+	_check("Light and Dark come after dungeon 2", Shop.gem_offers(c, 2, sold).has("light") and not Shop.gem_offers(c, 1, sold).has("light"))
+	_check("a poor hero can't buy a gem", Shop.gem_problem(c, meta, "water", sold).begins_with("Need") and not Shop.buy_gem(c, meta, "water", sold))
+	c.inventory.gold = 2000
+	_check("buying a gem pays gold and gives the gem", Shop.buy_gem(c, meta, "water", sold) and c.inventory.gold == 1400 and c.inventory.count("gem_water") == 1)
+	_check("one of each per visit, and the price went up", Shop.gem_problem(c, meta, "water", sold) == "Not for sale" and Shop.gem_price(int(meta["gems_bought"])) == 900)
+	_check("the bought gem attunes the hero", c.use_gem("water") and "water" in c.elements)
+	_check("an element already owned is not for sale", not Shop.gem_offers(c, 0, []).has("fire"))
+	var stock := Shop.roll_stock(_rng(7), 10, 2, true)
+	var slots := {}
+	for entry in stock:
+		slots[Items.slot_of(entry["item"])] = true
+	_check("the merchant stocks three legendaries in different slots", stock.size() == 3 and slots.size() == 3 and stock.all(func(e): return e["item"]["rarity"] == "legendary" and e["item"]["ilvl"] == 14))
+	_check("legendary price is 4x its value", stock.all(func(e): return e["price"] == Items.value_of(e["item"]) * 4))
+	var shopper := Inventory.new()
+	_check("a poor hero can't buy a legendary", Shop.legendary_problem(shopper, stock, 0).begins_with("Need") and not Shop.buy_legendary(shopper, stock, 0))
+	shopper.gold = 1000000
+	_check("buying a legendary pays and fills the bag", Shop.buy_legendary(shopper, stock, 0) and shopper.bag.size() == 1 and shopper.gold == 1000000 - int(stock[0]["price"]))
+	_check("a bought legendary is sold out", Shop.legendary_problem(shopper, stock, 0) == "Sold" and not Shop.buy_legendary(shopper, stock, 0))
+	while not shopper.bag_full():
+		shopper.add_item(Items.make("iron_sword", "common", 1, _rng(3)))
+	_check("a full bag stops a purchase", Shop.legendary_problem(shopper, stock, 1) == "Bag full")
+
+
+func _test_beta_fixes() -> void:
+	Controls.using_pad = true
+	var pad_key := Controls.key_of("dodge")
+	Controls.using_pad = false
+	_check("a pad player sees pad names, a keyboard player key names", pad_key == "Pad A" and Controls.key_of("dodge") != "Pad A")
+	var boss: Enemy = (load(Monsters.ENEMY_SCENE) as PackedScene).instantiate()
+	boss.configure("slime_king", "", 2.0, 1.5, 4)
+	_check("a boss remembers its floor's scale, so its minions can share it", boss._floor_hp_scale == 2.0 and boss._floor_damage_scale == 1.5 and boss.level == 4)
+	boss.free()
+	var plain: Enemy = (load(Monsters.ENEMY_SCENE) as PackedScene).instantiate()
+	plain.configure("spitter")
+	var fire: Enemy = (load(Monsters.ENEMY_SCENE) as PackedScene).instantiate()
+	fire.configure("spitter", "fire")
+	_check("a variant's shots carry the variant damage bonus", absf(float(fire.shot["damage"]) - float(plain.shot["damage"]) * Monsters.VARIANT_DAMAGE) < 0.001)
+	plain.free()
+	fire.free()
+	_check("the forge and the merchant have hand-set light colours", Lighting.PROP_COLOURS.has("forge") and Lighting.PROP_COLOURS.has("shopkeeper"))
+	var arena_ghost := PvpGhost.state_of(2, Enemy.new())
+	_check("an arena rival's state carries its cast counter and element", arena_ghost.size() == 10)
 
 
 func _test_forge() -> void:
@@ -6610,6 +6663,18 @@ func _ui_sweep_screens(stuffed: CharacterData) -> void:
 	forge._pick_enchant_target(stuffed.inventory.bag[0])  # rebuilds the tab (deferred) at its second step
 	await _ui_sweep("forge_enchant_element", forge)
 	forge.free()
+
+	Game.shop_sold = []
+	Game.shop_stock = Shop.roll_stock(_rng(5), Game.character.level, 5, true)
+	var shop := ShopScreen.new()
+	add_child(shop)
+	await get_tree().process_frame
+	shop.open()
+	for tab in ShopScreen.TABS:
+		shop._status = "Bought the Mineral gem: use it from the character sheet"
+		shop.show_tab(tab)
+		await _ui_sweep("shop_" + tab, shop)
+	shop.free()
 
 	var altar := AltarScreen.new()
 	add_child(altar)

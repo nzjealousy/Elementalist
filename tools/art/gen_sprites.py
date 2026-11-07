@@ -680,11 +680,39 @@ def dummy():
     return finish(cv)
 
 
+def shopkeeper():
+    """The camp's merchant: a hooded figure behind a wooden counter, a lantern in one hand and a row of the seven
+    element gems along the counter's edge (the shop sells gems and legendary gear)."""
+    cv = Canvas(28, 32)
+    cloak = hexc('3c3868')
+    shaded_rect(cv, 8, 9, 12, 16, cloak)                       # body
+    shaded_ellipse(cv, 14, 8, 6.0, 7.0, shade(cloak, 1.1))     # hood
+    shaded_ellipse(cv, 14, 10, 3.5, 4.0, hexc('1a1526'))       # shadowed face
+    cv.set(12, 10, hexc('f2cf6a'))                             # two glinting eyes
+    cv.set(16, 10, hexc('f2cf6a'))
+    rect(cv, 6, 14, 3, 8, shade(cloak, 0.8))                   # left sleeve
+    rect(cv, 19, 14, 3, 7, shade(cloak, 0.8))                  # right sleeve
+    rect(cv, 23, 7, 1, 8, hexc('5a4a3a'))                      # lantern pole
+    shaded_rect(cv, 22, 14, 3, 3, hexc('ffd84a'))              # lantern
+    cv.set(23, 15, (255, 255, 255, 255))
+    wood = hexc('a8742c')
+    shaded_rect(cv, 0, 22, 28, 10, wood)                       # counter
+    rect(cv, 0, 22, 28, 1, shade(wood, 1.2))
+    rect(cv, 2, 27, 24, 1, shade(wood, 0.7))
+    for i, element in enumerate(['fire', 'water', 'earth', 'air', 'mineral', 'light', 'dark']):   # the gem row
+        ramp = style.ramp(element)
+        x = 3 + i * 3
+        rect(cv, x, 20, 2, 2, ramp[3])
+        cv.set(x, 20, ramp[4])
+    return finish(cv)
+
+
 def props():
     save('chest', [chest(False)])
     save('chest_open', [chest(True)])
     save('forge', [forge()])
     save('board', [board()])
+    save('shopkeeper', [shopkeeper()])
     save('altar', [altar()])
     save('training_sign', [training_sign()])
     save('enemy_dummy', [dummy()])

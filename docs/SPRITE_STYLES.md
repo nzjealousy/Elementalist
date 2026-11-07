@@ -5,7 +5,7 @@ here as the record of what was offered.
 
 Original proposal: **proposed, not applied.** The five boards below show the same things in five looks: a hero in idle, attack, dodge, cast and stunned
 frames (with a dodge trail), three enemies (slime, skeleton, bat), three pieces of gear, a bolt, an area ring, stun stars and a class-card
-mock-up. They are drawn by `tools/art/sprite_styles.py` (`python tools/art/sprite_styles.py [soft|chibi|painted|noir|retro]`), at the new,
+mock-up. They were drawn by `sprite_styles.py` (removed once Noir Silhouette was chosen), at the new,
 smaller hero size (about 15% below the current 38 px figure). The world, the UI and the runes stay Moonlit Glyphwork; only the sprites differ.
 
 | # | Style | Board | Proportions | Shading | Outline | Palette | Hero size |

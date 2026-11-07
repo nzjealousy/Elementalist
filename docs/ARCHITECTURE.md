@@ -312,6 +312,14 @@ rolled up to rare), *Upgrade* (+1 to +10, always succeeds, cost grows with level
 items to scrap + gold). Upgrading or enchanting edits the item dictionary in place and emits
 `Inventory.changed`, which `CharacterData` forwards as `changed`, so the player's stats refresh.
 
+**Shop** (`ShopScreen`, opened at the `Shopkeeper` in camp with G; rules in `Shop`, static over an
+`Inventory`): *Gems* sells a gem for each element the hero lacks (Light and Dark once `meta.tier_cleared`
+>= 2) at 600 gold, +50% of that per gem ever bought (`meta.gems_bought`, capped at x3), one of each per
+camp visit (`Game.shop_sold`); the gem goes to the materials and is used like a dropped one. *Legendary*
+sells three legendaries in different slots (item level = hero level + 2 per dungeon cleared) at 4x their
+value, rolled each time the camp is built (`Game.shop_stock`). The merchant lights the camp with a warm
+lantern (`Lighting.PROP_COLOURS`).
+
 **World objects** (`scripts/world/`): `Interactable` (G within `radius`, shows a prompt) is the base
 of `Chest` and `ForgeStation`; `Pickup` drifts to the player and is collected on touch (gear waits
 while the bag is full; everything vanishes after 120 s, or is vacuumed up when you leave a room).

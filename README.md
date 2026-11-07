@@ -8,10 +8,11 @@ Inspirations: The Mageseeker (action magic), Witchbrook (a cozy, lived-in hub), 
 (weighty bosses). Single player, PC.
 
 > **Status:** early development, but a complete loop is playable. Phases 0-5 of
-> [the roadmap](docs/ROADMAP.md) are done: title screen, three save slots, a camp hub, two randomly
-> generated dungeons (5 floors, then 10) with mini bosses and bosses, seven elements (Light and Dark
-> included), eight classes, gear and a forge, settings and gamepad support, a runs leaderboard, and
-> generated pixel art and audio. There is no story or NPCs yet (Phase 6). See
+> [the roadmap](docs/ROADMAP.md) are done and Phase 6 has a first playable: title screen, three save
+> slots, a camp hub with a forge, a notice board and a merchant (elemental gems and legendary gear),
+> five randomly generated dungeons with mini bosses and bosses, seven elements (Light and Dark
+> included), eight classes, gamepad support, co-op for up to four and an arena duel, and generated
+> pixel art and audio. Story and dialogue are still to come. See
 > [the core loop](docs/CORE_LOOP.md) for how it fits together.
 
 ## Run it

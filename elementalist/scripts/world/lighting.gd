@@ -62,6 +62,8 @@ const SOFTER := 0.7              # energy share of a pale monster's pool and of 
 const DOOR_OPEN := Color(1.0, 0.78, 0.45)
 const DOOR_LOCKED := Color(0.5, 0.62, 1.0)
 const DOOR_INWARD := {"north": Vector2(0, 12), "south": Vector2(0, -12), "west": Vector2(12, 0), "east": Vector2(-12, 0)}  # a door's pool lies on the floor in front of it
+## Props whose glow is set by hand: the forge's picture averages out near white, so its pool was whitish; the merchant's lantern is warm.
+const PROP_COLOURS := {"forge": Color(1.0, 0.6, 0.25), "shopkeeper": Color(1.0, 0.82, 0.45)}
 const FLICKER := 1               # candidate flags
 const SOFT := 2
 
@@ -186,7 +188,7 @@ func track(node: Node) -> void:
 		(node as Sprite2D).material = _floor_material
 		return
 	var keep := node is Player or node is RemoteAvatar or node is Enemy or node is Projectile or node is Door \
-		or node is CampGate or node is ForgeStation or node is ElementAltar
+		or node is CampGate or node is ForgeStation or node is Shopkeeper or node is ElementAltar
 	if node is Pickup:  # loot: only the high rarities glow
 		var drop: Dictionary = (node as Pickup).drop
 		keep = String(drop.get("kind", "")) == "item" and Items.RARITIES.find(String(drop["item"].get("rarity", ""))) >= 2
@@ -232,7 +234,8 @@ func _colour_of(node: Node2D, kind: int) -> Color:
 			return _bright(Items.rarity_color((node as Pickup).drop["item"]))
 		DOOR:
 			return DOOR_OPEN if (node as Door).open else DOOR_LOCKED
-	return art_glow((node as Interactable).sprite_id)
+	var id := (node as Interactable).sprite_id
+	return PROP_COLOURS.get(id, art_glow(id))
 
 
 ## The flags of a candidate light: fire-like colours flicker; a pale monster (not a boss: its steep pool is small

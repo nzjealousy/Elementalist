@@ -168,7 +168,7 @@ hard, and the choices that cost resources (more elements, more fusion, chained a
   appear as an **elemental variant**: resistant to its own element, weak to the one that beats it
   (water > fire > earth > water, mineral > air > mineral), and a source of that element's essence.
 - **Bosses** (Slime King, Stone Colossus): telegraphed slams and summoned minions. They **sometimes drop
-  an elemental gem** that attunes you to an element you don't have.
+  an elemental gem** that attunes you to an element you don't have. The camp merchant also sells gems (600 gold, dearer with every one bought, one of each per visit) and three rotating legendaries.
 - **The dungeon:** three randomly generated floors; each room is a wave fight (or a chest, or a forge
   and rest). The exit door stays locked until the wave is cleared. The last floor ends in the boss.
 

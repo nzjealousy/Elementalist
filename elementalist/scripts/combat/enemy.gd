@@ -68,6 +68,9 @@ var net_aim := Vector2.RIGHT
 var net_moving := false
 var net_dodging := false
 var net_stunned := false     # arena: the hero it stands for is stunned
+var net_casts := -1          # arena: that hero's cast counter (a change plays its cast sound); -1 until the first state
+var net_cast_code := 0
+var net_cast_sound_at := 0
 var net_glow := -1           # arena: that hero's glow code (Player.glow_code); -1 until the first state
 var knock_resist := 0.0      # share of knockback ignored
 var attack_range := 0.0      # ranged: shoots from this far
@@ -100,6 +103,8 @@ var _dash_cd := 0.0
 var _dash_dir := Vector2.ZERO
 var _dodge_cd := 0.0
 var _summon_stage := 0
+var _floor_hp_scale := 1.0      # the floor multipliers this monster was made with: a boss's minions get the same
+var _floor_damage_scale := 1.0
 var _base_tint := Color.WHITE
 var _telegraph: Telegraph
 ## Attack poses (code only, pixel-exact): the sprite shifts by whole pixels and may hold one walk frame. `pose` is the shift now
@@ -136,6 +141,8 @@ func configure(id: String, variant_element: String = "", hp_scale: float = 1.0, 
 	behavior = String(def["behavior"])
 	attack_type = String(def.get("attack", "melee"))
 	level = monster_level
+	_floor_hp_scale = hp_scale
+	_floor_damage_scale = damage_scale
 	boss = def.get("boss", false)
 	mini = def.get("mini", false)
 	rare_gem = String(def.get("rare_gem", ""))
@@ -171,6 +178,8 @@ func configure(id: String, variant_element: String = "", hp_scale: float = 1.0, 
 		variant = variant_element
 		max_hp *= Monsters.VARIANT_HP
 		contact_damage *= Monsters.VARIANT_DAMAGE
+		if not shot.is_empty():
+			shot["damage"] = float(shot["damage"]) * Monsters.VARIANT_DAMAGE  # shots get the variant bonus too
 		xp_reward = int(round(xp_reward * Monsters.VARIANT_XP))
 		display_name = "%s %s" % [variant_element.capitalize(), display_name]
 
@@ -628,7 +637,7 @@ func _spawn_minions() -> void:
 	var count := int(summon["count"])
 	for i in count:
 		var angle := TAU * float(i) / float(count)
-		Monsters.spawn(get_parent(), String(summon["id"]), global_position + Vector2.from_angle(angle) * 26.0)
+		Monsters.spawn(get_parent(), String(summon["id"]), global_position + Vector2.from_angle(angle) * 26.0, "", Vector2(_floor_hp_scale, _floor_damage_scale), level)
 	FloatText.spawn(get_parent(), global_position + Vector2(0, -14), "Summons!", Color("ff9a6a"), 10)
 
 

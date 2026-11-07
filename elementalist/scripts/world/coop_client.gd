@@ -82,7 +82,11 @@ func apply_snapshot(snapshot: Dictionary) -> void:
 	for id in ghosts.keys():
 		if _seen_at.get(id, 0) != _tick:
 			if is_instance_valid(ghosts[id]):
-				ghosts[id].queue_free()
+				var gone: Enemy = ghosts[id]
+				if gone.hp < gone.max_hp and gone.pvp_peer == 0:  # hurt, then gone from the snapshot: the host killed it
+					SkillFx.death(room_node, gone)
+					Sfx.play_at("explode" if gone.boss else "enemy_die", gone.global_position, 400.0 if gone.boss else 260.0)
+				gone.queue_free()
 			ghosts.erase(id)
 	var boss_id := int(snapshot.get("boss", 0))
 	Game.boss = ghosts.get(boss_id) if boss_id != 0 else null

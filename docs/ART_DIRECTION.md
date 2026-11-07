@@ -8,7 +8,7 @@ Status: **chosen and applied.** Of the three proposals (Gilded Hollow, Moonlit G
 **Moonlit Glyphwork**. Every picture in the game is still drawn by the scripts in `tools/art` (standard library only), so the style
 is code: `tools/art/style.py` holds the palette ramps, the rune renderer and the outline rule; `python tools/art/build_all.py`
 rebuilds all art and runs the art gate. The two other styles stay in `style.py` and in the comparison boards (`docs/art/style_*.png`,
-`python tools/art/style_board.py [gilded|moonlit|storybook]`) in case a campaign area wants a different mood later.
+the boards' generator, `style_board.py`, was removed as dead code) in case a campaign area wants a different mood later.
 
 | | A. Gilded Hollow | **B. Moonlit Glyphwork (chosen)** | C. Autumn Storybook |
 |---|---|---|---|
