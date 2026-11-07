@@ -432,7 +432,7 @@ tuning.)
 
 ## 5. Outliers and suspected bugs
 
-1. **Summoned minions ignore depth and oath** (left as is on purpose). `Enemy._spawn_minions` calls `Monsters.spawn`
+1. **FIXED 2026-11-07: summoned minions now carry the boss's floor scale and level** (numbers below are from before the fix and are not re-measured: the Sovereign's shades are now as tough as native ones, which makes that fight harder; watch it in play). Was: **summoned minions ignore depth and oath** (left as is on purpose). `Enemy._spawn_minions` calls `Monsters.spawn`
    with the default scale (1, 1) and level 1. The Gloaming Sovereign's shades have 40 HP and an 11.0 hit; a shade
    native to that floor has 457 HP and a 53.2 hit. An accidental mercy, and free XP at depth.
 2. **Dash scaling** is fixed: wind-up at least 0.4 s, speed at most 300 px/s. The cooldown still falls 12% a level
@@ -441,7 +441,7 @@ tuning.)
    HP, was x1.66).
 4. **Speed** is capped at 80 px/s (see Speed).
 5. **The level cap (30)** is now reached at the end of T5 by a Knight; a Warlord is capped from the end of T4.
-6. **Variant damage skips shots** (left as is). A Fire Spitter at depth 10 touches for 14.4 (Spitter 12.0) but
+6. **FIXED 2026-11-07: a variant's shots carry `VARIANT_DAMAGE`** (not re-measured). Was: **variant damage skips shots** (left as is). A Fire Spitter at depth 10 touches for 14.4 (Spitter 12.0) but
    shoots for the same 10.3.
 7. **XP per kill is flat with depth** while the XP curve rises as level^1.4. With smaller rooms the levels come
    more slowly (Knight 24 after T4, was 28).
@@ -450,7 +450,7 @@ tuning.)
    at item level 10, x0.81 at 30, x0.67 at 60 and x0.58 at 80. It is counted in the tables above.
 10. **Variants** are 2-35% of monsters (was 56-65% from depth 4).
 11. **HP grows with level for every class** (+5 a level).
-12. **Mend skills heal a flat amount** (48 / 60 HP) that does not scale with max HP.
+12. **Mend skills heal 8-10 HP/s times the caster's spell power (1.0 to 1.6, `SkillCaster._spawn`) since 2026-11-07** (not re-measured; it does not follow max HP, lever 4 below). Was a flat 48 / 60 HP.
 13. **Room size resets every tier** (3-8 on floor 1, 10-12 by floor 3), so each tier's first floor is a breather.
 14. **The first floor's elite is soft** (x1.44 factor): band-1 monsters hit for 5-8 and only 4% are variants there.
 
